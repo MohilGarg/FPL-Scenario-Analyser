@@ -12,13 +12,26 @@ from .safety import assess_safety
 from .solver import SearchResult, solve_candidate
 from .state import current_standings
 
+DEFAULT_CONFIG_PATH = Path(".fpl-forfeit.json")
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fpl-forfeit",
         description="Find who can still finish last in an FPL mini-league this Gameweek.",
     )
-    parser.add_argument("league_id", nargs="?", type=int, help="Classic league ID from its URL")
+    parser.add_argument(
+        "league_id",
+        nargs="?",
+        type=int,
+        help="Classic league ID; defaults to league_id in .fpl-forfeit.json",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
+        help="Local JSON configuration file (default: .fpl-forfeit.json)",
+    )
     parser.add_argument("--gameweek", type=int, help="Gameweek (defaults to FPL's current event)")
     parser.add_argument("--snapshot", type=Path, help="Analyse a previously saved JSON snapshot")
     parser.add_argument("--save-snapshot", type=Path, help="Save fetched input data for replay/tests")
@@ -116,13 +129,30 @@ def _json_report(
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
+def configured_league_id(cli_value: int | None, config_path: Path) -> int:
+    if cli_value is not None:
+        return cli_value
+    if not config_path.exists():
+        raise FPLAPIError(
+            "Provide LEAGUE_ID or create .fpl-forfeit.json containing "
+            '{"league_id": 123456}'
+        )
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        league_id = config["league_id"]
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        raise FPLAPIError(f"Could not read league_id from {config_path}: {exc}") from exc
+    if isinstance(league_id, bool) or not isinstance(league_id, int) or league_id <= 0:
+        raise FPLAPIError(f"league_id in {config_path} must be a positive integer")
+    return league_id
+
+
 def run(args: argparse.Namespace) -> int:
     if args.snapshot:
         snapshot = load_snapshot(args.snapshot)
     else:
-        if args.league_id is None:
-            raise FPLAPIError("Provide LEAGUE_ID or --snapshot PATH")
-        snapshot = FPLClient().fetch_snapshot(args.league_id, args.gameweek)
+        league_id = configured_league_id(args.league_id, args.config)
+        snapshot = FPLClient().fetch_snapshot(league_id, args.gameweek)
         if args.save_snapshot:
             save_snapshot(snapshot, args.save_snapshot)
 

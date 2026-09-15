@@ -22,10 +22,17 @@ This is intentionally not a general analytics dashboard.
 No runtime packages are required. From the project folder:
 
 ```powershell
+python fpl.py
+```
+
+The command reads your saved league ID from `.fpl-forfeit.json`. This repository currently stores
+league `188263`, so no ID is needed for the normal run. You can still override it for one run:
+
+```powershell
 python fpl.py LEAGUE_ID
 ```
 
-The league ID is the number in a classic league URL such as
+A league ID is the number in a classic league URL such as
 `https://fantasy.premierleague.com/leagues/123456/standings/c`.
 
 The analyser expects 12 entries by default and stops if a different number is returned. To inspect
@@ -55,7 +62,7 @@ python fpl.py 123456 --strict-last
 ```
 
 For an installed command, create a virtual environment and run `pip install -e .`; the command is
-then `fpl-forfeit LEAGUE_ID`.
+then `fpl-forfeit`.
 
 ## What “current score” means
 
