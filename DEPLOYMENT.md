@@ -50,14 +50,11 @@ This is public configuration, not a secret.
 
 ## 3. Deploy GitHub Pages
 
-The workflow asks GitHub to enable Pages automatically. Open **Actions → Deploy frontend to
-GitHub Pages**, choose **Run workflow**, select `main`, and run it. When the workflow completes,
-open:
+In **Settings → Pages**, set **Source** to **GitHub Actions** once. Then open **Actions → Deploy
+frontend to GitHub Pages**, choose **Run workflow**, select `main`, and run it. When the workflow
+completes, open:
 
    `https://mohilgarg.github.io/FPL-Scenario-Analyser/`
-
-If the repository policy prevents automatic enablement, go to **Settings → Pages**, set **Source**
-to **GitHub Actions**, then rerun the workflow.
 
 Future changes under `frontend/` or to the Pages workflow deploy automatically on pushes to `main`.
 If only `API_BASE_URL` changes, manually run the workflow again because repository-variable changes
