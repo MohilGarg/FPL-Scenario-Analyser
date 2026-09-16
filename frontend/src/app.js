@@ -1,7 +1,6 @@
 const config = window.APP_CONFIG || {};
 const apiBaseUrl = String(config.apiBaseUrl || "").replace(/\/$/, "");
-const defaultLeagueId = String(config.defaultLeagueId || "");
-const VALID_VIEWS = new Set(["overview", "scenarios", "differentials", "managers"]);
+const VALID_VIEWS = new Set(["overview", "scenarios", "differentials", "managers", "analytics"]);
 const REFRESH_INTERVAL_MS = 90_000;
 
 const elements = {
@@ -131,6 +130,10 @@ function endpoint(detail = "summary") {
 }
 
 async function loadAnalysis(options = {}) {
+  if (appState.view === "analytics" && !appState.demoMode) {
+    await loadAnalyticsLeague(options);
+    return;
+  }
   if (!apiBaseUrl) {
     elements.errorMessage.textContent = "The website backend has not been configured.";
     setPageState("error");
@@ -548,7 +551,7 @@ function renderManagers(data) {
         ${manager.score_source === "official_final" ? '<p class="fine-print">Historical result uses FPL’s final Gameweek points and official pick multipliers, minus this Gameweek’s transfer cost.</p>' : ""}
         <p class="fine-print">${(manager.score_notes || []).map(escapeHtml).join(" ")}</p>
         <div class="table-wrap"><table class="squad-table">
-          <thead><tr><th>Player</th><th>Role</th><th>Multiplier</th><th>Points</th><th>Minutes</th><th>Fixture state</th></tr></thead>
+          <thead><tr><th>Player</th><th>Role</th><th>Points</th><th>Minutes</th><th>Fixture state</th></tr></thead>
           <tbody>${manager.squad.map(squadRow).join("")}</tbody>
         </table></div>
       </div>
@@ -556,7 +559,8 @@ function renderManagers(data) {
 }
 
 function squadRow(player) {
-  const flags = [player.is_captain ? "C" : "", player.is_vice_captain ? "V" : ""].filter(Boolean).join(" · ");
+  const weight = player.effective_multiplier;
+  const flags = [player.is_captain ? (weight === 3 ? "TC ×3" : weight > 1 ? `C ×${weight}` : "C") : "", player.is_vice_captain ? `VC${weight > 1 ? ` ×${weight}` : ""}` : ""].filter(Boolean).join(" · ");
   const role = player.selection === "starter" ? "Starter" : `Bench ${player.bench_order}`;
   const remaining = player.remaining_fixtures.map((fixture) => `${fixture.started ? "live vs" : "vs"} ${fixture.opponent}`).join(" · ");
   const state = remaining || (player.fixture_status === "blank" ? "No fixture" : "Finished");
@@ -570,7 +574,7 @@ function squadRow(player) {
   return `<tr>
     <td class="player-cell"><strong>${escapeHtml(player.player_name)} ${flags ? `<span class="player-flags">${flags}</span>` : ""}</strong><span>${escapeHtml(player.team_name)} · ${player.position}</span></td>
     <td>${role}${autosub ? `<br><span class="autosub-note">${autosub}</span>` : ""}${player.captaincy_status ? `<br><span class="autosub-note">${escapeHtml(player.captaincy_status)}</span>` : ""}${player.conditional_exposure ? `<br><span class="autosub-note">${escapeHtml(player.conditional_exposure)}</span>` : ""}</td>
-    <td>${player.effective_multiplier}×</td><td>${player.official_points ?? "Unavailable"}</td><td>${player.minutes ?? "Unavailable"}</td><td>${escapeHtml(state)}</td>
+    <td>${player.official_points ?? "Unavailable"}</td><td>${player.minutes ?? "Unavailable"}</td><td>${escapeHtml(state)}</td>
   </tr>`;
 }
 
@@ -587,6 +591,7 @@ function emptyState(title, copy) {
 }
 
 function activateView(view, update = true) {
+  const previous = appState.view;
   appState.view = VALID_VIEWS.has(view) ? view : "overview";
   document.querySelectorAll("[role='tab']").forEach((tab) => {
     const active = tab.dataset.view === appState.view;
@@ -596,7 +601,56 @@ function activateView(view, update = true) {
   document.querySelectorAll(".view-panel").forEach((panel) => {
     panel.classList.toggle("hidden", panel.id !== `view-${appState.view}`);
   });
+  const analytics = appState.view === "analytics";
+  const activeTab = document.querySelector(".view-tabs [aria-selected='true']");
+  const tabBar = activeTab.closest("nav");
+  tabBar.scrollLeft = Math.max(0, activeTab.offsetLeft - tabBar.offsetLeft + activeTab.offsetWidth - tabBar.clientWidth);
+  elements.modelNote.closest("details").classList.toggle("hidden", analytics);
+  elements.gameweekSelect.closest("label").classList.toggle("hidden", analytics);
   if (update) updateUrl();
+  if (analytics) {
+    clearTimeout(appState.refreshTimer);
+    if (appState.demoMode) {
+      document.querySelector("#analytics-content").innerHTML = emptyState("Real-league history only", "Demo Mode contains one Gameweek, not a season. Change league to explore public historical data.");
+      document.querySelector("#analytics-nav").classList.add("hidden");
+      document.querySelector("#analytics-coverage").textContent = "";
+      document.querySelector("#analytics-progress").classList.add("hidden");
+      document.querySelector("#analytics-definitions").classList.add("hidden");
+    } else if (update && previous !== "analytics") loadAnalyticsLeague();
+  } else if (update && previous === "analytics") {
+    window.FPLAnalytics.cancel();
+    if (appState.demoMode && appState.data) renderApplication();
+    else loadAnalysis();
+  }
+}
+
+async function loadAnalyticsLeague(options = {}) {
+  clearTimeout(appState.refreshTimer);
+  appState.requestController?.abort();
+  appState.comparisonController?.abort();
+  const generation = ++appState.generation;
+  appState.gameweek = null;
+  elements.refresh.disabled = true;
+  setPageState("analysis");
+  activateView("analytics", false);
+  elements.leagueName.textContent = appState.data?.league.id === Number(appState.leagueId) ? appState.data.league.name : `League ${appState.leagueId}`;
+  elements.gameweek.textContent = "Season analytics";
+  elements.updatedAt.textContent = "";
+  elements.gameweekStatus.className = "status-dot";
+  elements.demoLabel.classList.add("hidden");
+  elements.demoSelect.value = "";
+  updateUrl();
+  await window.FPLAnalytics.open({
+    leagueId: appState.leagueId, apiBaseUrl, refresh: Boolean(options.background),
+    onSummary: (data) => {
+      if (generation !== appState.generation) return;
+      rememberLeague(appState.leagueId, data.league.name);
+      elements.leagueName.textContent = data.league.name;
+      elements.gameweek.textContent = `Gameweek ${data.league.current_gameweek} · ${data.league.current_status || "Season analytics"}`;
+      elements.updatedAt.textContent = `History checked: ${new Date(data.fetched_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    },
+  });
+  if (generation === appState.generation) elements.refresh.disabled = false;
 }
 
 function bindDynamicControls() {
@@ -628,6 +682,7 @@ async function copyScenario(button) {
 }
 
 function openDemo(mode) {
+  window.FPLAnalytics.cancel();
   appState.demoMode = mode;
   appState.leagueId = "";
   appState.selectedManager = null;
@@ -647,6 +702,7 @@ function updateUrl() {
     if (appState.leagueId) url.searchParams.set("league", appState.leagueId);
   }
   url.searchParams.set("view", appState.view);
+  if (appState.view !== "analytics") url.searchParams.delete("section");
   if (appState.selectedManager && appState.view === "scenarios") url.searchParams.set("manager", appState.selectedManager);
   else url.searchParams.delete("manager");
   if (appState.tieRule === "strict") url.searchParams.set("ties", "strict");
@@ -667,7 +723,7 @@ function rememberLeague(id, name) {
 function readRecent() {
   try {
     const value = JSON.parse(window.FPLInput.read("fpl-recent-leagues") || "[]");
-    return Array.isArray(value) ? value : [];
+    return Array.isArray(value) ? value.filter((item) => item && parseLeagueId(item.id)).map((item) => ({ id: parseLeagueId(item.id), name: String(item.name || "Classic league") })).slice(0, 4) : [];
   } catch {
     return [];
   }
@@ -676,7 +732,7 @@ function readRecent() {
 function renderRecent() {
   const recent = readRecent();
   elements.recent.classList.toggle("hidden", !recent.length);
-  elements.recentList.innerHTML = recent.map((item) => `<button class="recent-button" type="button" data-league="${escapeHtml(item.id)}">${escapeHtml(item.name || item.id)}</button>`).join("");
+  elements.recentList.innerHTML = recent.map((item) => `<button class="recent-button" type="button" data-league="${escapeHtml(item.id)}">${escapeHtml(item.name || "Classic league")} <span>· ${escapeHtml(item.id)}</span></button>`).join("");
   elements.recentList.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
       appState.demoMode = "";
@@ -692,7 +748,7 @@ function renderRecent() {
 
 function scheduleRefresh() {
   clearTimeout(appState.refreshTimer);
-  if (appState.demoMode || !appState.data?.league.fixtures.live || document.hidden) return;
+  if (appState.view === "analytics" || appState.demoMode || !appState.data?.league.fixtures.live || document.hidden) return;
   appState.refreshTimer = setTimeout(() => loadAnalysis({ background: true }), Math.max(REFRESH_INTERVAL_MS, (appState.data.cache?.ttl_seconds || 90) * 1000));
 }
 
@@ -738,6 +794,15 @@ function changeLeague() {
   clearTimeout(appState.refreshTimer);
   appState.requestController?.abort();
   ++appState.generation;
+  window.FPLAnalytics.cancel();
+  appState.data = null;
+  appState.leagueId = "";
+  appState.demoMode = "";
+  appState.gameweek = null;
+  appState.view = "overview";
+  elements.input.value = "";
+  elements.demoSelect.value = "";
+  history.replaceState({}, "", window.location.pathname);
   setPageState("landing");
   elements.input.focus();
 }
@@ -747,10 +812,7 @@ document.querySelector("#current-gameweek-button").addEventListener("click", () 
 elements.demoSelect.addEventListener("change", () => {
   if (elements.demoSelect.value) openDemo(elements.demoSelect.value);
   else {
-    appState.demoMode = "";
-    appState.leagueId = parseLeagueId(window.FPLInput.read("fpl-last-place-league")) || defaultLeagueId;
-    appState.gameweek = null;
-    loadAnalysis();
+    changeLeague();
   }
 });
 elements.gameweekSelect.addEventListener("change", () => {
@@ -799,7 +861,6 @@ elements.tieRule.value = appState.tieRule;
 renderRecent();
 
 const queryLeague = parseLeagueId(query.get("league"));
-const rememberedLeague = parseLeagueId(window.FPLInput.read("fpl-last-place-league"));
 if (query.has("league") && !queryLeague && !appState.demoMode) {
   elements.errorMessage.textContent = "The shared link contains an invalid league ID. Choose Change league and enter a numeric ID or FPL classic league URL.";
   elements.retry.classList.add("hidden");
@@ -807,7 +868,7 @@ if (query.has("league") && !queryLeague && !appState.demoMode) {
 } else if (appState.demoMode) {
   loadAnalysis();
 } else {
-  appState.leagueId = queryLeague || rememberedLeague || defaultLeagueId;
+  appState.leagueId = queryLeague;
   if (appState.leagueId) {
     elements.input.value = appState.leagueId;
     loadAnalysis();

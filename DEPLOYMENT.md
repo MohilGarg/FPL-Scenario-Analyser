@@ -5,14 +5,19 @@ the GitHub Pages build.
 
 ## Updating an existing deployment
 
-No new secrets, database, environment variables or hosting services are needed for historical
-Gameweeks, manager comparisons or lazy scenarios. Push the changes to `main`: the existing Render
+No new secrets, database, environment variables or hosting services are needed for Analytics,
+historical Gameweeks, manager comparisons or lazy scenarios. Push the changes to `main`: the existing Render
 auto-deploy updates the API and the Pages workflow updates the static site. Deploy both sides;
-an older API cannot serve the new manager/comparison endpoints. If Render auto-deploy is disabled,
+an older API cannot serve the new analytics endpoints. If Render auto-deploy is disabled,
 select the service, then **Manual Deploy → Deploy latest commit**.
 
-After deployment, check `/api/league/188263?detail=summary` for `available_gameweeks`, then try a
-completed `gameweek` from that list. The original full endpoint and CLI remain compatible.
+After deployment, check `/api/league/188263/analytics/summary` for league/coverage/statistics.
+Open the root site in a private window: it must show the neutral input, not a league. Then open
+`?league=188263&view=analytics&section=gameweeks`. The original full endpoint and CLI remain compatible.
+The old `DEFAULT_LEAGUE_ID` build setting has been removed. Only `API_BASE_URL` configures the frontend.
+Historical enrichment uses up to two jobs and four concurrent FPL requests per API process. Its
+bounded in-memory caches are lost on restart; there is no persistent-disk or database requirement.
+Keep the existing single Uvicorn worker on the free service so requests share caches and progress.
 
 ## 1. Deploy the FastAPI backend on Render
 

@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#f4f6f8" />
     <meta
       name="description"
-      content="See who can still finish last in your Fantasy Premier League mini-league."
+      content="Live last-place scenario analysis and descriptive season analytics for your FPL mini-league."
     />
-    <title>FPL Last Place</title>
+    <title>FPL Scenario Analyser</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <script>
       const requestedTheme = new URLSearchParams(window.location.search).get("theme");
@@ -24,9 +24,9 @@
     <a class="skip-link" href="#main-content">Skip to content</a>
 
     <header class="site-header">
-      <a class="brand" href="./" aria-label="FPL Last Place home">
-        <span class="brand-mark" aria-hidden="true">12</span>
-        <span>FPL Last Place</span>
+      <a class="brand" href="./" aria-label="FPL Scenario Analyser home">
+        <span class="brand-mark" aria-hidden="true">FPL</span>
+        <span>FPL Scenario Analyser</span>
       </a>
       <div class="header-actions">
         <details class="settings-menu">
@@ -37,7 +37,7 @@
               <option value="include">Tied for lowest counts</option>
               <option value="strict">Strictly lowest only</option>
             </select>
-            <p>The selected rule is used for safety checks, scenarios and final results.</p>
+            <p>This rule applies to live analysis and scenarios. Analytics records every tied last-place finish.</p>
             <button id="theme-toggle" class="icon-button" type="button" aria-label="Use dark mode">
               <span id="theme-label">Dark mode</span>
             </button>
@@ -57,15 +57,15 @@
 
     <main id="main-content">
       <section id="landing" class="landing" aria-labelledby="page-title">
-        <p class="kicker">The weekly forfeit, made clear</p>
+        <p class="kicker">Your mini-league. The whole story.</p>
         <h1 id="page-title">Last place, explained.</h1>
         <p class="landing-copy">
-          See who is currently bottom, who can still finish there, and the realistic match
-          scenarios that decide it.
+          See who can still finish bottom of your FPL mini-league, what needs to happen
+          for each manager to lose, and explore your league’s season analytics.
         </p>
 
         <form id="league-form" class="league-form">
-          <label for="league-id">Classic league ID or standings URL</label>
+          <label for="league-id">Enter your FPL league</label>
           <div class="input-row">
             <input
               id="league-id"
@@ -81,10 +81,15 @@
         </form>
 
         <div id="recent-leagues" class="recent-leagues hidden" aria-label="Recent leagues">
-          <span>Recent</span>
+          <span>Recent leagues</span>
           <div id="recent-list"></div>
         </div>
-
+        <div class="capabilities">
+          <article><span class="capability-number">01</span><h2>Live forfeit analysis</h2><p>Who is last, who is safe, and who can still finish bottom.</p></article>
+          <article><span class="capability-number">02</span><h2>Scenario analysis</h2><p>Realistic football outcomes that decide each manager’s route to last.</p></article>
+          <article><span class="capability-number">03</span><h2>League differentials</h2><p>Shared players, captaincy and the exposure that separates managers.</p></article>
+          <article><span class="capability-number">04</span><h2>League analytics</h2><p>Gameweek history, captaincy, bench points, hits and your season in context.</p></article>
+        </div>
       </section>
 
       <section id="loading-state" class="state-card hidden" aria-live="polite" aria-busy="true">
@@ -133,6 +138,7 @@
           <button id="tab-scenarios" role="tab" aria-selected="false" aria-controls="view-scenarios" data-view="scenarios">Scenarios</button>
           <button id="tab-differentials" role="tab" aria-selected="false" aria-controls="view-differentials" data-view="differentials">Differentials</button>
           <button id="tab-managers" role="tab" aria-selected="false" aria-controls="view-managers" data-view="managers">Managers</button>
+          <button id="tab-analytics" class="analytics-tab" role="tab" aria-selected="false" aria-controls="view-analytics" data-view="analytics">Analytics</button>
         </nav>
 
         <section id="view-overview" class="view-panel" role="tabpanel" aria-labelledby="tab-overview">
@@ -189,6 +195,21 @@
           <div id="manager-list" class="manager-list"></div>
         </section>
 
+        <section id="view-analytics" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-analytics">
+          <div class="view-heading"><div><p class="kicker">Your season, in context</p><h2>League analytics</h2><p>What has happened in this mini-league. Completed Gameweeks, not predictions.</p></div></div>
+          <nav id="analytics-nav" class="analytics-nav" aria-label="Analytics sections">
+            <button type="button" data-section="summary">Summary</button>
+            <button type="button" data-section="gameweeks">Gameweeks</button>
+            <button type="button" data-section="managers">Managers</button>
+            <button type="button" data-section="players">Players</button>
+            <button type="button" data-section="head-to-head">Head-to-head</button>
+          </nav>
+          <div id="analytics-coverage" class="analytics-coverage"></div>
+          <div id="analytics-progress" class="analytics-progress hidden" role="status" aria-live="polite"></div>
+          <div id="analytics-content"></div>
+          <details id="analytics-definitions" class="analytics-help"><summary>Definitions &amp; data coverage</summary><div></div></details>
+        </section>
+
         <details class="model-note">
           <summary>How “safe” and scenarios are calculated</summary>
           <p id="model-note"></p>
@@ -199,12 +220,14 @@
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
     <footer>
-      <span>Focused on one question: who gets the forfeit?</span>
+      <span>Last-place analysis. Your league’s season, explained.</span>
       <a href="https://github.com/MohilGarg/FPL-Scenario-Analyser">Source code</a>
     </footer>
 
     <script src="./config.js"></script>
     <script src="./input.js"></script>
+    <script src="./charts.js"></script>
+    <script src="./analytics.js"></script>
     <script src="./app.js" defer></script>
   </body>
 </html>

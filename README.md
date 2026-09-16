@@ -1,7 +1,7 @@
 # FPL Scenario Analyser
 
-A focused website for Fantasy Premier League mini-leagues where the manager finishing last in a
-Gameweek does a forfeit.
+FPL Scenario Analyser combines live last-place scenario analysis with private mini-league analytics.
+It describes your own league, without transfer advice or predictions.
 
 **Live site:** <https://mohilgarg.github.io/FPL-Scenario-Analyser/>
 
@@ -11,7 +11,14 @@ login is required.
 
 ## Website
 
-The interface is organised around four views:
+The root URL is a neutral home page. Enter a classic league ID or paste its FPL standings URL.
+No league loads automatically, even if you have visited before. Recent leagues appear as explicit
+shortcuts showing name and ID. The site title returns home. Light mode is the default; dark mode,
+the live tie rule and secondary demos remain in Settings.
+
+### Live analysis
+
+The original four views remain:
 
 - **Overview** — the current loser, at-risk managers, core conditions and a collapsed safe group;
 - **Scenarios** — focused ranked examples, final bottom scores, copy-to-chat text and an optional
@@ -19,6 +26,28 @@ The interface is organised around four views:
 - **Differentials** — meaningful remaining effective multipliers after captaincy, chips and current
   substitution state;
 - **Managers** — all effective scores and expandable 15-player Gameweek squads for transparency.
+  Captain/vice/Triple Captain badges are inline; there is no redundant multiplier column.
+
+### Analytics
+
+The separate fifth tab stays inside the same website, with **Summary**, **Gameweeks**, **Managers**,
+**Players** and **Head-to-head** sections:
+
+- weekly forfeit leaderboard, completed Gameweek ordering, score coverage and league trends;
+- manager average/median, weekly rank, consistency, cumulative scores and transfer deductions;
+- verified unused bench points, Bench Boost contribution, captaincy and repeat chip history;
+- counted positional points and player contributions across this mini-league;
+- current ownership/effective ownership, unique owners/captains and a clickable squad-overlap matrix;
+- historical head-to-head records, distributions, ownership and captaincy trends.
+
+Charts support hover/tap/focus and a data table; tables are sortable and current players searchable.
+Detailed totals display the number of verified squads, not silently assumed zeroes for missing data.
+Historical rank counts include all ties and do not change with the live scenario tie setting.
+See [ANALYTICS.md](ANALYTICS.md) for definitions, public source fields, caching and limitations.
+
+Share a specific section, for example:
+
+<https://mohilgarg.github.io/FPL-Scenario-Analyser/?league=188263&view=analytics&section=gameweeks>
 
 The site automatically changes emphasis for early, late, live and completed Gameweeks. During live
 fixtures it refreshes every 90 seconds while the tab is visible, matching the backend cache rather
@@ -100,9 +129,12 @@ GitHub Pages (static HTML/CSS/JavaScript)
                 v
 FastAPI service on Render
                 |
-                +-- 90-second cache
+                +-- live cache (90 seconds)
+                +-- score history (15 minutes), final squads (24 hours)
+                +-- bounded historical enrichment with progress
                 +-- public FPL API retrieval
                 +-- existing Python domain and scenario engine
+                +-- separate Python descriptive analytics
 ```
 
 FPL requests happen server-side to avoid browser CORS problems. Scoring and scenario logic is never
@@ -180,9 +212,27 @@ the external FPL API.
 
 Returns `{"status":"ok"}` for deployment health checks.
 
+### Analytics API
+
+All routes are under `/api/league/{league_id}/analytics/`:
+
+| Route | Result |
+| --- | --- |
+| `summary` | Compact league summary, forfeit leaderboard, coverage and trends |
+| `gameweeks?gameweek=3` | One completed GW, including unavailable members; omit filter for all |
+| `managers` or `manager/{entry_id}` | Manager statistics and historical score series |
+| `players` | Current ownership/similarity and verified season player contributions |
+| `player/{player_id}` | Selected player's historical ownership/captaincy series |
+| `head-to-head?a=123&b=456` | Historical comparison over common recorded weeks |
+| `details` | Starts/reuses bounded enrichment; returns `loading`, `busy` or `ready` plus progress |
+
+Section responses never wait for all historical picks. The browser polls `details` while showing
+score history, then refreshes the selected section. Missing/reconciliation-failed detail is null;
+warnings explain which manager/GW is affected. No scenario searches are run by historical analytics.
+
 ## Existing CLI and snapshots
 
-The website is the main product, but the tested CLI remains available. League `188263` is stored in
+The website is the main product, but the tested CLI remains available. The CLI-only league `188263` is stored in
 `.fpl-forfeit.json`, so the normal command is:
 
 ```powershell
@@ -217,16 +267,22 @@ python frontend/build.py
 The suite covers scoring and autosub edge cases, hits and chips, Double Gameweeks, whole-Gameweek
 safety bounds, tie rules, multi-return scenarios, diversity, manager comparisons, historical data,
 all four existing demo phases, API structure, caching and frontend structure.
+Analytics tests cover historical ties/ranks/coverage, averages, hits, bench/autosubs/Bench Boost,
+captain/Triple Captain/vice takeover, repeat chips, positions, ownership, overlap, head-to-head,
+league-player contribution, caching, API serialisation and invalid IDs.
 
 Optional browser checks (with the local API and frontend running):
 
 ```powershell
 python -m pip install playwright
 python frontend/check.py
+python frontend/check.py --league 188263
 ```
 
 On Windows this uses installed Microsoft Edge; otherwise install a Playwright Chromium browser
 (`python -m playwright install chromium`) or supply `--browser-executable`. Checks include real JS
-league-ID/URL parsing, all four views at 320/390/1440px, theme persistence, comparison, manager-only
-Show more and completed-state UX. Screenshots are written to a temporary directory, never the Pages
+league-ID/URL parsing, neutral home with and without recent leagues, five views at 320/390/1440px,
+theme persistence, comparison, manager-only Show more and completed-state UX. The optional `--league`
+checks real historical Analytics sections, shared URLs, charts, ownership search and overlap in
+both themes. It makes public FPL requests through the backend. Screenshots go to a temporary directory, never the Pages
 build. Playwright is not a production dependency.

@@ -11,7 +11,7 @@ SOURCE_DIR = FRONTEND_DIR / "src"
 DEFAULT_OUTPUT_DIR = FRONTEND_DIR / "dist"
 
 
-def build(output_dir: Path, api_base_url: str, default_league_id: str) -> None:
+def build(output_dir: Path, api_base_url: str) -> None:
     output = output_dir.resolve()
     source = SOURCE_DIR.resolve()
     if output == Path(output.anchor) or output in (
@@ -29,7 +29,6 @@ def build(output_dir: Path, api_base_url: str, default_league_id: str) -> None:
             shutil.copy2(source_item, destination)
     config = {
         "apiBaseUrl": api_base_url.rstrip("/"),
-        "defaultLeagueId": default_league_id,
     }
     (output / "config.js").write_text(
         "window.APP_CONFIG = " + json.dumps(config, ensure_ascii=False) + ";\n",
@@ -42,12 +41,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build the static GitHub Pages frontend")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--api-base-url", default=os.getenv("API_BASE_URL", ""))
-    parser.add_argument(
-        "--default-league-id",
-        default=os.getenv("DEFAULT_LEAGUE_ID", "188263"),
-    )
     args = parser.parse_args()
-    build(args.output, args.api_base_url, args.default_league_id)
+    build(args.output, args.api_base_url)
     print(f"Built frontend at {args.output.resolve()}")
     if not args.api_base_url:
         print("Warning: API_BASE_URL is empty; the UI will show a configuration message.")

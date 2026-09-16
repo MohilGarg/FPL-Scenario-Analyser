@@ -7,6 +7,7 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from .analytics.service import AnalyticsService
 from .api import (
     FPLAccessError,
     FPLAPIError,
@@ -23,12 +24,17 @@ from .settings import (
 )
 
 
-def create_app(service: AnalysisService | None = None) -> FastAPI:
+def create_app(
+    service: AnalysisService | None = None, analytics: AnalyticsService | None = None
+) -> FastAPI:
     analysis_service = service or AnalysisService()
+    analytics_service = analytics or AnalyticsService(
+        analysis_service if isinstance(analysis_service, AnalysisService) else None
+    )
     application = FastAPI(
         title="FPL Scenario Analyser API",
-        version="2.0.0",
-        description="Processed last-place analysis for public FPL classic mini-leagues.",
+        version="3.0.0",
+        description="Live last-place analysis and descriptive season analytics for public FPL classic mini-leagues.",
     )
     application.add_middleware(
         CORSMiddleware,
@@ -126,6 +132,44 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
             lambda: analysis_service.compare(
                 league_id, a, b, gameweek=gameweek, demo=demo, allow_tied_last=ties == "include"
             )
+        )
+
+    @application.get("/api/league/{league_id}/analytics/details", tags=["analytics"])
+    def analytics_detail_progress(league_id: int) -> dict[str, Any]:
+        if league_id <= 0:
+            raise HTTPException(400, "League ID must be a positive integer")
+        return _api_response(lambda: analytics_service.detail_status(league_id))
+
+    @application.get("/api/league/{league_id}/analytics/manager/{entry_id}", tags=["analytics"])
+    def manager_analytics(league_id: int, entry_id: int) -> dict[str, Any]:
+        if league_id <= 0 or entry_id <= 0:
+            raise HTTPException(400, "League and manager IDs must be positive integers")
+        return _api_response(
+            lambda: analytics_service.section(league_id, "manager", entry_id=entry_id)
+        )
+
+    @application.get("/api/league/{league_id}/analytics/player/{player_id}", tags=["analytics"])
+    def player_analytics(league_id: int, player_id: int) -> dict[str, Any]:
+        if league_id <= 0 or player_id <= 0:
+            raise HTTPException(400, "League and player IDs must be positive integers")
+        return _api_response(
+            lambda: analytics_service.section(league_id, "player", player_id=player_id)
+        )
+
+    @application.get("/api/league/{league_id}/analytics/{section}", tags=["analytics"])
+    def league_analytics(
+        league_id: int,
+        section: Literal["summary", "gameweeks", "managers", "players", "head-to-head"],
+        gameweek: int | None = Query(default=None, ge=1, le=38),
+        a: int | None = Query(default=None, ge=1),
+        b: int | None = Query(default=None, ge=1),
+    ) -> dict[str, Any]:
+        if league_id <= 0:
+            raise HTTPException(400, "League ID must be a positive integer")
+        if section == "head-to-head" and (a is None or b is None or a == b):
+            raise HTTPException(400, "Choose two different managers")
+        return _api_response(
+            lambda: analytics_service.section(league_id, section, gameweek=gameweek, a=a, b=b)
         )
 
     return application

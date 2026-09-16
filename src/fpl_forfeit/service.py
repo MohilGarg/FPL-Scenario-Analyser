@@ -33,6 +33,10 @@ class AnalysisService:
         self._demos: TTLCache[tuple, dict[str, Any]] = TTLCache(ttl, max_items=16)
         self._fetch_locks = tuple(Lock() for _ in range(16))
 
+    def cached_snapshot(self, league_id: int) -> dict[str, Any] | None:
+        """Share the current immutable source with descriptive analytics, without a refetch."""
+        return self._snapshots.get((league_id, None))
+
     def analyse_league(
         self,
         league_id: int,

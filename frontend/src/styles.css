@@ -596,3 +596,99 @@ footer a { color: var(--muted); }
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Neutral home and descriptive analytics share the restrained site palette. */
+.brand-mark { flex-shrink: 0; }
+.landing { max-width: 940px; }
+.landing-copy { max-width: 660px; }
+.capabilities { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; margin-top: 46px; padding-top: 28px; border-top: 1px solid var(--line); text-align: left; }
+.capabilities h2 { margin: 10px 0; font-size: 0.92rem; }
+.capabilities p { margin: 0; color: var(--muted); font-size: 0.86rem; line-height: 1.6; }
+.capability-number { color: var(--faint); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.recent-button span { font-weight: 400; color: var(--muted); }
+.view-tabs .analytics-tab { margin-left: auto; border-left: 1px solid var(--line); padding-left: 26px; }
+.analytics-nav { display: flex; flex-wrap: wrap; gap: 5px; padding-bottom: 18px; }
+.analytics-nav button { border: 1px solid transparent; background: transparent; color: var(--muted); border-radius: 7px; padding: 10px 15px; min-height: 44px; font-weight: 650; font-size: 0.86rem; }
+.analytics-nav button[aria-current="page"] { color: var(--ink); background: var(--surface); border-color: var(--line-strong); }
+.analytics-nav button:hover { color: var(--ink); background: var(--surface-subtle); }
+.analytics-coverage { margin: 0 0 18px; color: var(--muted); font-size: 0.82rem; line-height: 1.6; }
+.analytics-progress { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; border-left: 2px solid var(--primary); padding: 10px 14px; margin-bottom: 20px; font-size: 0.82rem; color: var(--muted); background: var(--surface-subtle); }
+.analytics-progress progress { width: 150px; max-width: 100%; height: 6px; accent-color: var(--primary); }
+.analytics-card, .chart { min-width: 0; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 24px; margin: 0 0 22px; }
+.analytics-card h3, .chart figcaption { margin: 0 0 18px; font-size: 1.04rem; font-weight: 720; }
+.analytics-card > .fine-print { margin: -7px 0 18px; }
+.analytics-card .analytics-card { padding: 16px; }
+.analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+.analytics-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 20px 24px; margin: 0; }
+.analytics-facts dt { color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+.analytics-facts dd { margin: 5px 0 0; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.season-extremes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
+.season-extremes p { margin: 0; line-height: 1.6; font-size: 0.9rem; }
+.season-extremes span { display: block; color: var(--muted); font-size: 0.76rem; }
+.analytics-table { width: 100%; min-width: 600px; border-collapse: collapse; font-size: 0.84rem; }
+.analytics-table th, .analytics-table td { text-align: left; padding: 13px 12px; border-bottom: 1px solid var(--line); vertical-align: top; font-variant-numeric: tabular-nums; }
+.analytics-table th { white-space: nowrap; font-size: 0.75rem; color: var(--muted); }
+.analytics-table th button { border: 0; padding: 4px 0; min-height: 32px; background: transparent; color: inherit; font-weight: 650; }
+.analytics-table th button span { opacity: 0.6; }
+.analytics-table th[aria-sort="descending"], .analytics-table th[aria-sort="ascending"] { color: var(--primary); }
+.analytics-table tr:last-child td { border-bottom: 0; }
+.analytics-table td:first-child { min-width: 90px; }
+.analytics-table tr:hover td { background: var(--surface-subtle); }
+.table-link { display: inline; color: var(--primary); background: none; border: 0; padding: 0; font-weight: 650; text-align: left; min-height: 28px; }
+.analytics-controls { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 22px; }
+.analytics-controls label { display: grid; gap: 8px; font-size: 0.8rem; color: var(--muted); flex: 1 1 180px; max-width: 360px; min-width: 0; }
+.analytics-controls select, .analytics-controls input { min-height: 44px; width: 100%; min-width: 0; padding: 9px 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 7px; }
+.analytics-help { color: var(--muted); font-size: 0.84rem; line-height: 1.7; padding: 16px 0 28px; }
+.analytics-help summary { color: var(--ink); font-weight: 650; }
+.analytics-disclosure { margin: 0 0 22px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.analytics-disclosure > summary { padding: 18px; font-weight: 650; font-size: 0.9rem; }
+.analytics-disclosure > div { padding: 0 14px 14px; }
+.analytics-disclosure .analytics-card, .analytics-disclosure .chart { border: 0; padding: 10px; margin: 0; }
+.analytics-loading { padding: 35px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--muted); }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart svg text { fill: var(--muted); font-size: 12px; }
+.chart-grid { stroke: var(--line); stroke-dasharray: 3 4; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.75rem; color: var(--muted); }
+.chart-legend span { display: flex; align-items: center; gap: 6px; }
+.chart-legend i { display: inline-block; width: 12px; height: 3px; }
+.series-0 { stroke: var(--primary); fill: var(--primary); background: var(--primary); }
+.series-1 { stroke: var(--muted); fill: var(--muted); background: var(--muted); }
+.series-2 { stroke: var(--warning); fill: var(--warning); background: var(--warning); }
+.chart-series { fill: none; }
+.series-1.chart-series { stroke-dasharray: 6 3; }
+.series-2.chart-series { stroke-dasharray: 2 4; }
+.chart-dot { cursor: pointer; stroke-width: 8px; stroke-opacity: 0; }
+.chart-dot:hover, .chart-dot:focus { stroke-opacity: 0.2; outline: none; }
+.chart-readout { margin: 10px 0; min-height: 22px; color: var(--muted); font-size: 0.8rem; }
+.chart-data { font-size: 0.75rem; color: var(--muted); }
+.chart-data table { width: 100%; border-collapse: collapse; }
+.chart-data th, .chart-data td { text-align: left; padding: 8px; }
+.bar-row { display: grid; grid-template-columns: minmax(85px, 1fr) minmax(30px, 1.2fr) 40px; gap: 10px; align-items: center; width: 100%; min-height: 38px; padding: 5px 0; border: none; background: transparent; color: var(--ink); font-size: 0.78rem; text-align: left; }
+.bar-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+.bar-track { display: block; height: 10px; background: var(--surface-subtle); border-radius: 2px; }
+.bar-track i { display: block; height: 100%; background: var(--primary); border-radius: 2px; }
+.bar-track .negative { background: var(--warning); }
+.similarity-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
+.similarity-table th { padding: 10px; text-align: left; white-space: nowrap; }
+.similarity-table td { padding: 2px; text-align: center; }
+.similarity-table button { border: 0; border-radius: 4px; width: 36px; min-height: 36px; color: var(--ink); background: color-mix(in srgb, var(--primary-soft) var(--overlap), var(--surface)); }
+.similarity-table button:hover { outline: 2px solid var(--primary); }
+.pair-detail { margin-top: 20px; padding: 18px; background: var(--surface-subtle); border-radius: 8px; font-size: 0.85rem; line-height: 1.7; }
+.pair-detail h4 { margin: 0 0 12px; }
+@media (max-width: 760px) {
+  .capabilities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 30px; }
+  .analytics-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .analytics-card, .chart { padding: 18px; }
+  .view-tabs { display: flex; overflow-x: auto; scrollbar-width: thin; }
+  .view-tabs button { flex: 0 0 auto; padding: 14px 12px; font-size: 0.78rem; }
+  .view-tabs .analytics-tab { padding-left: 18px; margin-left: 8px; }
+  .analytics-nav { flex-wrap: nowrap; overflow-x: auto; }
+  .analytics-nav button { flex: 0 0 auto; padding: 9px 11px; }
+  .analytics-table th, .analytics-table td { padding: 11px 10px; }
+  .brand { font-size: 0.83rem; gap: 7px; padding-right: 8px; }
+  .brand-mark { width: 27px; height: 27px; font-size: 0.65rem; }
+  .analytics-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 14px; }
+  .analytics-facts dd { font-size: 1.18rem; }
+  .season-extremes { grid-template-columns: 1fr; }
+  .chart-dot { r: 5.5px; }
+}

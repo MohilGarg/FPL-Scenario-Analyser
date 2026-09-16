@@ -2,10 +2,11 @@
 
 ## Purpose
 
-This repository answers one narrow question for a 12-person Fantasy Premier League friends'
-league: who can still finish last in the current Gameweek, and what realistic remaining-match
-scenarios make that happen? Last place triggers a forfeit. Do not broaden it into a generic FPL
-dashboard.
+FPL Scenario Analyser combines live last-place scenario analysis with descriptive private
+mini-league analytics. The live workflow answers who can still finish last this Gameweek and which
+realistic remaining-match scenarios cause it. Analytics describes completed Gameweeks and current
+squad ownership in a separate area. Do not add predictive advice, transfer/captain recommendations,
+xG models, price predictions, optimisation or generic global-rank dashboards.
 
 ## Correctness priorities
 
@@ -39,7 +40,8 @@ is not a literal theoretical or historical limit. `UNRESOLVED` must never be pre
 - Scenario plausibility affects ranking only, never validity.
 - Keep demo states deterministic and route them through the same Python analysis pipeline as live
   data. Do not hard-code analysed demo results in JavaScript.
-- Preserve the four website views: Overview, Scenarios, Differentials and Managers. The website is
+- Preserve the four live views: Overview, Scenarios, Differentials and Managers, plus the visually
+  separate Analytics view. All five stay in the same SPA. The website is
   light-first with an accessible optional dark theme; keep both palettes high-contrast and restrained.
 - Broad early-Gameweek states should favour effective differentials over expensive, misleadingly
   narrow scenario enumeration.
@@ -58,3 +60,17 @@ is not a literal theoretical or historical limit. `UNRESOLVED` must never be pre
   allow already-scored bench and vice-captain points to become effective after a pending absence.
 - Run the full Python suite and frontend build; use `frontend/check.py` for the optional actual-browser
   check of parsing, mobile/desktop layout and interactions. Keep screenshots outside `frontend/dist`.
+- The root website must remain neutral: never load a default or remembered league automatically.
+  Recent leagues are explicit shortcuts; league IDs/URLs and query routing remain supported.
+- Analytics calculations belong in `analytics/calculations.py`, retrieval/caching in
+  `analytics/service.py`, never in route handlers or JavaScript. Preserve the tested live engine.
+- Historical scoring uses official final pick multipliers and aggregated event player points,
+  reconciled against official raw event points. Unknown data is null with explicit coverage.
+  Hits are deducted once, separately from counted positional/player contributions. Bench Boost
+  is not unused bench; autosubbed points must not be counted as unused. Distinguish total multiplied
+  captain points from additional multiplier points. Record every chip use, including repeats.
+- Historical rankings require all current members' scores. Analytics uses competition ranks and
+  includes all tied last and bottom-three cutoff scores, explicitly separate from the live tie rule.
+- Load cheap score history first; enrich historical squads with bounded/coalesced background jobs,
+  progress, long-lived resource caches and lazy section payloads. Do not refetch every squad on tab
+  changes. Cache settings and limitations are documented in `ANALYTICS.md`.

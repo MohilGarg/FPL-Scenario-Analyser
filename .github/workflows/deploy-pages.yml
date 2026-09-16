@@ -30,7 +30,6 @@ jobs:
       - name: Build static frontend
         env:
           API_BASE_URL: ${{ vars.API_BASE_URL || 'https://fpl-scenario-analyser-api.onrender.com' }}
-          DEFAULT_LEAGUE_ID: "188263"
         run: python frontend/build.py --output frontend/dist
       - name: Configure Pages
         uses: actions/configure-pages@v5
