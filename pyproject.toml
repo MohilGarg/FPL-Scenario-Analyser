@@ -4,13 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fpl-forfeit-analyser"
-version = "0.1.0"
+version = "0.2.0"
 description = "Find who can still finish last in a Fantasy Premier League mini-league."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Mohil Garg" }]
-dependencies = []
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[project.optional-dependencies]
+test = ["httpx>=0.27,<1"]
 
 [project.scripts]
 fpl-forfeit = "fpl_forfeit.cli:main"
@@ -26,4 +32,3 @@ addopts = "-q"
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-

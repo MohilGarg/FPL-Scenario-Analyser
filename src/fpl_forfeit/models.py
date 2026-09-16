@@ -123,9 +123,7 @@ class LeagueState:
         return tuple(fixture for fixture in self.fixtures if fixture.involves(team_id))
 
     def unfinished_fixtures_for_team(self, team_id: int) -> tuple[Fixture, ...]:
-        return tuple(
-            fixture for fixture in self.fixtures_for_team(team_id) if not fixture.finished
-        )
+        return tuple(fixture for fixture in self.fixtures_for_team(team_id) if not fixture.finished)
 
     def team_complete(self) -> dict[int, bool]:
         team_ids = {player.team_id for player in self.players.values()}

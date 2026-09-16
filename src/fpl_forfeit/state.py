@@ -17,9 +17,7 @@ def current_standings(state: LeagueState) -> tuple[CurrentStanding, ...]:
     standings = [
         CurrentStanding(
             manager=manager,
-            effective_score=score_manager(
-                manager, state.players, state.live_scores, complete
-            ),
+            effective_score=score_manager(manager, state.players, state.live_scores, complete),
         )
         for manager in state.managers
     ]
@@ -35,4 +33,3 @@ def remaining_players(state: LeagueState) -> set[int]:
         for player_id in owned
         if state.unfinished_fixtures_for_team(state.players[player_id].team_id)
     }
-

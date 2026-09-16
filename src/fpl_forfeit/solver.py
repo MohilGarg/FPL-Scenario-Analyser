@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import heapq
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Sequence
 
 from .exposures import effective_exposures
 from .models import ElementScore, Fixture, LeagueState, Manager
@@ -28,11 +28,11 @@ class SearchResult:
     exhausted: bool
 
 
-def build_variables(state: LeagueState, max_relevant: int = 8) -> tuple[tuple[ScenarioVariable, ...], int]:
+def build_variables(
+    state: LeagueState, max_relevant: int = 8
+) -> tuple[tuple[ScenarioVariable, ...], int]:
     complete = state.team_complete()
-    exposures = effective_exposures(
-        state.managers, state.players, state.live_scores, complete
-    )
+    exposures = effective_exposures(state.managers, state.players, state.live_scores, complete)
     owned = {pick.player_id for manager in state.managers for pick in manager.picks}
     manager_ids = [manager.entry_id for manager in state.managers]
 
@@ -41,7 +41,9 @@ def build_variables(state: LeagueState, max_relevant: int = 8) -> tuple[tuple[Sc
         player = state.players[player_id]
         values = [exposures.get(player_id, {}).get(entry_id, 0) for entry_id in manager_ids]
         spread = max(values, default=0) - min(values, default=0)
-        ownership = sum(1 for manager in state.managers if any(p.player_id == player_id for p in manager.picks))
+        ownership = sum(
+            1 for manager in state.managers if any(p.player_id == player_id for p in manager.picks)
+        )
         # A bench player may become an autosub despite a current multiplier of zero.
         potential = max(spread, 0.25 if ownership else 0.0)
         for fixture in state.unfinished_fixtures_for_team(player.team_id):
@@ -70,9 +72,7 @@ def build_variables(state: LeagueState, max_relevant: int = 8) -> tuple[tuple[Sc
     return variables, max(0, len(ranked) - len(selected))
 
 
-def projected_scores(
-    state: LeagueState, outcomes: Sequence[Outcome]
-) -> dict[int, int]:
+def projected_scores(state: LeagueState, outcomes: Sequence[Outcome]) -> dict[int, int]:
     points = {player_id: score.points for player_id, score in state.live_scores.items()}
     minutes = {player_id: score.minutes for player_id, score in state.live_scores.items()}
     for outcome in outcomes:
@@ -89,11 +89,11 @@ def projected_scores(
     }
 
 
-def _finishes_last(
-    entry_id: int, final_scores: Mapping[int, int], allow_tied_last: bool
-) -> bool:
+def _finishes_last(entry_id: int, final_scores: Mapping[int, int], allow_tied_last: bool) -> bool:
     own = final_scores[entry_id]
     opponents = [score for other, score in final_scores.items() if other != entry_id]
+    if not opponents:
+        return True
     return own <= min(opponents) if allow_tied_last else own < min(opponents)
 
 
@@ -111,9 +111,7 @@ def solve_candidate(
         scores = projected_scores(state, ())
         scenarios = ()
         if _finishes_last(candidate.entry_id, scores, allow_tied_last):
-            scenarios = (
-                SolvedScenario(candidate.entry_id, (), scores, 0.0),
-            )
+            scenarios = (SolvedScenario(candidate.entry_id, (), scores, 0.0),)
         return SearchResult(candidate.entry_id, scenarios, 1, truncated, True)
 
     start = tuple(0 for _ in variables)
@@ -126,8 +124,7 @@ def solve_candidate(
     while heap and checked < max_nodes and len(results) < limit:
         _, indexes = heapq.heappop(heap)
         outcomes = tuple(
-            variable.outcomes[index]
-            for variable, index in zip(variables, indexes, strict=True)
+            variable.outcomes[index] for variable, index in zip(variables, indexes, strict=True)
         )
         checked += 1
         if football_consistent(outcomes, variables):
@@ -181,6 +178,8 @@ def core_condition(
     current_scores: Mapping[int, int],
 ) -> str:
     opponents = [manager for manager in state.managers if manager.entry_id != candidate.entry_id]
+    if not opponents:
+        return f"{candidate.manager_name} is the only manager in this league."
     benchmark = min(opponents, key=lambda manager: current_scores[manager.entry_id])
     gap = current_scores[candidate.entry_id] - current_scores[benchmark.entry_id]
     exposures = effective_exposures(
@@ -191,9 +190,7 @@ def core_condition(
     for player_id, by_manager in exposures.items():
         if not state.unfinished_fixtures_for_team(state.players[player_id].team_id):
             continue
-        differential = by_manager.get(benchmark.entry_id, 0) - by_manager.get(
-            candidate.entry_id, 0
-        )
+        differential = by_manager.get(benchmark.entry_id, 0) - by_manager.get(candidate.entry_id, 0)
         if differential > 0:
             positive.append((differential, state.players[player_id].name))
         elif differential < 0:
@@ -231,13 +228,8 @@ def core_condition(
             + ", ".join(f"{name} x{weight}" for weight, name in positive[:3])
         )
     if negative:
-        parts.append(
-            "offset by "
-            + ", ".join(f"{name} x{weight}" for weight, name in negative[:3])
-        )
+        parts.append("offset by " + ", ".join(f"{name} x{weight}" for weight, name in negative[:3]))
     return (
         f"{candidate.manager_name} needs a net swing of at least {required} point"
-        f"{'s' if required != 1 else ''} versus {benchmark.manager_name}: "
-        + "; ".join(parts)
-        + "."
+        f"{'s' if required != 1 else ''} versus {benchmark.manager_name}: " + "; ".join(parts) + "."
     )

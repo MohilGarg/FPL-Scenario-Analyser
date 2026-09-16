@@ -4,7 +4,6 @@ import unittest
 
 from fpl_forfeit.models import Fixture
 from fpl_forfeit.solver import solve_candidate
-
 from tests.helpers import league_state, manager, scores
 
 
@@ -25,8 +24,7 @@ class SolverTests(unittest.TestCase):
         self.assertTrue(result.scenarios)
         self.assertTrue(
             any(
-                outcome.player_id == 12
-                and ("scores" in outcome.label or "assist" in outcome.label)
+                outcome.player_id == 12 and ("scores" in outcome.label or "assist" in outcome.label)
                 for outcome in result.scenarios[0].outcomes
             )
         )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 from .models import ElementScore, Manager, Player
 from .substitutions import effective_multipliers
@@ -34,4 +34,3 @@ def differential_exposures(
         if len(set(values.values())) > 1:
             result[player_id] = values
     return result
-

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 from .exposures import differential_exposures, effective_exposures
 from .models import LeagueState
 from .safety import SafetyAssessment
+from .settings import (
+    DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION,
+    DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION,
+)
 from .solver import SearchResult, core_condition
 from .state import CurrentStanding
 
@@ -14,6 +18,9 @@ def render_report(
     standings: Sequence[CurrentStanding],
     safety: Mapping[int, SafetyAssessment],
     searches: Mapping[int, SearchResult],
+    *,
+    min_remaining_player_contribution: int = (DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION),
+    max_remaining_player_contribution: int = (DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION),
 ) -> str:
     lines = [
         f"{state.league_name} — Gameweek {state.gameweek}",
@@ -26,13 +33,9 @@ def render_report(
         suffix = "  ← CURRENTLY LAST" if row.effective_score == lowest else ""
         hit = f", -{row.manager.transfer_cost} hit" if row.manager.transfer_cost else ""
         chip = f", {row.manager.active_chip}" if row.manager.active_chip else ""
-        lines.append(
-            f"  {row.effective_score:>3}  {row.manager.display_name}{hit}{chip}{suffix}"
-        )
+        lines.append(f"  {row.effective_score:>3}  {row.manager.display_name}{hit}{chip}{suffix}")
 
-    score_by_entry = {
-        row.manager.entry_id: row.effective_score for row in standings
-    }
+    score_by_entry = {row.manager.entry_id: row.effective_score for row in standings}
     lines.extend(["", "LAST-PLACE STATUS"])
     for row in standings:
         assessment = safety[row.manager.entry_id]
@@ -96,8 +99,7 @@ def render_report(
             shown = (meaningful + baseline_differentials)[:6]
             if shown:
                 description = "; ".join(
-                    f"{state.players[outcome.player_id].name} {outcome.label}"
-                    for outcome in shown
+                    f"{state.players[outcome.player_id].name} {outcome.label}" for outcome in shown
                 )
             else:
                 description = "No special swing is needed; baseline outcomes leave them last"
@@ -121,9 +123,13 @@ def render_report(
         [
             "",
             "MODEL NOTE",
-            "  SAFE is a proof only inside the displayed documented bounds (-8 to +20 "
-            "remaining points per owned player-fixture by default). Scenario ranks are "
-            "plausibility heuristics, not probabilities. UNRESOLVED never means safe.",
+            (
+                f"  SAFE uses the practical {min_remaining_player_contribution:+d} to "
+                f"{max_remaining_player_contribution:+d} bound for each player's total remaining "
+                "Gameweek contribution (including a Double Gameweek). These are not literal "
+                "theoretical maxima. Scenario ranks are plausibility heuristics, not "
+                "probabilities. UNRESOLVED never means safe."
+            ),
         ]
     )
     return "\n".join(lines)

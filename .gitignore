@@ -5,9 +5,9 @@ __pycache__/
 .mypy_cache/
 .venv/
 .uv-cache/
+frontend/dist/
 dist/
 build/
 *.egg-info/
 snapshots/*.json
 !snapshots/.gitkeep
-

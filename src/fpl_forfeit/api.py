@@ -18,11 +18,23 @@ from .models import (
 )
 
 BASE_URL = "https://fantasy.premierleague.com/api"
-USER_AGENT = "FPL-Forfeit-Analyser/0.1 (+local command-line tool)"
+USER_AGENT = "FPL-Forfeit-Analyser/0.2 (+public analysis service)"
 
 
 class FPLAPIError(RuntimeError):
     """An FPL request succeeded badly or returned an unexpected shape."""
+
+
+class FPLNotFoundError(FPLAPIError):
+    """The requested public FPL resource does not exist."""
+
+
+class FPLAccessError(FPLAPIError):
+    """FPL denied access to a resource."""
+
+
+class FPLLeagueSizeError(FPLAPIError):
+    """A league is too large for this focused mini-league analyser."""
 
 
 class FPLClient:
@@ -36,11 +48,15 @@ class FPLClient:
             headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:  # noqa: S310
+            with urlopen(request, timeout=self.timeout) as response:
                 return json.load(response)
         except HTTPError as exc:
+            if exc.code == 404:
+                raise FPLNotFoundError(
+                    "FPL could not find that league or Gameweek. Check the classic league ID."
+                ) from exc
             if exc.code in (401, 403):
-                raise FPLAPIError(
+                raise FPLAccessError(
                     "FPL refused this request. The league may be private or authentication may "
                     "be required. Save an authenticated snapshot and use --snapshot instead."
                 ) from exc
@@ -48,7 +64,13 @@ class FPLClient:
         except (URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise FPLAPIError(f"Could not read FPL endpoint {path}: {exc}") from exc
 
-    def fetch_snapshot(self, league_id: int, gameweek: int | None = None) -> dict[str, Any]:
+    def fetch_snapshot(
+        self,
+        league_id: int,
+        gameweek: int | None = None,
+        *,
+        max_entries: int | None = None,
+    ) -> dict[str, Any]:
         bootstrap = self._get("bootstrap-static/")
         if gameweek is None:
             gameweek = _current_gameweek(bootstrap)
@@ -57,12 +79,17 @@ class FPLClient:
         page = 1
         league_name = str(league_id)
         while True:
-            payload = self._get(
-                f"leagues-classic/{league_id}/standings/?page_standings={page}"
-            )
+            payload = self._get(f"leagues-classic/{league_id}/standings/?page_standings={page}")
             league_name = payload.get("league", {}).get("name", league_name)
             block = payload.get("standings", {})
             standings.extend(block.get("results", []))
+            if max_entries is not None and (
+                len(standings) > max_entries
+                or (block.get("has_next") and len(standings) >= max_entries)
+            ):
+                raise FPLLeagueSizeError(
+                    f"This analyser supports mini-leagues with at most {max_entries} managers."
+                )
             if not block.get("has_next"):
                 break
             page += 1
@@ -218,7 +245,7 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
 def _parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return datetime.fromisoformat(value)
 
 
 def _optional_int(value: Any) -> int | None:

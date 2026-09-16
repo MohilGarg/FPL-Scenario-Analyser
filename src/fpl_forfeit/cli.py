@@ -3,14 +3,20 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
 
+from .analysis import analyse_state, analysis_to_dict
 from .api import FPLAPIError, FPLClient, load_snapshot, save_snapshot, state_from_snapshot
 from .formatting import render_report
-from .safety import assess_safety
-from .solver import SearchResult, solve_candidate
-from .state import current_standings
+from .settings import (
+    DEFAULT_MAX_RELEVANT_PLAYERS,
+    DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION,
+    DEFAULT_MAX_SEARCH_NODES,
+    DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION,
+    DEFAULT_SCENARIO_COUNT,
+    AnalysisSettings,
+)
 
 DEFAULT_CONFIG_PATH = Path(".fpl-forfeit.json")
 
@@ -34,7 +40,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--gameweek", type=int, help="Gameweek (defaults to FPL's current event)")
     parser.add_argument("--snapshot", type=Path, help="Analyse a previously saved JSON snapshot")
-    parser.add_argument("--save-snapshot", type=Path, help="Save fetched input data for replay/tests")
+    parser.add_argument(
+        "--save-snapshot", type=Path, help="Save fetched input data for replay/tests"
+    )
     parser.add_argument(
         "--expected-managers",
         type=int,
@@ -42,28 +50,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Refuse a surprising league size; use 0 to allow any size (default: 12)",
     )
     parser.add_argument(
-        "--scenarios", type=int, default=3, help="Distinct examples per at-risk manager"
+        "--scenarios",
+        type=int,
+        default=DEFAULT_SCENARIO_COUNT,
+        help="Distinct examples per at-risk manager",
     )
     parser.add_argument(
         "--max-relevant",
         type=int,
-        default=8,
+        default=DEFAULT_MAX_RELEVANT_PLAYERS,
         help="Maximum player-fixture variables in scenario search (default: 8)",
     )
     parser.add_argument(
-        "--max-nodes", type=int, default=50_000, help="Search effort per manager"
+        "--max-nodes",
+        type=int,
+        default=DEFAULT_MAX_SEARCH_NODES,
+        help="Search effort per manager",
     )
     parser.add_argument(
+        "--min-remaining-contribution",
         "--min-points-per-fixture",
+        dest="min_remaining_contribution",
         type=int,
-        default=-8,
-        help="Lower safety-bound swing per owned player-fixture (default: -8)",
+        default=DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION,
+        help="Lower bound for one player's total remaining Gameweek contribution (default: -10)",
     )
     parser.add_argument(
+        "--max-remaining-contribution",
         "--max-points-per-fixture",
+        dest="max_remaining_contribution",
         type=int,
-        default=20,
-        help="Upper safety-bound swing per owned player-fixture (default: 20)",
+        default=DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION,
+        help="Upper bound for one player's total remaining Gameweek contribution (default: 35)",
     )
     parser.add_argument(
         "--strict-last",
@@ -74,68 +92,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _json_report(
-    state: Any,
-    standings: Sequence[Any],
-    safety: dict[int, Any],
-    searches: dict[int, SearchResult],
-) -> str:
-    payload = {
-        "league": {"id": state.league_id, "name": state.league_name},
-        "gameweek": state.gameweek,
-        "fetched_at": state.fetched_at.isoformat(),
-        "standings": [
-            {
-                "entry_id": row.manager.entry_id,
-                "manager": row.manager.manager_name,
-                "team": row.manager.team_name,
-                "effective_score": row.effective_score,
-                "transfer_cost": row.manager.transfer_cost,
-                "active_chip": row.manager.active_chip,
-                "safe": safety[row.manager.entry_id].safe,
-                "bounds": {
-                    "lower": safety[row.manager.entry_id].bounds.lower,
-                    "upper": safety[row.manager.entry_id].bounds.upper,
-                },
-                "scenarios": [
-                    {
-                        "plausibility_cost": scenario.plausibility_cost,
-                        "final_scores": scenario.final_scores,
-                        "events": [
-                            {
-                                "player_id": outcome.player_id,
-                                "player": state.players[outcome.player_id].name,
-                                "fixture_id": outcome.fixture_id,
-                                "description": outcome.label,
-                                "points_delta": outcome.points_delta,
-                                "minutes_delta": outcome.minutes_delta,
-                            }
-                            for outcome in scenario.outcomes
-                        ],
-                    }
-                    for scenario in searches.get(
-                        row.manager.entry_id,
-                        SearchResult(row.manager.entry_id, (), 0, 0, True),
-                    ).scenarios
-                ],
-            }
-            for row in standings
-        ],
-        "limits": {
-            "safety_model": "bounded per owned player-fixture",
-            "scenario_ranks_are_probabilities": False,
-        },
-    }
-    return json.dumps(payload, indent=2, ensure_ascii=False)
-
-
 def configured_league_id(cli_value: int | None, config_path: Path) -> int:
     if cli_value is not None:
         return cli_value
     if not config_path.exists():
         raise FPLAPIError(
-            "Provide LEAGUE_ID or create .fpl-forfeit.json containing "
-            '{"league_id": 123456}'
+            'Provide LEAGUE_ID or create .fpl-forfeit.json containing {"league_id": 123456}'
         )
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -162,30 +124,28 @@ def run(args: argparse.Namespace) -> int:
             f"Expected {args.expected_managers} managers but found {len(state.managers)} in "
             f"{state.league_name!r}. Pass --expected-managers 0 to accept this."
         )
-    standings = current_standings(state)
-    scores = {row.manager.entry_id: row.effective_score for row in standings}
-    safety = assess_safety(
-        state,
-        scores,
-        min_points_per_fixture=args.min_points_per_fixture,
-        max_points_per_fixture=args.max_points_per_fixture,
+    settings = AnalysisSettings(
+        min_remaining_player_contribution=args.min_remaining_contribution,
+        max_remaining_player_contribution=args.max_remaining_contribution,
+        scenario_count=args.scenarios,
+        max_relevant_players=args.max_relevant,
+        max_search_nodes=args.max_nodes,
+        allow_tied_last=not args.strict_last,
     )
-    searches: dict[int, SearchResult] = {}
-    for row in standings:
-        if safety[row.manager.entry_id].safe:
-            continue
-        searches[row.manager.entry_id] = solve_candidate(
-            state,
-            row.manager,
-            limit=args.scenarios,
-            max_relevant=args.max_relevant,
-            max_nodes=args.max_nodes,
-            allow_tied_last=not args.strict_last,
-        )
+    result = analyse_state(state, settings)
     if args.json:
-        print(_json_report(state, standings, safety, searches))
+        print(json.dumps(analysis_to_dict(result), indent=2, ensure_ascii=False))
     else:
-        print(render_report(state, standings, safety, searches))
+        print(
+            render_report(
+                state,
+                result.standings,
+                result.safety,
+                result.searches,
+                min_remaining_player_contribution=(settings.min_remaining_player_contribution),
+                max_remaining_player_contribution=(settings.max_remaining_player_contribution),
+            )
+        )
     return 0
 
 

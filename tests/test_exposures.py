@@ -3,7 +3,6 @@ from __future__ import annotations
 import unittest
 
 from fpl_forfeit.exposures import differential_exposures, effective_exposures
-
 from tests.helpers import manager, players, scores
 
 
@@ -25,4 +24,3 @@ class ExposureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

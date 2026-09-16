@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#15112b" />
+    <meta
+      name="description"
+      content="See who can still finish last in your Fantasy Premier League mini-league."
+    />
+    <title>FPL Last Place</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="FPL Last Place home">
+        <span class="brand-mark" aria-hidden="true">↓</span>
+        <span>FPL Last Place</span>
+      </a>
+      <span class="live-label"><span></span> Live Gameweek analysis</span>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div class="eyebrow">The forfeit starts here</div>
+        <h1 id="page-title">Who can still finish <em>last?</em></h1>
+        <p class="hero-copy">
+          Load a classic FPL mini-league to see the current bottom side, who is safe,
+          and the football scenarios that could decide the forfeit.
+        </p>
+
+        <form id="league-form" class="league-form">
+          <label for="league-id">Classic league ID</label>
+          <div class="input-row">
+            <input
+              id="league-id"
+              name="league-id"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]+"
+              placeholder="e.g. 188263"
+              autocomplete="off"
+              required
+            />
+            <button class="primary-button" type="submit">
+              <span>Analyse league</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
+          <p class="field-help">The number in your FPL classic league standings URL.</p>
+        </form>
+      </section>
+
+      <section id="loading-state" class="state-card hidden" aria-live="polite">
+        <div class="loader" aria-hidden="true"></div>
+        <div>
+          <h2>Reading the Gameweek…</h2>
+          <p id="loading-message">Fetching current squads, points and fixtures from FPL.</p>
+        </div>
+      </section>
+
+      <section id="error-state" class="state-card error-card hidden" role="alert">
+        <div class="error-icon" aria-hidden="true">!</div>
+        <div>
+          <h2>We couldn’t load that league</h2>
+          <p id="error-message"></p>
+          <button id="retry-button" class="text-button" type="button">Try again</button>
+        </div>
+      </section>
+
+      <div id="analysis" class="analysis hidden">
+        <section class="league-heading">
+          <div>
+            <div class="eyebrow" id="gameweek-label">Gameweek</div>
+            <h2 id="league-name"></h2>
+            <p id="updated-at" class="muted"></p>
+          </div>
+          <button id="refresh-button" class="secondary-button" type="button">Refresh data</button>
+        </section>
+
+        <section id="last-place-panel" class="last-place-panel" aria-labelledby="last-place-title">
+          <div class="last-kicker">Currently last</div>
+          <div class="last-main">
+            <div>
+              <h2 id="last-place-title"></h2>
+              <p id="last-place-team"></p>
+            </div>
+            <div class="score-orb">
+              <strong id="last-place-score"></strong>
+              <span>GW pts</span>
+            </div>
+          </div>
+          <p id="last-place-note" class="last-note"></p>
+        </section>
+
+        <section class="content-section" aria-labelledby="risk-title">
+          <div class="section-heading">
+            <div>
+              <span class="section-index">01</span>
+              <h2 id="risk-title">Still in the danger zone</h2>
+            </div>
+            <span id="risk-count" class="count-pill"></span>
+          </div>
+          <p class="section-copy">
+            Open a manager to see the points condition and ranked match scenarios that leave them last.
+          </p>
+          <div id="risk-list" class="manager-grid"></div>
+        </section>
+
+        <section class="content-section" aria-labelledby="safe-title">
+          <div class="section-heading">
+            <div>
+              <span class="section-index">02</span>
+              <h2 id="safe-title">Safe from the forfeit</h2>
+            </div>
+            <span id="safe-count" class="count-pill safe-count"></span>
+          </div>
+          <div id="safe-list" class="safe-grid"></div>
+        </section>
+
+        <section class="content-section" aria-labelledby="differential-title">
+          <div class="section-heading">
+            <div>
+              <span class="section-index">03</span>
+              <h2 id="differential-title">Remaining differentials</h2>
+            </div>
+          </div>
+          <p class="section-copy">
+            Effective exposure after captaincy and current substitution state. Identical shared
+            players are left out because they do not change the gaps.
+          </p>
+          <div id="differential-list" class="differential-grid"></div>
+        </section>
+
+        <aside id="model-note" class="model-note"></aside>
+      </div>
+    </main>
+
+    <footer>
+      <span>Built for the last-place forfeit.</span>
+      <a href="https://github.com/MohilGarg/FPL-Scenario-Analyser">View source</a>
+    </footer>
+
+    <script src="./config.js"></script>
+    <script src="./app.js" defer></script>
+  </body>
+</html>
+

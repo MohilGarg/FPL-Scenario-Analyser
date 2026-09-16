@@ -53,9 +53,7 @@ def _outcome(
     )
 
 
-def outcome_catalog(
-    player: Player, fixture: Fixture, current: ElementScore
-) -> tuple[Outcome, ...]:
+def outcome_catalog(player: Player, fixture: Fixture, current: ElementScore) -> tuple[Outcome, ...]:
     """Small, explicit outcome vocabulary for one player in one unfinished fixture.
 
     Values are additions to official points already reported by FPL. The vocabulary is
@@ -160,9 +158,7 @@ def outcome_catalog(
             _outcome(player, fixture, "does not play", 0, 0, 1.3),
             _outcome(player, fixture, "gets an assist", 5, 60, 1.5, own_goals=1),
             _outcome(player, fixture, "scores", 7, 60, 1.8, own_goals=1),
-            _outcome(
-                player, fixture, "scores and assists", 10, 60, 3.1, own_goals=2
-            ),
+            _outcome(player, fixture, "scores and assists", 10, 60, 3.1, own_goals=2),
             _outcome(player, fixture, "plays 60+ minutes and is sent off", -1, 60, 3.5),
         ]
         return tuple(sorted(values, key=lambda item: item.plausibility_cost))
@@ -187,9 +183,7 @@ def outcome_catalog(
     return tuple(sorted(values, key=lambda item: item.plausibility_cost))
 
 
-def _live_outcomes(
-    player: Player, fixture: Fixture, current: ElementScore
-) -> tuple[Outcome, ...]:
+def _live_outcomes(player: Player, fixture: Fixture, current: ElementScore) -> tuple[Outcome, ...]:
     goal_points = {
         Position.GOALKEEPER: 6,
         Position.DEFENDER: 6,
@@ -209,9 +203,7 @@ def _live_outcomes(
                 baseline=True,
             ),
             _outcome(player, fixture, "comes on briefly", 1, 1, 0.7),
-            _outcome(
-                player, fixture, "comes on and assists", 4, 1, 1.8, own_goals=1
-            ),
+            _outcome(player, fixture, "comes on and assists", 4, 1, 1.8, own_goals=1),
             _outcome(
                 player,
                 fixture,
@@ -224,9 +216,7 @@ def _live_outcomes(
             _outcome(player, fixture, "comes on and is sent off", -2, 1, 3.5),
         ]
         if player.position == Position.GOALKEEPER:
-            values.append(
-                _outcome(player, fixture, "comes on and saves a penalty", 6, 1, 4.5)
-            )
+            values.append(_outcome(player, fixture, "comes on and saves a penalty", 6, 1, 4.5))
         return tuple(sorted(values, key=lambda item: item.plausibility_cost))
 
     reaches_sixty = current.minutes < 60
@@ -243,7 +233,9 @@ def _live_outcomes(
 
     baseline_delta = appearance_delta + (clean_sheet_value if reaches_sixty and clean_now else 0)
     baseline_max = 0 if clean_now and clean_sheet_value else None
-    baseline_label = "reaches 60 minutes with no attacking return" if reaches_sixty else "gets no more returns"
+    baseline_label = (
+        "reaches 60 minutes with no attacking return" if reaches_sixty else "gets no more returns"
+    )
     if clean_now and clean_sheet_value:
         baseline_label += " and keeps the clean sheet"
     values = [
@@ -349,9 +341,7 @@ def football_consistent(
         own_key = (outcome.fixture_id, own)
         opponent_key = (outcome.fixture_id, opponent)
         minimum[own_key] = max(minimum.get(own_key, 0), outcome.own_team_min_goals)
-        minimum[opponent_key] = max(
-            minimum.get(opponent_key, 0), outcome.opponent_min_goals
-        )
+        minimum[opponent_key] = max(minimum.get(opponent_key, 0), outcome.opponent_min_goals)
         if outcome.opponent_max_goals is not None:
             maximum[opponent_key] = min(
                 maximum.get(opponent_key, outcome.opponent_max_goals),

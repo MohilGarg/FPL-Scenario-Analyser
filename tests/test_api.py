@@ -28,20 +28,23 @@ class APIParsingTests(unittest.TestCase):
                 "teams": [{"id": value, "name": f"T{value}"} for value in range(1, 16)],
                 "elements": elements,
             },
-            "fixtures": [
-                {"id": 44, "team_h": 1, "team_a": 2, "started": True, "finished": False}
-            ],
+            "fixtures": [{"id": 44, "team_h": 1, "team_a": 2, "started": True, "finished": False}],
             "live": {
                 "elements": [
                     {
                         "id": value,
-                        "stats": {"total_points": 7 if value == 1 else 0, "minutes": 61 if value == 1 else 0},
+                        "stats": {
+                            "total_points": 7 if value == 1 else 0,
+                            "minutes": 61 if value == 1 else 0,
+                        },
                         "explain": [
                             {
                                 "fixture": 44,
                                 "stats": [{"identifier": "minutes", "points": 2, "value": 61}],
                             }
-                        ] if value == 1 else [],
+                        ]
+                        if value == 1
+                        else [],
                     }
                     for value in range(1, 16)
                 ]
@@ -73,4 +76,3 @@ class APIParsingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

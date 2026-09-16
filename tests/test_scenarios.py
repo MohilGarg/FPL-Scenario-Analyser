@@ -19,9 +19,7 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual(baseline.minutes_delta, 60)
 
     def test_opposing_goal_and_clean_sheet_are_rejected(self) -> None:
-        defender_outcomes = outcome_catalog(
-            self.defender, self.fixture, ElementScore(0, 0)
-        )
+        defender_outcomes = outcome_catalog(self.defender, self.fixture, ElementScore(0, 0))
         forward_outcomes = outcome_catalog(self.forward, self.fixture, ElementScore(0, 0))
         clean_sheet = next(
             outcome for outcome in defender_outcomes if outcome.label == "keeps a clean sheet"

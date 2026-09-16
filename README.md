@@ -1,148 +1,188 @@
 # FPL Scenario Analyser
 
-A correctness-first command-line tool for a 12-person Fantasy Premier League friends' league where
-the manager finishing last each Gameweek does a forfeit.
+A focused website for a 12-person Fantasy Premier League friends' league where the manager who
+finishes last each Gameweek does a forfeit.
 
-It reports:
+Enter a public classic league ID to see:
 
-- exact current effective Gameweek scores from official FPL element points;
-- the current last-place manager(s);
-- conservative `SAFE`, `CAN FINISH LAST`, and `UNRESOLVED` statuses;
-- remaining effective player exposures, including shared ownership and captain multipliers;
-- a core points-swing condition and a few distinct, ranked football scenarios for each manager with
-  a found route to last.
+- exact current effective Gameweek scores from official FPL points;
+- who is currently last;
+- who is conservatively `SAFE` and excluded from detailed scenario solving;
+- which managers can still finish last;
+- core points/differential conditions and ranked, football-consistent scenarios;
+- useful remaining-player effective exposures earlier in the Gameweek.
 
-This is intentionally not a general analytics dashboard.
+This deliberately is not a generic FPL dashboard.
 
-## Requirements and setup
+## Architecture
 
-- Python 3.12 or newer
-- Internet access when fetching live FPL data (offline snapshots need no internet)
+```text
+GitHub Pages (static HTML/CSS/JS)
+              │
+              │ GET /api/league/{league_id}
+              ▼
+FastAPI service (Render or another Python host)
+              │
+              ├── cached public FPL API retrieval
+              └── existing tested Python scoring and scenario engine
+```
 
-No runtime packages are required. From the project folder:
+The browser never calls FPL directly and contains no duplicate scoring logic. `analysis.py` turns
+the existing domain result into the structured payload used by both the web API and CLI JSON mode.
+The API caches FPL snapshots and processed analyses for 90 seconds by default.
+
+## Run the website locally
+
+Requirements:
+
+- Python 3.12+
+- Internet access for live FPL data
+
+Create an environment and install the project:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[test]"
+```
+
+Terminal 1 — run the API:
+
+```powershell
+uvicorn fpl_forfeit.web:app --reload --port 8000
+```
+
+Terminal 2 — build and serve the static frontend:
+
+```powershell
+$env:API_BASE_URL="http://localhost:8000"
+python frontend/build.py
+python -m http.server 8080 --directory frontend/dist
+```
+
+Open [http://localhost:8080](http://localhost:8080). API documentation is available at
+[http://localhost:8000/docs](http://localhost:8000/docs).
+
+## Command-line interface
+
+The original CLI remains available. `.fpl-forfeit.json` stores league `188263`, so from the project
+folder the normal command is:
 
 ```powershell
 python fpl.py
 ```
 
-The command reads your saved league ID from `.fpl-forfeit.json`. This repository currently stores
-league `188263`, so no ID is needed for the normal run. You can still override it for one run:
+Override the saved ID or request more scenarios when needed:
 
 ```powershell
-python fpl.py LEAGUE_ID
-```
-
-A league ID is the number in a classic league URL such as
-`https://fantasy.premierleague.com/leagues/123456/standings/c`.
-
-The analyser expects 12 entries by default and stops if a different number is returned. To inspect
-another league size deliberately:
-
-```powershell
-python fpl.py 123456 --expected-managers 0
-```
-
-Useful options:
-
-```powershell
-# Fetch once and keep an offline/reproducible input
-python fpl.py 123456 --save-snapshot snapshots/gw05.json
-
-# Re-run without contacting FPL
+python fpl.py 123456 --scenarios 8
+python fpl.py --json
+python fpl.py --save-snapshot snapshots/gw05.json
 python fpl.py --snapshot snapshots/gw05.json
-
-# Ask for more distinct examples or a wider/deeper search
-python fpl.py 123456 --scenarios 8 --max-relevant 10 --max-nodes 200000
-
-# Machine-readable output
-python fpl.py 123456 --json
-
-# A tie for last counts by default; change to strictly last
-python fpl.py 123456 --strict-last
 ```
 
-For an installed command, create a virtual environment and run `pip install -e .`; the command is
-then `fpl-forfeit`.
+## API
 
-## What “current score” means
+### `GET /api/league/{league_id}`
 
-The program uses FPL's official `total_points` for every player. It does not try to recreate points
-for completed or live fixtures. It resolves the squad's effective multipliers itself so it can:
+Query parameters:
 
-- subtract transfer costs;
-- apply normal and Triple Captain multipliers;
-- hand captaincy to the vice-captain only after the captain's team has completed all Gameweek
-  fixtures with zero minutes;
-- include every Bench Boost player;
-- make goalkeeper-for-goalkeeper and formation-legal outfield autosubs in bench order;
-- distinguish zero minutes from even one minute.
+- `scenarios`: number of examples per at-risk manager, from 1 to 12 (default 3)
 
-Wildcard and Free Hit need no special scoring branch: the picks endpoint already returns the active
-15-player squad. Their chip names are retained in the output.
+The response contains league metadata, current-last/at-risk/safe ID lists, processed manager cards,
+ranked scenarios, remaining differentials, model settings and cache metadata.
 
-## Safety and scenario assumptions
+### `GET /api/health`
 
-“Mathematically safe” needs an explicit finite model: real football has no hard upper bound on goals
-or hard lower bound on own goals/cards. The default proof envelope allows every owned player in each
-unfinished fixture to add between **-8 and +20 points**, with captain multipliers. It also lets bench
-players count, making the interval deliberately wider and safe pruning cautious. Change the envelope
-with `--min-points-per-fixture` and `--max-points-per-fixture`.
+Returns `{"status": "ok"}` for hosting health checks.
 
-Status meanings:
+Only public FPL data is used. No FPL login, cookie or secret is required.
 
-- `SAFE`: another manager remains below this manager throughout the configured conservative bounds.
-- `CAN FINISH LAST`: the bounded scenario solver found at least one internally consistent route.
-- `NO MODELLED PATH`: the finite event vocabulary was exhausted without a route.
-- `UNRESOLVED`: no route was found before a width/effort limit; this does **not** mean safe.
+## Safety model
 
-The scenario vocabulary models appearances, ordinary no-return performances (which normally score
-appearance points), clean sheets, goals, assists, cards, goalkeeper penalty saves, and captain/autosub
-effects. Goal constraints reject contradictions such as an opposing attacker scoring while a defender
-keeps a clean sheet. Bonus/BPS and arbitrary multi-goal combinations are not yet enumerated.
+The default practical safety envelope is configurable in `settings.py`:
 
-If the search width omits lower-impact player-fixture variables, their snapshot points remain and
-they are conservatively treated as adding no further points (a final zero-minute player can therefore
-trigger an autosub). The report names the number omitted rather than hiding this assumption. Scenario
-ranks are transparent rarity/complexity heuristics, not probabilities and never validity rules.
+- minimum total remaining contribution for one player: **-10**;
+- maximum total remaining contribution for one player: **+35**.
 
-Live-fixture scenarios are additions to points already reported by FPL. For late Gameweeks this is
-useful and tractable. Early in a Gameweek, focus on the exact score and exposure sections; widen the
-search only if needed.
+Each player gets that range once across the rest of the current Gameweek, including a possible
+Double Gameweek—it is not multiplied per unfinished fixture. Captain/vice-captain potential and
+bench/autosub uncertainty deliberately widen manager bounds.
 
-## FPL endpoints
+These are conservative practical pruning settings, not literal theoretical or historical limits.
+`UNRESOLVED` is never presented as `SAFE`, and safe managers are not sent through detailed scenario
+search.
 
-The client reads the public FPL endpoints:
+CLI overrides remain available as `--min-remaining-contribution` and
+`--max-remaining-contribution`. The older `--*-points-per-fixture` spellings are retained as
+compatibility aliases but now use the correct whole-Gameweek meaning.
 
-- `/api/bootstrap-static/`
-- `/api/fixtures/?event=GW`
-- `/api/event/GW/live/`
-- `/api/leagues-classic/LEAGUE/standings/`
-- `/api/entry/ENTRY/event/GW/picks/`
+## Correct scoring behavior
 
-FPL does not publish a stability contract for these endpoints. A private league may require an
-authenticated capture; in that case create a schema-compatible snapshot and use `--snapshot`.
+The engine uses FPL's official `total_points` for completed and live fixtures. It resolves effective
+multipliers itself to handle:
 
-## Tests
+- transfer costs;
+- captain, vice-captain and Triple Captain;
+- Bench Boost;
+- Wildcard and Free Hit squads returned by the picks endpoint;
+- goalkeeper and formation-legal outfield autosubs in bench order;
+- zero minutes versus even one minute;
+- shared player exposure and Double Gameweeks.
 
-The suite is offline and uses only synthetic domain objects:
+The scenario vocabulary covers appearances, ordinary no-return performances, clean sheets, goals,
+assists, cards and goalkeeper penalty saves. It rejects direct football contradictions such as an
+opposing attacker scoring while a defender keeps a clean sheet. Bonus/BPS and arbitrary multi-goal
+combinations are not exhaustively enumerated. Scenario ordering is a plausibility heuristic, never a
+validity rule or probability.
+
+## Configuration
+
+Backend environment variables:
+
+- `FPL_CACHE_TTL_SECONDS` — positive cache lifetime, default `90`;
+- `FPL_ALLOWED_ORIGINS` — comma-separated browser origins allowed by CORS.
+
+Frontend build environment variables:
+
+- `API_BASE_URL` — deployed backend origin, for example
+  `https://fpl-scenario-analyser-api.onrender.com`;
+- `DEFAULT_LEAGUE_ID` — optional pre-filled league ID, default `188263`.
+
+No secrets belong in either value.
+
+## Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for exact Render and GitHub Pages steps. The expected project
+site is:
+
+`https://mohilgarg.github.io/FPL-Scenario-Analyser/`
+
+The Pages workflow is `.github/workflows/deploy-pages.yml`. `render.yaml` describes the separate
+FastAPI service.
+
+## Tests and builds
 
 ```powershell
 python -m unittest discover -s tests -v
+$env:API_BASE_URL="http://localhost:8000"
+python frontend/build.py
 ```
 
-It covers captain/vice-captain handling, Triple Captain, Bench Boost, transfer hits, zero versus one
-minute, goalkeeper and formation-restricted autosubs, shared exposures, safety bounds, official
-snapshot parsing, and football consistency.
+The offline test suite covers scoring edge cases, the -10/+35 whole-Gameweek bounds, Double
+Gameweeks, API serialization, invalid league IDs, caching-facing response structure and frontend
+configuration.
 
 ## Project layout
 
-- `api.py` — FPL retrieval, snapshots and parsing
-- `models.py` — domain types
-- `state.py` — current effective standings
-- `substitutions.py` — autosubs, captaincy and scoring
-- `exposures.py` — shared/effective ownership
-- `safety.py` — conservative safe-manager proofs
-- `scenarios.py` — bounded event vocabulary and football constraints
-- `solver.py` — last-place conditions and best-first search
-- `ranking.py` — plausibility/complexity heuristic
-- `formatting.py` / `cli.py` — human and JSON output
+- `src/fpl_forfeit/api.py` — public FPL retrieval, snapshots and parsing
+- `src/fpl_forfeit/models.py` — domain types
+- `src/fpl_forfeit/substitutions.py` — autosubs, captaincy and scoring
+- `src/fpl_forfeit/exposures.py` — shared/effective ownership
+- `src/fpl_forfeit/safety.py` — conservative safe-manager proofs
+- `src/fpl_forfeit/scenarios.py` / `solver.py` — event generation and scenario search
+- `src/fpl_forfeit/analysis.py` — shared orchestration and structured serialization
+- `src/fpl_forfeit/service.py` / `web.py` — cache and FastAPI layer
+- `frontend/` — responsive static website and dependency-free build script
+- `.github/workflows/deploy-pages.yml` — Pages deployment
+- `render.yaml` — backend deployment blueprint

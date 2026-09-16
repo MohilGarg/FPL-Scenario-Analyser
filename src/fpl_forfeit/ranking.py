@@ -10,4 +10,3 @@ def scenario_cost(outcomes: tuple[Outcome, ...]) -> float:
     event_cost = sum(outcome.plausibility_cost for outcome in outcomes)
     complexity_penalty = max(0, changed - 1) * 0.35
     return round(event_cost + complexity_penalty, 3)
-

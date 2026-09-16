@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: fpl-scenario-analyser-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install .
+    startCommand: uvicorn fpl_forfeit.web:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: FPL_CACHE_TTL_SECONDS
+        value: "90"
+      - key: FPL_ALLOWED_ORIGINS
+        value: https://mohilgarg.github.io,http://localhost:8080,http://127.0.0.1:8080
+

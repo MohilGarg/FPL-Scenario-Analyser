@@ -75,10 +75,7 @@ def manager(
 
 
 def scores(default_points: int = 1, default_minutes: int = 90) -> dict[int, ElementScore]:
-    return {
-        player_id: ElementScore(default_points, default_minutes)
-        for player_id in players()
-    }
+    return {player_id: ElementScore(default_points, default_minutes) for player_id in players()}
 
 
 def league_state(
@@ -96,4 +93,3 @@ def league_state(
         live_scores=live_scores,
         fetched_at=datetime.now(UTC),
     )
-

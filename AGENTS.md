@@ -23,9 +23,10 @@ and clean-sheet points still apply.
 ## Mathematical language
 
 Football scores and negative events have no literal finite bound. Never silently call a manager
-mathematically safe without naming the configured event envelope. The default safety envelope is
--8 to +20 remaining points per owned player-fixture and is intentionally conservative about bench
-players and autosubs. `UNRESOLVED` must never be presented as `SAFE`.
+mathematically safe without naming the configured event envelope. The default practical safety
+envelope is -10 to +35 for each player's total remaining contribution across the current Gameweek,
+including a Double Gameweek. It is intentionally conservative about bench players and autosubs and
+is not a literal theoretical or historical limit. `UNRESOLVED` must never be presented as `SAFE`.
 
 ## Development
 

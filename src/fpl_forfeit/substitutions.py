@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from itertools import combinations, permutations
-from typing import Mapping
 
 from .models import ElementScore, Manager, Pick, Player, Position
 
@@ -98,15 +98,14 @@ def effective_multipliers(
         bench_goalkeeper = next(
             pick for pick in bench if players[pick.player_id].position == Position.GOALKEEPER
         )
-        if _confirmed_absent(starting_goalkeeper, players, scores, team_complete) and scores[
-            bench_goalkeeper.player_id
-        ].appeared:
+        if (
+            _confirmed_absent(starting_goalkeeper, players, scores, team_complete)
+            and scores[bench_goalkeeper.player_id].appeared
+        ):
             multipliers[starting_goalkeeper.player_id] = 0
             multipliers[bench_goalkeeper.player_id] = 1
 
-        plan = _outfield_substitution_plan(
-            starters, bench, players, scores, team_complete
-        )
+        plan = _outfield_substitution_plan(starters, bench, players, scores, team_complete)
         for absent_id, substitute_id in plan.items():
             multipliers[absent_id] = 0
             multipliers[substitute_id] = 1
@@ -117,9 +116,14 @@ def effective_multipliers(
     if captain and scores[captain.player_id].appeared:
         if multipliers[captain.player_id] > 0:
             multipliers[captain.player_id] = captain_multiplier
-    elif captain and _confirmed_absent(captain, players, scores, team_complete):
-        if vice and scores[vice.player_id].appeared and multipliers[vice.player_id] > 0:
-            multipliers[vice.player_id] = captain_multiplier
+    elif (
+        captain
+        and _confirmed_absent(captain, players, scores, team_complete)
+        and vice
+        and scores[vice.player_id].appeared
+        and multipliers[vice.player_id] > 0
+    ):
+        multipliers[vice.player_id] = captain_multiplier
 
     return multipliers
 
@@ -131,5 +135,7 @@ def score_manager(
     team_complete: Mapping[int, bool],
 ) -> int:
     multipliers = effective_multipliers(manager, players, scores, team_complete)
-    gross = sum(scores[player_id].points * multiplier for player_id, multiplier in multipliers.items())
+    gross = sum(
+        scores[player_id].points * multiplier for player_id, multiplier in multipliers.items()
+    )
     return gross - manager.transfer_cost
