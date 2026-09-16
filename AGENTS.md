@@ -15,6 +15,7 @@ dashboard.
 4. Shared-player effective exposure.
 5. Conservative safe-manager pruning.
 6. Distinct, football-consistent, plausibility-ranked scenario examples.
+7. One tie-for-last rule applied consistently across safety, solving and final display.
 
 Keep API parsing in `api.py`; domain code must remain testable with synthetic data or saved
 snapshots and no network. Never interpret a human-facing “blank” as zero points. Normal appearance
@@ -36,3 +37,9 @@ is not a literal theoretical or historical limit. `UNRESOLVED` must never be pre
 - Add regression tests for every scoring-rule fix.
 - Preserve raw FPL snapshots outside Git (`snapshots/*.json` is ignored).
 - Scenario plausibility affects ranking only, never validity.
+- Keep demo states deterministic and route them through the same Python analysis pipeline as live
+  data. Do not hard-code analysed demo results in JavaScript.
+- Preserve the four website views: Overview, Scenarios, Differentials and Managers. The website is
+  light-first with an accessible optional dark theme; keep both palettes high-contrast and restrained.
+- Broad early-Gameweek states should favour effective differentials over expensive, misleadingly
+  narrow scenario enumeration.

@@ -20,6 +20,10 @@ the GitHub Pages build.
 
    `https://fpl-scenario-analyser-api.onrender.com/api/league/188263`
 
+7. Test a deterministic state independently of FPL availability:
+
+   `https://fpl-scenario-analyser-api.onrender.com/api/demo/live`
+
 If Render has already allocated that service name, it will provide a different `onrender.com` URL.
 Use the exact URL shown in the Render dashboard in the next section.
 
@@ -89,3 +93,5 @@ python -m http.server 8080 --directory frontend/dist
 ```
 
 Open `http://localhost:8080`.
+
+Use `http://localhost:8080/?demo=late` for a deterministic end-to-end deployment check.

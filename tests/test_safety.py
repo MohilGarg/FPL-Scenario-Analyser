@@ -19,6 +19,13 @@ class SafetyTests(unittest.TestCase):
         self.assertTrue(assessments[1].safe)
         self.assertFalse(assessments[2].safe)
 
+    def test_strict_last_treats_guaranteed_tie_as_safe(self) -> None:
+        state = league_state((manager(1), manager(2)), scores())
+        tied_counts = assess_safety(state, {1: 50, 2: 50}, allow_tied_last=True)
+        strictly_lowest = assess_safety(state, {1: 50, 2: 50}, allow_tied_last=False)
+        self.assertFalse(tied_counts[1].safe)
+        self.assertTrue(strictly_lowest[1].safe)
+
     def test_default_bounds_are_minus_ten_and_plus_thirty_five(self) -> None:
         self.assertEqual(DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION, -10)
         self.assertEqual(DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION, 35)

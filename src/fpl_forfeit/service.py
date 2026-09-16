@@ -7,6 +7,7 @@ from typing import Any
 from .analysis import analyse_state, analysis_to_dict
 from .api import FPLClient, state_from_snapshot
 from .cache import TTLCache
+from .demo import DemoMode, demo_state
 from .settings import AnalysisSettings
 
 DEFAULT_CACHE_TTL_SECONDS = 90.0
@@ -26,6 +27,7 @@ class AnalysisService:
         self.max_league_entries = max_league_entries
         self._snapshots: TTLCache[int, dict[str, Any]] = TTLCache(ttl)
         self._analyses: TTLCache[tuple[int, AnalysisSettings], dict[str, Any]] = TTLCache(ttl)
+        self._demos: TTLCache[tuple[DemoMode, AnalysisSettings], dict[str, Any]] = TTLCache(ttl)
 
     def analyse_league(
         self, league_id: int, settings: AnalysisSettings | None = None
@@ -52,6 +54,22 @@ class AnalysisService:
             "ttl_seconds": self._snapshots.ttl_seconds,
         }
         self._analyses.set(cache_key, result)
+        return copy.deepcopy(result)
+
+    def analyse_demo(
+        self, mode: DemoMode, settings: AnalysisSettings | None = None
+    ) -> dict[str, Any]:
+        settings = settings or AnalysisSettings()
+        cache_key = (mode, settings)
+        cached = self._demos.get(cache_key)
+        if cached is not None:
+            response = copy.deepcopy(cached)
+            response["cache"] = {"hit": True, "ttl_seconds": self._demos.ttl_seconds}
+            return response
+        result = analysis_to_dict(analyse_state(demo_state(mode), settings))
+        result["demo"] = {"active": True, "mode": mode}
+        result["cache"] = {"hit": False, "ttl_seconds": self._demos.ttl_seconds}
+        self._demos.set(cache_key, result)
         return copy.deepcopy(result)
 
 

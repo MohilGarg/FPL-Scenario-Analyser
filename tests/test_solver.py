@@ -8,6 +8,13 @@ from tests.helpers import league_state, manager, scores
 
 
 class SolverTests(unittest.TestCase):
+    def test_tie_rule_is_applied_consistently_without_remaining_fixtures(self) -> None:
+        state = league_state((manager(1), manager(2)), scores())
+        tied = solve_candidate(state, state.managers[0], allow_tied_last=True)
+        strict = solve_candidate(state, state.managers[0], allow_tied_last=False)
+        self.assertTrue(tied.scenarios)
+        self.assertFalse(strict.scenarios)
+
     def test_captain_differential_return_can_make_other_manager_last(self) -> None:
         candidate = manager(1, captain=13)
         opponent = manager(2, captain=12, transfer_cost=4)

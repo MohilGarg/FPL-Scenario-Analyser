@@ -63,6 +63,7 @@ def assess_safety(
     *,
     min_remaining_player_contribution: int = (DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION),
     max_remaining_player_contribution: int = (DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION),
+    allow_tied_last: bool = True,
 ) -> dict[int, SafetyAssessment]:
     bounds = conservative_score_bounds(
         state,
@@ -73,12 +74,17 @@ def assess_safety(
     result: dict[int, SafetyAssessment] = {}
     for manager in state.managers:
         own = bounds[manager.entry_id]
+
         witness = next(
             (
                 opponent
                 for opponent in state.managers
                 if opponent.entry_id != manager.entry_id
-                and bounds[opponent.entry_id].upper < own.lower
+                and (
+                    bounds[opponent.entry_id].upper < own.lower
+                    if allow_tied_last
+                    else bounds[opponent.entry_id].upper <= own.lower
+                )
             ),
             None,
         )

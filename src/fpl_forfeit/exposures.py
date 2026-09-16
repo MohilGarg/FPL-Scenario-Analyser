@@ -17,10 +17,33 @@ def effective_exposures(
 
     result: dict[int, dict[int, int]] = defaultdict(dict)
     for manager in managers:
-        multipliers = effective_multipliers(manager, players, scores, team_complete)
+        multipliers = remaining_effective_multipliers(manager, players, scores, team_complete)
         for player_id, multiplier in multipliers.items():
             result[player_id][manager.entry_id] = multiplier
     return dict(result)
+
+
+def remaining_effective_multipliers(
+    manager: Manager,
+    players: Mapping[int, Player],
+    scores: Mapping[int, ElementScore],
+    team_complete: Mapping[int, bool],
+) -> dict[int, int]:
+    """Resolve multipliers, including captaincy that will apply if a pending player appears."""
+
+    multipliers = effective_multipliers(manager, players, scores, team_complete)
+    captain = next((pick for pick in manager.picks if pick.is_captain), None)
+    if captain:
+        player = players[captain.player_id]
+        if (
+            multipliers[captain.player_id] > 0
+            and not scores[captain.player_id].appeared
+            and not team_complete.get(player.team_id, False)
+        ):
+            # FPL does not apply captaincy to the live score until the player appears,
+            # but their remaining effective exposure is already two- or three-fold.
+            multipliers[captain.player_id] = 3 if manager.active_chip == "3xc" else 2
+    return multipliers
 
 
 def differential_exposures(

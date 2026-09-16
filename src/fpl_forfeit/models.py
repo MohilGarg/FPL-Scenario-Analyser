@@ -90,6 +90,7 @@ class Manager:
     picks: tuple[Pick, ...]
     transfer_cost: int = 0
     active_chip: str | None = None
+    official_points: int | None = None
 
     @property
     def display_name(self) -> str:

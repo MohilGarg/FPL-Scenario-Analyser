@@ -1,58 +1,108 @@
 # FPL Scenario Analyser
 
-A focused website for a 12-person Fantasy Premier League friends' league where the manager who
-finishes last each Gameweek does a forfeit.
+A focused website for Fantasy Premier League mini-leagues where the manager finishing last in a
+Gameweek does a forfeit.
 
-Enter a public classic league ID to see:
+**Live site:** <https://mohilgarg.github.io/FPL-Scenario-Analyser/>
 
-- exact current effective Gameweek scores from official FPL points;
-- who is currently last;
-- who is conservatively `SAFE` and excluded from detailed scenario solving;
-- which managers can still finish last;
-- core points/differential conditions and ranked, football-consistent scenarios;
-- useful remaining-player effective exposures earlier in the Gameweek.
+Paste a public classic-league ID or standings URL to see who is currently bottom, who can still
+finish there, who is practically safe, and realistic football routes to the final outcome. No FPL
+login is required.
 
-This deliberately is not a generic FPL dashboard.
+## Website
+
+The interface is organised around four views:
+
+- **Overview** — the current loser, at-risk managers, core conditions and a collapsed safe group;
+- **Scenarios** — focused ranked examples, final bottom scores, copy-to-chat text and an optional
+  two-manager comparison;
+- **Differentials** — meaningful remaining effective multipliers after captaincy, chips and current
+  substitution state;
+- **Managers** — all effective scores and expandable 15-player Gameweek squads for transparency.
+
+The site automatically changes emphasis for early, late, live and completed Gameweeks. During live
+fixtures it refreshes every 90 seconds while the tab is visible, matching the backend cache rather
+than repeatedly hitting FPL. A completed Gameweek shows the final loser and bottom standings instead
+of empty scenario sections.
+
+Light mode is the default. The header provides a persistent dark-mode option. The layout is designed
+for phones first and remains keyboard accessible on desktop.
+
+League, view, selected scenario manager and strict tie-rule state are kept in the query string, so an
+analysis can be bookmarked or shared. Recent league IDs are stored only in the browser.
+
+## Demo mode
+
+Use the **Demo** selector to test every important state without waiting for live football:
+
+- **Early Gameweek** — broad scenario space and useful differentials;
+- **Late Gameweek** — eight safe managers, four at risk and one fixture remaining;
+- **Live match** — live minutes/points and focused scenarios;
+- **Completed Gameweek** — a final loser with no remaining events.
+
+These are deterministic Python domain states served by `GET /api/demo/{mode}`. They pass through the
+same scoring, safety, exposure, solver, ranking and serialisation pipeline as a real league; the
+frontend does not contain precomputed fake results.
+
+## What counts as last?
+
+The Settings control supports:
+
+- **Tied for lowest counts** — the existing/default rule;
+- **Strictly lowest only** — a tied bottom score is not a sole last-place result.
+
+The rule is applied consistently to safety pruning, scenario validity and completed-state display.
+
+## Safety and scenario model
+
+The configurable practical safety envelope remains:
+
+- minimum remaining contribution for one player: **-10**;
+- maximum remaining contribution for one player: **+35**.
+
+That range is applied once across the player's whole remaining Gameweek, including a possible Double
+Gameweek. It is a conservative pruning envelope, not a theoretical football limit. Managers proven
+safe within it are excluded from detailed scenario search. `UNRESOLVED` and `NO MODELLED PATH` are
+never presented as `SAFE`.
+
+The bounded scenario vocabulary includes appearances, clean sheets and their loss, goals, assists,
+goal-plus-assist combinations, multiple assists, braces, hat-tricks, cards, penalty misses and
+goalkeeper penalty saves. It enforces direct fixture consistency and ranks valid scenarios using a
+transparent rarity/complexity heuristic. Ranking is not a probability model. Exact bonus/BPS and
+every possible multi-return combination remain deliberately non-exhaustive.
+
+Broad early-Gameweek states defer detailed scenario enumeration and point users to Differentials.
+This keeps requests bounded and avoids pretending a handful of examples explains a huge state space.
 
 ## Architecture
 
 ```text
-GitHub Pages (static HTML/CSS/JS)
-              │
-              │ GET /api/league/{league_id}
-              ▼
-FastAPI service (Render or another Python host)
-              │
-              ├── cached public FPL API retrieval
-              └── existing tested Python scoring and scenario engine
+GitHub Pages (static HTML/CSS/JavaScript)
+                |
+                | processed JSON
+                v
+FastAPI service on Render
+                |
+                +-- 90-second cache
+                +-- public FPL API retrieval
+                +-- existing Python domain and scenario engine
 ```
 
-The browser never calls FPL directly and contains no duplicate scoring logic. `analysis.py` turns
-the existing domain result into the structured payload used by both the web API and CLI JSON mode.
-The API caches FPL snapshots and processed analyses for 90 seconds by default.
+FPL requests happen server-side to avoid browser CORS problems. Scoring and scenario logic is never
+duplicated in JavaScript.
 
-## Run the website locally
+## Run locally
 
-Requirements:
-
-- Python 3.12+
-- Internet access for live FPL data
-
-Create an environment and install the project:
+Requirements: Python 3.12+ and internet access for real FPL data.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[test]"
-```
-
-Terminal 1 — run the API:
-
-```powershell
 uvicorn fpl_forfeit.web:app --reload --port 8000
 ```
 
-Terminal 2 — build and serve the static frontend:
+In a second PowerShell window:
 
 ```powershell
 $env:API_BASE_URL="http://localhost:8000"
@@ -60,25 +110,15 @@ python frontend/build.py
 python -m http.server 8080 --directory frontend/dist
 ```
 
-Open [http://localhost:8080](http://localhost:8080). API documentation is available at
-[http://localhost:8000/docs](http://localhost:8000/docs).
+Open <http://localhost:8080>. API documentation is at <http://localhost:8000/docs>.
 
-## Command-line interface
+Useful deterministic URLs:
 
-The original CLI remains available. `.fpl-forfeit.json` stores league `188263`, so from the project
-folder the normal command is:
-
-```powershell
-python fpl.py
-```
-
-Override the saved ID or request more scenarios when needed:
-
-```powershell
-python fpl.py 123456 --scenarios 8
-python fpl.py --json
-python fpl.py --save-snapshot snapshots/gw05.json
-python fpl.py --snapshot snapshots/gw05.json
+```text
+http://localhost:8080/?demo=early
+http://localhost:8080/?demo=late
+http://localhost:8080/?demo=live
+http://localhost:8080/?demo=complete
 ```
 
 ## API
@@ -87,102 +127,56 @@ python fpl.py --snapshot snapshots/gw05.json
 
 Query parameters:
 
-- `scenarios`: number of examples per at-risk manager, from 1 to 12 (default 3)
+- `scenarios=1..12` — examples returned per at-risk manager, default `3`;
+- `ties=include|strict` — bottom-tie rule, default `include`.
 
-The response contains league metadata, current-last/at-risk/safe ID lists, processed manager cards,
-ranked scenarios, remaining differentials, model settings and cache metadata.
+The version 2 response contains Gameweek status/phase, fixture counts, summary status groups, manager
+score and squad details, safe bounds, core conditions, ranked scenarios with share text, and the
+focused effective-differential matrix.
+
+### `GET /api/demo/{mode}`
+
+`mode` is `early`, `late`, `live` or `complete`. It accepts the same query parameters and never calls
+the external FPL API.
 
 ### `GET /api/health`
 
-Returns `{"status": "ok"}` for hosting health checks.
+Returns `{"status":"ok"}` for deployment health checks.
 
-Only public FPL data is used. No FPL login, cookie or secret is required.
+## Existing CLI and snapshots
 
-## Safety model
+The website is the main product, but the tested CLI remains available. League `188263` is stored in
+`.fpl-forfeit.json`, so the normal command is:
 
-The default practical safety envelope is configurable in `settings.py`:
+```powershell
+python fpl.py
+```
 
-- minimum total remaining contribution for one player: **-10**;
-- maximum total remaining contribution for one player: **+35**.
+Examples:
 
-Each player gets that range once across the rest of the current Gameweek, including a possible
-Double Gameweek—it is not multiplied per unfinished fixture. Captain/vice-captain potential and
-bench/autosub uncertainty deliberately widen manager bounds.
-
-These are conservative practical pruning settings, not literal theoretical or historical limits.
-`UNRESOLVED` is never presented as `SAFE`, and safe managers are not sent through detailed scenario
-search.
-
-CLI overrides remain available as `--min-remaining-contribution` and
-`--max-remaining-contribution`. The older `--*-points-per-fixture` spellings are retained as
-compatibility aliases but now use the correct whole-Gameweek meaning.
-
-## Correct scoring behavior
-
-The engine uses FPL's official `total_points` for completed and live fixtures. It resolves effective
-multipliers itself to handle:
-
-- transfer costs;
-- captain, vice-captain and Triple Captain;
-- Bench Boost;
-- Wildcard and Free Hit squads returned by the picks endpoint;
-- goalkeeper and formation-legal outfield autosubs in bench order;
-- zero minutes versus even one minute;
-- shared player exposure and Double Gameweeks.
-
-The scenario vocabulary covers appearances, ordinary no-return performances, clean sheets, goals,
-assists, cards and goalkeeper penalty saves. It rejects direct football contradictions such as an
-opposing attacker scoring while a defender keeps a clean sheet. Bonus/BPS and arbitrary multi-goal
-combinations are not exhaustively enumerated. Scenario ordering is a plausibility heuristic, never a
-validity rule or probability.
-
-## Configuration
-
-Backend environment variables:
-
-- `FPL_CACHE_TTL_SECONDS` — positive cache lifetime, default `90`;
-- `FPL_ALLOWED_ORIGINS` — comma-separated browser origins allowed by CORS.
-
-Frontend build environment variables:
-
-- `API_BASE_URL` — optional deployed backend origin override; the Pages workflow defaults to
-  `https://fpl-scenario-analyser-api.onrender.com`;
-- `DEFAULT_LEAGUE_ID` — optional pre-filled league ID, default `188263`.
-
-No secrets belong in either value.
+```powershell
+python fpl.py 123456 --scenarios 8
+python fpl.py --strict-last
+python fpl.py --json
+python fpl.py --save-snapshot snapshots/gw07.json
+python fpl.py --snapshot snapshots/gw07.json
+```
 
 ## Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for exact Render and GitHub Pages steps. The expected project
-site is:
+See [DEPLOYMENT.md](DEPLOYMENT.md). The static frontend deploys through GitHub Actions and the Render
+Blueprint deploys the separate FastAPI service. Neither deployment contains a secret.
 
-`https://mohilgarg.github.io/FPL-Scenario-Analyser/`
-
-The Pages workflow is `.github/workflows/deploy-pages.yml`. `render.yaml` describes the separate
-FastAPI service.
-
-## Tests and builds
+## Tests and build
 
 ```powershell
 python -m unittest discover -s tests -v
+ruff check .
+ruff format --check .
 $env:API_BASE_URL="http://localhost:8000"
 python frontend/build.py
 ```
 
-The offline test suite covers scoring edge cases, the -10/+35 whole-Gameweek bounds, Double
-Gameweeks, API serialization, invalid league IDs, caching-facing response structure and frontend
-configuration.
-
-## Project layout
-
-- `src/fpl_forfeit/api.py` — public FPL retrieval, snapshots and parsing
-- `src/fpl_forfeit/models.py` — domain types
-- `src/fpl_forfeit/substitutions.py` — autosubs, captaincy and scoring
-- `src/fpl_forfeit/exposures.py` — shared/effective ownership
-- `src/fpl_forfeit/safety.py` — conservative safe-manager proofs
-- `src/fpl_forfeit/scenarios.py` / `solver.py` — event generation and scenario search
-- `src/fpl_forfeit/analysis.py` — shared orchestration and structured serialization
-- `src/fpl_forfeit/service.py` / `web.py` — cache and FastAPI layer
-- `frontend/` — responsive static website and dependency-free build script
-- `.github/workflows/deploy-pages.yml` — Pages deployment
-- `render.yaml` — backend deployment blueprint
+The suite covers scoring and autosub edge cases, hits and chips, Double Gameweeks, whole-Gameweek
+safety bounds, tie rules, multi-return scenarios, diversity, all four demo phases, API structure,
+caching and frontend theme/view structure.

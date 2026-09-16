@@ -18,7 +18,7 @@ from .models import (
 )
 
 BASE_URL = "https://fantasy.premierleague.com/api"
-USER_AGENT = "FPL-Forfeit-Analyser/0.2 (+public analysis service)"
+USER_AGENT = "FPL-Forfeit-Analyser/0.3 (+public analysis service)"
 
 
 class FPLAPIError(RuntimeError):
@@ -224,6 +224,7 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
                 picks=picks,
                 transfer_cost=int(history.get("event_transfers_cost", 0)),
                 active_chip=payload.get("active_chip"),
+                official_points=_optional_int(history.get("points")),
             )
         )
 

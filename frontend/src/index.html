@@ -1,63 +1,97 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#15112b" />
+    <meta name="theme-color" content="#f4f6f8" />
     <meta
       name="description"
       content="See who can still finish last in your Fantasy Premier League mini-league."
     />
     <title>FPL Last Place</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <script>
+      const requestedTheme = new URLSearchParams(window.location.search).get("theme");
+      document.documentElement.dataset.theme =
+        requestedTheme === "dark" ||
+        (requestedTheme !== "light" && localStorage.getItem("fpl-theme") === "dark")
+          ? "dark"
+          : "light";
+    </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="ambient ambient-one"></div>
-    <div class="ambient ambient-two"></div>
+    <a class="skip-link" href="#main-content">Skip to content</a>
 
     <header class="site-header">
       <a class="brand" href="./" aria-label="FPL Last Place home">
-        <span class="brand-mark" aria-hidden="true">↓</span>
+        <span class="brand-mark" aria-hidden="true">12</span>
         <span>FPL Last Place</span>
       </a>
-      <span class="live-label"><span></span> Live Gameweek analysis</span>
+      <div class="header-actions">
+        <details class="settings-menu">
+          <summary class="icon-button">Settings</summary>
+          <div class="settings-panel">
+            <label for="tie-rule">What counts as last?</label>
+            <select id="tie-rule">
+              <option value="include">Tied for lowest counts</option>
+              <option value="strict">Strictly lowest only</option>
+            </select>
+            <p>The selected rule is used for safety checks, scenarios and final results.</p>
+          </div>
+        </details>
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Use dark mode">
+          <span class="theme-icon" aria-hidden="true">◐</span>
+          <span id="theme-label">Dark mode</span>
+        </button>
+      </div>
     </header>
 
-    <main>
-      <section class="hero" aria-labelledby="page-title">
-        <div class="eyebrow">The forfeit starts here</div>
-        <h1 id="page-title">Who can still finish <em>last?</em></h1>
-        <p class="hero-copy">
-          Load a classic FPL mini-league to see the current bottom side, who is safe,
-          and the football scenarios that could decide the forfeit.
+    <main id="main-content">
+      <section id="landing" class="landing" aria-labelledby="page-title">
+        <p class="kicker">The weekly forfeit, made clear</p>
+        <h1 id="page-title">Last place, explained.</h1>
+        <p class="landing-copy">
+          See who is currently bottom, who can still finish there, and the realistic match
+          scenarios that decide it.
         </p>
 
         <form id="league-form" class="league-form">
-          <label for="league-id">Classic league ID</label>
+          <label for="league-id">Classic league ID or standings URL</label>
           <div class="input-row">
             <input
               id="league-id"
               name="league-id"
               type="text"
-              inputmode="numeric"
-              pattern="[0-9]+"
-              placeholder="e.g. 188263"
+              placeholder="League ID or FPL league URL"
               autocomplete="off"
               required
             />
-            <button class="primary-button" type="submit">
-              <span>Analyse league</span>
-              <span aria-hidden="true">→</span>
-            </button>
+            <button class="primary-button" type="submit">Analyse league</button>
           </div>
-          <p class="field-help">The number in your FPL classic league standings URL.</p>
+          <p class="field-help">Only public classic-league data is used. No FPL login is needed.</p>
         </form>
+
+        <div id="recent-leagues" class="recent-leagues hidden" aria-label="Recent leagues">
+          <span>Recent</span>
+          <div id="recent-list"></div>
+        </div>
+
+        <div class="demo-callout">
+          <div>
+            <strong>Gameweek already over?</strong>
+            <span>Try the analyser with a deterministic live match.</span>
+          </div>
+          <button class="secondary-button demo-button" type="button" data-demo="live">
+            Try live demo
+          </button>
+        </div>
       </section>
 
-      <section id="loading-state" class="state-card hidden" aria-live="polite">
+      <section id="loading-state" class="state-card hidden" aria-live="polite" aria-busy="true">
         <div class="loader" aria-hidden="true"></div>
         <div>
-          <h2>Reading the Gameweek…</h2>
+          <h2>Reading the Gameweek</h2>
           <p id="loading-message">Fetching current squads, points and fixtures from FPL.</p>
         </div>
       </section>
@@ -67,85 +101,113 @@
         <div>
           <h2>We couldn’t load that league</h2>
           <p id="error-message"></p>
-          <button id="retry-button" class="text-button" type="button">Try again</button>
+          <div class="inline-actions">
+            <button id="retry-button" class="secondary-button" type="button">Try again</button>
+            <button id="error-demo-button" class="text-button demo-button" type="button" data-demo="late">
+              Open a demo instead
+            </button>
+          </div>
         </div>
       </section>
 
       <div id="analysis" class="analysis hidden">
-        <section class="league-heading">
-          <div>
-            <div class="eyebrow" id="gameweek-label">Gameweek</div>
-            <h2 id="league-name"></h2>
-            <p id="updated-at" class="muted"></p>
+        <section class="league-bar" aria-labelledby="league-name">
+          <div class="league-identity">
+            <div class="status-line">
+              <span id="gameweek-status" class="status-dot"></span>
+              <span id="gameweek-label"></span>
+              <span id="demo-label" class="demo-badge hidden">Demo</span>
+            </div>
+            <h1 id="league-name"></h1>
+            <p id="updated-at"></p>
           </div>
-          <button id="refresh-button" class="secondary-button" type="button">Refresh data</button>
+          <div class="league-actions">
+            <button id="change-league-button" class="text-button" type="button">Change league</button>
+            <button id="refresh-button" class="secondary-button" type="button">Refresh</button>
+            <label class="demo-select-label" for="demo-select">Demo</label>
+            <select id="demo-select" class="compact-select">
+              <option value="">Try demo…</option>
+              <option value="early">Early Gameweek</option>
+              <option value="late">Late Gameweek</option>
+              <option value="live">Live match</option>
+              <option value="complete">Completed Gameweek</option>
+            </select>
+          </div>
         </section>
 
-        <section id="last-place-panel" class="last-place-panel" aria-labelledby="last-place-title">
-          <div class="last-kicker">Currently last</div>
-          <div class="last-main">
+        <nav class="view-tabs" role="tablist" aria-label="Analysis views">
+          <button id="tab-overview" role="tab" aria-selected="true" aria-controls="view-overview" data-view="overview">Overview</button>
+          <button id="tab-scenarios" role="tab" aria-selected="false" aria-controls="view-scenarios" data-view="scenarios">Scenarios</button>
+          <button id="tab-differentials" role="tab" aria-selected="false" aria-controls="view-differentials" data-view="differentials">Differentials</button>
+          <button id="tab-managers" role="tab" aria-selected="false" aria-controls="view-managers" data-view="managers">Managers</button>
+        </nav>
+
+        <section id="view-overview" class="view-panel" role="tabpanel" aria-labelledby="tab-overview">
+          <div id="phase-note" class="phase-note"></div>
+          <div id="overview-content"></div>
+        </section>
+
+        <section id="view-scenarios" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-scenarios">
+          <div class="view-heading">
             <div>
-              <h2 id="last-place-title"></h2>
-              <p id="last-place-team"></p>
+              <p class="kicker">Detailed routes to last</p>
+              <h2>Scenarios</h2>
+              <p>Examples are ranked by practical plausibility, not assigned fake probabilities.</p>
             </div>
-            <div class="score-orb">
-              <strong id="last-place-score"></strong>
-              <span>GW pts</span>
-            </div>
+            <label class="select-field" for="scenario-manager">
+              Manager
+              <select id="scenario-manager"></select>
+            </label>
           </div>
-          <p id="last-place-note" class="last-note"></p>
+          <div id="scenario-detail"></div>
+          <details class="comparison-panel">
+            <summary>Compare two managers</summary>
+            <div class="comparison-controls">
+              <label for="compare-a">Manager A<select id="compare-a"></select></label>
+              <span aria-hidden="true">against</span>
+              <label for="compare-b">Manager B<select id="compare-b"></select></label>
+            </div>
+            <div id="comparison-result"></div>
+          </details>
         </section>
 
-        <section class="content-section" aria-labelledby="risk-title">
-          <div class="section-heading">
+        <section id="view-differentials" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-differentials">
+          <div class="view-heading">
             <div>
-              <span class="section-index">01</span>
-              <h2 id="risk-title">Still in the danger zone</h2>
+              <p class="kicker">What can still move the gaps</p>
+              <h2>Effective differentials</h2>
+              <p>Captaincy, chips and confirmed substitutions are reflected. Identical exposure is omitted.</p>
             </div>
-            <span id="risk-count" class="count-pill"></span>
           </div>
-          <p class="section-copy">
-            Open a manager to see the points condition and ranked match scenarios that leave them last.
-          </p>
-          <div id="risk-list" class="manager-grid"></div>
+          <div id="differential-content"></div>
         </section>
 
-        <section class="content-section" aria-labelledby="safe-title">
-          <div class="section-heading">
+        <section id="view-managers" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-managers">
+          <div class="view-heading">
             <div>
-              <span class="section-index">02</span>
-              <h2 id="safe-title">Safe from the forfeit</h2>
-            </div>
-            <span id="safe-count" class="count-pill safe-count"></span>
-          </div>
-          <div id="safe-list" class="safe-grid"></div>
-        </section>
-
-        <section class="content-section" aria-labelledby="differential-title">
-          <div class="section-heading">
-            <div>
-              <span class="section-index">03</span>
-              <h2 id="differential-title">Remaining differentials</h2>
+              <p class="kicker">Calculation transparency</p>
+              <h2>Managers</h2>
+              <p>Open a manager to inspect the Gameweek squad state used by the analyser.</p>
             </div>
           </div>
-          <p class="section-copy">
-            Effective exposure after captaincy and current substitution state. Identical shared
-            players are left out because they do not change the gaps.
-          </p>
-          <div id="differential-list" class="differential-grid"></div>
+          <div id="manager-list" class="manager-list"></div>
         </section>
 
-        <aside id="model-note" class="model-note"></aside>
+        <details class="model-note">
+          <summary>How “safe” and scenarios are calculated</summary>
+          <p id="model-note"></p>
+        </details>
       </div>
     </main>
 
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
     <footer>
-      <span>Built for the last-place forfeit.</span>
-      <a href="https://github.com/MohilGarg/FPL-Scenario-Analyser">View source</a>
+      <span>Focused on one question: who gets the forfeit?</span>
+      <a href="https://github.com/MohilGarg/FPL-Scenario-Analyser">Source code</a>
     </footer>
 
     <script src="./config.js"></script>
     <script src="./app.js" defer></script>
   </body>
 </html>
-

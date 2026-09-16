@@ -117,8 +117,31 @@ def outcome_catalog(player: Player, fixture: Fixture, current: ElementScore) -> 
                 own_goals=1,
                 opponent_max=0,
             ),
+            _outcome(
+                player,
+                fixture,
+                "scores and assists without a clean sheet",
+                2 + goal_points + 3,
+                60,
+                _goal_cost(player.position) + 1.7,
+                own_goals=2,
+                opponent_goals=1,
+            ),
             _outcome(player, fixture, "plays 60+ minutes and is sent off", -1, 60, 3.5),
         ]
+        if player.position == Position.DEFENDER:
+            values.append(
+                _outcome(
+                    player,
+                    fixture,
+                    "scores twice without a clean sheet",
+                    2 + (goal_points * 2),
+                    60,
+                    6.2,
+                    own_goals=2,
+                    opponent_goals=1,
+                )
+            )
         if player.position == Position.GOALKEEPER:
             values.append(
                 _outcome(
@@ -159,6 +182,10 @@ def outcome_catalog(player: Player, fixture: Fixture, current: ElementScore) -> 
             _outcome(player, fixture, "gets an assist", 5, 60, 1.5, own_goals=1),
             _outcome(player, fixture, "scores", 7, 60, 1.8, own_goals=1),
             _outcome(player, fixture, "scores and assists", 10, 60, 3.1, own_goals=2),
+            _outcome(player, fixture, "gets two assists", 8, 60, 3.4, own_goals=2),
+            _outcome(player, fixture, "scores twice", 12, 60, 4.2, own_goals=2),
+            _outcome(player, fixture, "scores a hat-trick", 17, 60, 7.2, own_goals=3),
+            _outcome(player, fixture, "plays 60+ minutes and misses a penalty", 0, 60, 3.0),
             _outcome(player, fixture, "plays 60+ minutes and is sent off", -1, 60, 3.5),
         ]
         return tuple(sorted(values, key=lambda item: item.plausibility_cost))
@@ -178,6 +205,10 @@ def outcome_catalog(player: Player, fixture: Fixture, current: ElementScore) -> 
         _outcome(player, fixture, "gets an assist", 5, 60, 1.5, own_goals=1),
         _outcome(player, fixture, "scores", 6, 60, 1.6, own_goals=1),
         _outcome(player, fixture, "scores and assists", 9, 60, 2.9, own_goals=2),
+        _outcome(player, fixture, "gets two assists", 8, 60, 3.3, own_goals=2),
+        _outcome(player, fixture, "scores twice", 10, 60, 3.8, own_goals=2),
+        _outcome(player, fixture, "scores a hat-trick", 14, 60, 6.5, own_goals=3),
+        _outcome(player, fixture, "plays 60+ minutes and misses a penalty", 0, 60, 3.0),
         _outcome(player, fixture, "plays 60+ minutes and is sent off", -1, 60, 3.5),
     ]
     return tuple(sorted(values, key=lambda item: item.plausibility_cost))
@@ -286,6 +317,35 @@ def _live_outcomes(player: Player, fixture: Fixture, current: ElementScore) -> t
             minutes_delta,
             _goal_cost(player.position) + 1.5,
             own_goals=2,
+            opponent_max=baseline_max,
+        ),
+        _outcome(
+            player,
+            fixture,
+            "gets two assists while otherwise following the baseline",
+            baseline_delta + 6,
+            minutes_delta,
+            3.3,
+            own_goals=2,
+            opponent_max=baseline_max,
+        ),
+        _outcome(
+            player,
+            fixture,
+            "scores twice while otherwise following the baseline",
+            baseline_delta + (goal_points * 2),
+            minutes_delta,
+            (_goal_cost(player.position) * 2) + 0.5,
+            own_goals=2,
+            opponent_max=baseline_max,
+        ),
+        _outcome(
+            player,
+            fixture,
+            "misses a penalty and otherwise follows the baseline",
+            baseline_delta - 2,
+            minutes_delta,
+            3.0,
             opponent_max=baseline_max,
         ),
         _outcome(player, fixture, "is sent off", -3, 0, 3.4),

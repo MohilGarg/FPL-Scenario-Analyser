@@ -66,6 +66,14 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual(baseline.points_delta, 1)
         self.assertEqual(baseline.minutes_delta, 10)
 
+    def test_common_multi_return_outcomes_are_bounded_but_available(self) -> None:
+        outcomes = outcome_catalog(self.forward, self.fixture, ElementScore(0, 0))
+        labels = {outcome.label for outcome in outcomes}
+        self.assertIn("scores twice", labels)
+        self.assertIn("scores a hat-trick", labels)
+        self.assertIn("gets two assists", labels)
+        self.assertLess(len(outcomes), 15)
+
 
 if __name__ == "__main__":
     unittest.main()

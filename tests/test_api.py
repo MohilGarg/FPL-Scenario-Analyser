@@ -53,7 +53,7 @@ class APIParsingTests(unittest.TestCase):
             "picks": {
                 "8": {
                     "active_chip": None,
-                    "entry_history": {"event_transfers_cost": 4},
+                    "entry_history": {"event_transfers_cost": 4, "points": 63},
                     "picks": [
                         {
                             "element": value,
@@ -72,6 +72,7 @@ class APIParsingTests(unittest.TestCase):
         self.assertEqual(state.live_scores[1].points, 7)
         self.assertEqual(state.fixture_minutes[(1, 44)], 61)
         self.assertEqual(state.managers[0].transfer_cost, 4)
+        self.assertEqual(state.managers[0].official_points, 63)
 
 
 if __name__ == "__main__":

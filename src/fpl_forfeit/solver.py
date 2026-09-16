@@ -107,6 +107,9 @@ def solve_candidate(
     allow_tied_last: bool = True,
 ) -> SearchResult:
     variables, truncated = build_variables(state, max_relevant=max_relevant)
+    exposures = effective_exposures(
+        state.managers, state.players, state.live_scores, state.team_complete()
+    )
     if not variables:
         scores = projected_scores(state, ())
         scenarios = ()
@@ -118,7 +121,7 @@ def solve_candidate(
     heap: list[tuple[float, tuple[int, ...]]] = [(0.0, start)]
     seen = {start}
     results: list[SolvedScenario] = []
-    result_signatures: set[tuple[tuple[int, str], ...]] = set()
+    result_signatures: set[tuple[tuple[int, int, str], ...]] = set()
     checked = 0
 
     while heap and checked < max_nodes and len(results) < limit:
@@ -130,12 +133,11 @@ def solve_candidate(
         if football_consistent(outcomes, variables):
             scores = projected_scores(state, outcomes)
             if _finishes_last(candidate.entry_id, scores, allow_tied_last):
-                signature = tuple(
-                    sorted(
-                        (outcome.player_id, outcome.label)
-                        for outcome in outcomes
-                        if not outcome.baseline
-                    )
+                signature = _diversity_signature(
+                    outcomes,
+                    scores,
+                    candidate.entry_id,
+                    exposures,
                 )
                 if signature not in result_signatures:
                     result_signatures.add(signature)
@@ -169,6 +171,40 @@ def solve_candidate(
         nodes_checked=checked,
         truncated_players=truncated,
         exhausted=not heap,
+    )
+
+
+def _diversity_signature(
+    outcomes: tuple[Outcome, ...],
+    final_scores: Mapping[int, int],
+    candidate_entry_id: int,
+    exposures: Mapping[int, Mapping[int, int]],
+) -> tuple[tuple[int, int, str], ...]:
+    """Describe only changes material to the candidate and the close bottom group.
+
+    This removes near-duplicate examples that add a card or appearance variation for a manager
+    well clear of the deciding scores. It does not affect whether the underlying scenario is valid.
+    """
+
+    opponent_scores = {
+        entry_id: score
+        for entry_id, score in final_scores.items()
+        if entry_id != candidate_entry_id
+    }
+    next_lowest = min(opponent_scores.values(), default=final_scores[candidate_entry_id])
+    relevant_entries = {candidate_entry_id} | {
+        entry_id for entry_id, score in opponent_scores.items() if score <= next_lowest + 2
+    }
+    return tuple(
+        sorted(
+            (outcome.player_id, outcome.fixture_id, outcome.label)
+            for outcome in outcomes
+            if not outcome.baseline
+            and any(
+                exposures.get(outcome.player_id, {}).get(entry_id, 0)
+                for entry_id in relevant_entries
+            )
+        )
     )
 
 

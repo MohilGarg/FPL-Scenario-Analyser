@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import FPLAccessError, FPLAPIError, FPLLeagueSizeError, FPLNotFoundError
+from .demo import DEMO_MODES, DemoMode
 from .service import AnalysisService
 from .settings import (
     DEFAULT_MAX_RELEVANT_PLAYERS,
@@ -19,7 +20,7 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
     analysis_service = service or AnalysisService()
     application = FastAPI(
         title="FPL Scenario Analyser API",
-        version="1.0.0",
+        version="2.0.0",
         description="Processed last-place analysis for public FPL classic mini-leagues.",
     )
     application.add_middleware(
@@ -38,6 +39,7 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
     def league_analysis(
         league_id: int,
         scenarios: int = Query(default=3, ge=1, le=12),
+        ties: Literal["include", "strict"] = Query(default="include"),
     ) -> dict[str, Any]:
         if league_id <= 0:
             raise HTTPException(status_code=400, detail="League ID must be a positive integer")
@@ -45,6 +47,7 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
             scenario_count=scenarios,
             max_relevant_players=DEFAULT_MAX_RELEVANT_PLAYERS,
             max_search_nodes=DEFAULT_MAX_SEARCH_NODES,
+            allow_tied_last=ties == "include",
         )
         try:
             return analysis_service.analyse_league(league_id, settings)
@@ -64,6 +67,22 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
                 status_code=502,
                 detail="FPL returned data the analyser could not process.",
             ) from exc
+
+    @application.get("/api/demo/{mode}", tags=["analysis"])
+    def demo_analysis(
+        mode: DemoMode,
+        scenarios: int = Query(default=3, ge=1, le=12),
+        ties: Literal["include", "strict"] = Query(default="include"),
+    ) -> dict[str, Any]:
+        if mode not in DEMO_MODES:
+            raise HTTPException(status_code=404, detail="That demo state does not exist")
+        settings = AnalysisSettings(
+            scenario_count=scenarios,
+            max_relevant_players=DEFAULT_MAX_RELEVANT_PLAYERS,
+            max_search_nodes=DEFAULT_MAX_SEARCH_NODES,
+            allow_tied_last=ties == "include",
+        )
+        return analysis_service.analyse_demo(mode, settings)
 
     return application
 
