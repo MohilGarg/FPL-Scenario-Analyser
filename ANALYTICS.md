@@ -39,7 +39,7 @@ We record every chip event rather than assuming a chip can only be used once in 
   loser. Managers who started later can therefore leave early weeks unranked.
 - **Last-place margin:** second-lowest manager score minus lowest; a bottom tie has margin zero.
   Closest escape is the smallest positive gap above the lowest score in a fully covered week.
-- **Bench:** sum of unused final multiplier-zero player points; autosubbed points do not count.
+- **Bench:** sum of final bench-slot points with multiplier zero; autosubbed points do not count.
   Bench Boost unused points are zero; counted final slots 12–15 are recorded separately as its
   direct contribution. FPL may reorder final squad positions after autosubs.
 - **Captain:** total multiplied contribution is separate from additional multiplier points.

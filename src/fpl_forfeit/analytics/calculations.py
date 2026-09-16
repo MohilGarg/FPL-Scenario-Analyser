@@ -247,13 +247,15 @@ def scoring_detail(picks: dict, live: dict, players: dict[int, dict]) -> dict:
                 "additional": base * max(0, p["multiplier"] - 1),
             }
         )
-    # Final multiplier-zero contributions did not enter the manager's score.
+    # Final bench-slot multiplier-zero contributions did not enter the manager's score.
     # FPL reorders final bench positions after autosubs; never count an incoming
     # substitute as unused just because they began on the bench.
     unused = (
         0
         if chip == "bboost"
-        else sum(points[p["element"]] for p in selection if p["multiplier"] == 0)
+        else sum(
+            points[p["element"]] for p in selection if p["position"] > 11 and p["multiplier"] == 0
+        )
     )
     boost = (
         sum(points[p["element"]] * p["multiplier"] for p in selection if p["position"] > 11)

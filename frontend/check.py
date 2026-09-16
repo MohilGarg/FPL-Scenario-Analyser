@@ -169,6 +169,7 @@ def main() -> None:
                             )
             page.locator("#analytics-nav [data-section='players']").click()
             page.locator("#analytics-player-search").wait_for()
+            page.locator("#analytics-ownership-trend .chart").wait_for()
             page.locator("#analytics-player-search").fill("nonexistent-player-zzzz")
             assert "No data available" in page.locator("#analytics-ownership").inner_text()
             page.locator("#analytics-player-search").fill("")

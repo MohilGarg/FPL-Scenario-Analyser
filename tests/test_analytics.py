@@ -157,6 +157,14 @@ class AnalyticsCalculationTests(unittest.TestCase):
         self.assertEqual(result["unused_bench"], 0)
         self.assertEqual(result["bench_boost"], 8)
 
+    def test_uncounted_starting_slot_is_not_assumed_to_be_bench(self) -> None:
+        picks, live, players = squad_fixture()
+        picks["picks"][1]["multiplier"] = 0
+        picks["entry_history"]["points"] -= 2
+        live["elements"][1]["stats"]["total_points"] = -3
+        result = scoring_detail(picks, live, players)
+        self.assertEqual(result["unused_bench"], 8)
+
     def test_captain_total_and_additional_are_distinct(self) -> None:
         result = scoring_detail(*squad_fixture())
         self.assertEqual(result["captain_points"], 16)
