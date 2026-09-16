@@ -145,7 +145,7 @@ Backend environment variables:
 
 Frontend build environment variables:
 
-- `API_BASE_URL` — deployed backend origin, for example
+- `API_BASE_URL` — optional deployed backend origin override; the Pages workflow defaults to
   `https://fpl-scenario-analyser-api.onrender.com`;
 - `DEFAULT_LEAGUE_ID` — optional pre-filled league ID, default `188263`.
 

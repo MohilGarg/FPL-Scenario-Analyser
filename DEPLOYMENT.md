@@ -33,6 +33,12 @@ delay without any code change.
 
 ## 2. Configure the frontend backend URL
 
+The deployment workflow defaults to:
+
+`https://fpl-scenario-analyser-api.onrender.com`
+
+If Render allocated that exact URL, no GitHub variable is required. To use a different backend URL:
+
 1. Open the GitHub repository.
 2. Go to **Settings → Secrets and variables → Actions → Variables**.
 3. Create a repository variable named exactly `API_BASE_URL`.
@@ -42,15 +48,16 @@ delay without any code change.
 
 This is public configuration, not a secret.
 
-## 3. Enable GitHub Pages
+## 3. Deploy GitHub Pages
 
-1. In the repository, go to **Settings → Pages**.
-2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-3. Open **Actions → Deploy frontend to GitHub Pages**.
-4. Choose **Run workflow**, select `main`, and run it.
-5. When the workflow completes, open:
+The workflow asks GitHub to enable Pages automatically. Open **Actions → Deploy frontend to
+GitHub Pages**, choose **Run workflow**, select `main`, and run it. When the workflow completes,
+open:
 
    `https://mohilgarg.github.io/FPL-Scenario-Analyser/`
+
+If the repository policy prevents automatic enablement, go to **Settings → Pages**, set **Source**
+to **GitHub Actions**, then rerun the workflow.
 
 Future changes under `frontend/` or to the Pages workflow deploy automatically on pushes to `main`.
 If only `API_BASE_URL` changes, manually run the workflow again because repository-variable changes
@@ -85,4 +92,3 @@ python -m http.server 8080 --directory frontend/dist
 ```
 
 Open `http://localhost:8080`.
-
