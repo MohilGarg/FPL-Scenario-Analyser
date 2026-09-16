@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 
-from .models import ElementScore, Manager, Player
+from .models import ElementScore, LeagueState, Manager, Player, Position
 from .substitutions import effective_multipliers
 
 
@@ -47,13 +47,66 @@ def remaining_effective_multipliers(
 
 
 def differential_exposures(
-    exposures: Mapping[int, Mapping[int, int]], manager_ids: Sequence[int]
+    exposures: Mapping[int, Mapping[int, int]],
+    manager_ids: Sequence[int],
+    conditional: Mapping[int, Mapping[int, str]] | None = None,
 ) -> dict[int, dict[int, int]]:
     """Discard players whose multiplier is identical for all relevant managers."""
 
     result: dict[int, dict[int, int]] = {}
     for player_id, by_manager in exposures.items():
         values = {manager_id: by_manager.get(manager_id, 0) for manager_id in manager_ids}
-        if len(set(values.values())) > 1:
+        potential = (conditional or {}).get(player_id, {})
+        if len({(values[entry_id], bool(potential.get(entry_id))) for entry_id in manager_ids}) > 1:
             result[player_id] = values
     return result
+
+
+def conditional_exposure_notes(state: LeagueState) -> dict[int, dict[int, str]]:
+    """Explain possible exposure changes without pretending a pending autosub is confirmed."""
+    notes: dict[int, dict[int, str]] = defaultdict(dict)
+    for manager in state.managers:
+        if state.raw.get("historical") or not any(
+            state.unfinished_fixtures_for_team(state.players[pick.player_id].team_id)
+            for pick in manager.picks
+        ):
+            continue
+        multipliers = remaining_effective_multipliers(
+            manager, state.players, state.live_scores, state.team_complete()
+        )
+        missing = [
+            pick
+            for pick in manager.picks
+            if pick.is_starter and not state.live_scores[pick.player_id].appeared
+        ]
+        for pick in manager.picks:
+            player = state.players[pick.player_id]
+            if (
+                not pick.is_starter
+                and manager.active_chip != "bboost"
+                and not multipliers[pick.player_id]
+                and (
+                    state.live_scores[pick.player_id].appeared
+                    or state.unfinished_fixtures_for_team(player.team_id)
+                )
+            ):
+                compatible = any(
+                    (state.players[absent.player_id].position == Position.GOALKEEPER)
+                    == (player.position == Position.GOALKEEPER)
+                    for absent in missing
+                )
+                if compatible:
+                    notes[pick.player_id][manager.entry_id] = (
+                        "Possible autosub; bench order and legal formation still apply"
+                    )
+            captain = next((p for p in manager.picks if p.is_captain), None)
+            if (
+                pick.is_vice_captain
+                and captain
+                and not state.live_scores[captain.player_id].appeared
+                and state.unfinished_fixtures_for_team(state.players[captain.player_id].team_id)
+            ):
+                notes[pick.player_id][manager.entry_id] = (
+                    "Possible vice-captain takeover if the captain never appears"
+                )
+    return dict(notes)

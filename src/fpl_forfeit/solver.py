@@ -4,10 +4,11 @@ import heapq
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from .comparison import compare_managers
 from .exposures import effective_exposures
 from .models import ElementScore, Fixture, LeagueState, Manager
 from .ranking import scenario_cost
-from .scenarios import Outcome, ScenarioVariable, football_consistent, outcome_catalog
+from .scenarios import Outcome, ScenarioVariable, football_consistent, outcome_catalog, route_key
 from .substitutions import score_manager
 
 
@@ -159,9 +160,10 @@ def solve_candidate(
             if key in seen:
                 continue
             seen.add(key)
-            cost = sum(
-                variable.outcomes[value].plausibility_cost
-                for variable, value in zip(variables, key, strict=True)
+            cost = scenario_cost(
+                tuple(
+                    variable.outcomes[value] for variable, value in zip(variables, key, strict=True)
+                )
             )
             heapq.heappush(heap, (cost, key))
 
@@ -193,18 +195,21 @@ def _diversity_signature(
     }
     next_lowest = min(opponent_scores.values(), default=final_scores[candidate_entry_id])
     relevant_entries = {candidate_entry_id} | {
-        entry_id for entry_id, score in opponent_scores.items() if score <= next_lowest + 2
+        entry_id for entry_id, score in opponent_scores.items() if score == next_lowest
     }
-    return tuple(
-        sorted(
-            (outcome.player_id, outcome.fixture_id, outcome.label)
-            for outcome in outcomes
-            if not outcome.baseline
-            and any(
-                exposures.get(outcome.player_id, {}).get(entry_id, 0)
-                for entry_id in relevant_entries
-            )
+    material = [
+        outcome
+        for outcome in outcomes
+        if not outcome.baseline
+        and len(
+            {exposures.get(outcome.player_id, {}).get(entry_id, 0) for entry_id in relevant_entries}
         )
+        > 1
+    ]
+    # Cards/minor minutes should not produce three copies of the same attacking route.
+    primary = [outcome for outcome in material if route_key(outcome) != "appearance_or_booking"]
+    return tuple(
+        sorted((outcome.player_id, outcome.fixture_id, route_key(outcome)) for outcome in primary)
     )
 
 
@@ -212,60 +217,18 @@ def core_condition(
     state: LeagueState,
     candidate: Manager,
     current_scores: Mapping[int, int],
+    *,
+    allow_tied_last: bool = True,
 ) -> str:
     opponents = [manager for manager in state.managers if manager.entry_id != candidate.entry_id]
     if not opponents:
         return f"{candidate.manager_name} is the only manager in this league."
     benchmark = min(opponents, key=lambda manager: current_scores[manager.entry_id])
-    gap = current_scores[candidate.entry_id] - current_scores[benchmark.entry_id]
-    exposures = effective_exposures(
-        state.managers, state.players, state.live_scores, state.team_complete()
+    comparison = compare_managers(
+        state, candidate, benchmark, current_scores, allow_tied_last=allow_tied_last
     )
-    positive: list[tuple[int, str]] = []
-    negative: list[tuple[int, str]] = []
-    for player_id, by_manager in exposures.items():
-        if not state.unfinished_fixtures_for_team(state.players[player_id].team_id):
-            continue
-        differential = by_manager.get(benchmark.entry_id, 0) - by_manager.get(candidate.entry_id, 0)
-        if differential > 0:
-            positive.append((differential, state.players[player_id].name))
-        elif differential < 0:
-            negative.append((-differential, state.players[player_id].name))
-    positive.sort(reverse=True)
-    negative.sort(reverse=True)
-    required = max(0, gap)
-    if gap <= 0:
-        if negative:
-            adverse = ", ".join(f"{name} x{weight}" for weight, name in negative[:3])
-            return (
-                f"{candidate.manager_name} is currently {-gap} point"
-                f"{'s' if gap != -1 else ''} below {benchmark.manager_name}; "
-                f"the main threat to that margin is extra exposure to {adverse}."
-            )
-        return (
-            f"{candidate.manager_name} is already {-gap} point"
-            f"{'s' if gap != -1 else ''} below {benchmark.manager_name}."
-        )
-    if len(positive) == 1 and len(negative) == 1 and positive[0][0] == negative[0][0] == 1:
-        return (
-            f"{positive[0][1]} must outscore {negative[0][1]} by at least "
-            f"{required} point{'s' if required != 1 else ''} for {candidate.manager_name} "
-            f"to catch {benchmark.manager_name}."
-        )
-    if not positive and not negative:
-        return (
-            f"No current multiplier differential separates {candidate.manager_name} from "
-            f"{benchmark.manager_name}; conditional autosubs or another opponent decide it."
-        )
-    parts: list[str] = []
-    if positive:
-        parts.append(
-            "favourable exposure to "
-            + ", ".join(f"{name} x{weight}" for weight, name in positive[:3])
-        )
-    if negative:
-        parts.append("offset by " + ", ".join(f"{name} x{weight}" for weight, name in negative[:3]))
-    return (
-        f"{candidate.manager_name} needs a net swing of at least {required} point"
-        f"{'s' if required != 1 else ''} versus {benchmark.manager_name}: " + "; ".join(parts) + "."
+    return comparison["condition"] + (
+        " This is a necessary condition against the current bottom opponent, not a guarantee against the whole league."
+        if len(opponents) > 1
+        else ""
     )

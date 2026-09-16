@@ -43,3 +43,18 @@ is not a literal theoretical or historical limit. `UNRESOLVED` must never be pre
   light-first with an accessible optional dark theme; keep both palettes high-contrast and restrained.
 - Broad early-Gameweek states should favour effective differentials over expensive, misleadingly
   narrow scenario enumeration.
+- Serve a cheap league summary first. Additional scenario searches are candidate-specific; never
+  increase the search limit for every manager when one user asks to see more.
+- Keep comparison maths and core conditions in Python. Shared exposure must be compared across the
+  selected managers, not inferred from the frontend's filtered differential table. Label assumptions
+  around pending autosubs/captaincy, and distinguish pairwise conditions from whole-league proofs.
+- Historical viewing is final results for current league members in the current season. Use official
+  event points less that event's hits and official pick multipliers. Do not reconstruct old live states
+  without saved snapshots or silently drop members with missing historical squads.
+- Demo Mode, tie rules and theme belong in Settings. Do not foreground demos on completed results.
+  Preserve the existing deterministic demos, but focus work on useful product features rather than
+  expanding synthetic test/demo infrastructure. Detailed real live validation is a later step.
+- Preserve SAFE / AT RISK / NO MODELLED PATH / UNRESOLVED as distinct states. Safety bounds must also
+  allow already-scored bench and vice-captain points to become effective after a pending absence.
+- Run the full Python suite and frontend build; use `frontend/check.py` for the optional actual-browser
+  check of parsing, mobile/desktop layout and interactions. Keep screenshots outside `frontend/dist`.

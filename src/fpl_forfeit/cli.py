@@ -144,6 +144,7 @@ def run(args: argparse.Namespace) -> int:
                 result.searches,
                 min_remaining_player_contribution=(settings.min_remaining_player_contribution),
                 max_remaining_player_contribution=(settings.max_remaining_player_contribution),
+                allow_tied_last=settings.allow_tied_last,
             )
         )
     return 0

@@ -21,6 +21,7 @@ def render_report(
     *,
     min_remaining_player_contribution: int = (DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION),
     max_remaining_player_contribution: int = (DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION),
+    allow_tied_last: bool = True,
 ) -> str:
     lines = [
         f"{state.league_name} — Gameweek {state.gameweek}",
@@ -29,8 +30,18 @@ def render_report(
         "CURRENT EFFECTIVE SCORES (transfer costs included)",
     ]
     lowest = standings[0].effective_score if standings else 0
+    bottom_count = sum(row.effective_score == lowest for row in standings)
+    complete = bool(state.fixtures) and all(fixture.finished for fixture in state.fixtures)
     for row in standings:
-        suffix = "  ← CURRENTLY LAST" if row.effective_score == lowest else ""
+        suffix = ""
+        if row.effective_score == lowest:
+            suffix = (
+                "  ← BOTTOM TIE (no sole loser)"
+                if bottom_count > 1 and not allow_tied_last
+                else "  ← FINISHED LAST"
+                if complete
+                else "  ← CURRENTLY LAST"
+            )
         hit = f", -{row.manager.transfer_cost} hit" if row.manager.transfer_cost else ""
         chip = f", {row.manager.active_chip}" if row.manager.active_chip else ""
         lines.append(f"  {row.effective_score:>3}  {row.manager.display_name}{hit}{chip}{suffix}")
@@ -42,6 +53,8 @@ def render_report(
         search = searches.get(row.manager.entry_id)
         if assessment.safe:
             status = "SAFE"
+        elif complete and row.effective_score == lowest and (allow_tied_last or bottom_count == 1):
+            status = "FINISHED LAST"
         elif search and search.scenarios:
             status = "CAN FINISH LAST"
         elif search and search.exhausted and not search.truncated_players:
@@ -86,7 +99,7 @@ def render_report(
             [
                 "",
                 f"FOR {row.manager.manager_name.upper()} TO FINISH LAST",
-                f"  Core condition: {core_condition(state, row.manager, score_by_entry)}",
+                f"  Core condition: {core_condition(state, row.manager, score_by_entry, allow_tied_last=allow_tied_last)}",
             ]
         )
         for number, scenario in enumerate(search.scenarios, start=1):
@@ -96,7 +109,7 @@ def render_report(
                 for outcome in scenario.outcomes
                 if outcome.baseline and outcome.player_id in differentials
             ]
-            shown = (meaningful + baseline_differentials)[:6]
+            shown = meaningful + baseline_differentials
             if shown:
                 description = "; ".join(
                     f"{state.players[outcome.player_id].name} {outcome.label}" for outcome in shown
@@ -105,9 +118,12 @@ def render_report(
                 description = "No special swing is needed; baseline outcomes leave them last"
             final = scenario.final_scores[row.manager.entry_id]
             other_low = min(
-                value
-                for entry_id, value in scenario.final_scores.items()
-                if entry_id != row.manager.entry_id
+                (
+                    value
+                    for entry_id, value in scenario.final_scores.items()
+                    if entry_id != row.manager.entry_id
+                ),
+                default=final,
             )
             lines.append(
                 f"  Scenario {number} (rank {scenario.plausibility_cost:g}): "

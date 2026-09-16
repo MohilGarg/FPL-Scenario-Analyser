@@ -58,7 +58,7 @@ body {
   margin: 0;
   color: var(--ink);
   background: var(--page);
-  overflow-x: hidden;
+  overflow-wrap: break-word;
 }
 
 button, input, select { font: inherit; }
@@ -172,6 +172,16 @@ footer {
 .settings-panel label { display: block; margin-bottom: 7px; font-size: 0.82rem; font-weight: 750; }
 .settings-panel select { width: 100%; }
 .settings-panel p { margin: 10px 0 0; color: var(--muted); font-size: 0.75rem; line-height: 1.45; }
+.settings-panel button { margin: 18px 0; width: 100%; }
+.settings-panel select { min-height: 44px; padding: 8px; }
+.gameweek-field { display: grid; gap: 4px; font-size: 0.75rem; color: var(--muted); }
+.league-actions { align-items: flex-end; }
+.safe-card details > summary { min-height: 44px; padding-top: 14px; font-size: 0.8rem; }
+.table-wrap { max-width: 100%; }
+.risk-grid, .manager-list, .risk-card, .manager-card, .risk-body, .manager-body { min-width: 0; }
+.comparison-controls select { max-width: 100%; min-width: 0; }
+.last-card-main > div { min-width: 0; }
+.last-card h2 { overflow-wrap: anywhere; }
 
 select,
 input {
@@ -549,10 +559,9 @@ footer a { color: var(--muted); }
 @media (max-width: 520px) {
   .header-actions { gap: 5px; }
   .header-actions .icon-button { min-height: 38px; padding: 8px 10px; }
-  #theme-label { display: none; }
+  #theme-label { display: inline; }
   .theme-icon { margin: 0; }
-  .settings-menu > summary { font-size: 0; }
-  .settings-menu > summary::after { content: "Rule"; font-size: 0.75rem; }
+  .settings-menu > summary { font-size: 0.8rem; }
   .input-row { flex-direction: column; }
   .primary-button { width: 100%; }
   .demo-callout { align-items: stretch; flex-direction: column; }
@@ -560,7 +569,18 @@ footer a { color: var(--muted); }
   .last-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
   .last-card h2, .completed-card h2 { font-size: 2rem; }
   .score-block strong { font-size: 2.1rem; }
-  .status-badge { display: none; }
+  .status-badge { display: inline-block; font-size: 0.6rem; }
+  .card-meta { flex-direction: column; gap: 5px; flex: 0 0 auto; }
+  .view-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .view-tabs button { padding: 14px 3px; font-size: 0.77rem; }
+  .bottom-table th:nth-child(2), .bottom-table td:nth-child(2) { display: none; }
+  .league-bar { gap: 16px; }
+  .analysis { padding-top: 24px; }
+  .last-card-main { grid-template-columns: 1fr; gap: 16px; }
+  .score-block { text-align: left; }
+  .score-block span { margin-top: 5px; }
+  .icon-button, .secondary-button, .text-button, .copy-button, .show-more { min-height: 44px; }
+  .toast { left: 14px; right: 14px; }
   .risk-card > summary, .manager-card > summary { padding: 15px; }
   .risk-body, .manager-body { padding: 0 15px 15px; }
   .scenario-summary { grid-template-columns: 1fr 1fr; }

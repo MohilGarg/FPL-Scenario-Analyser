@@ -37,6 +37,10 @@ class FPLLeagueSizeError(FPLAPIError):
     """A league is too large for this focused mini-league analyser."""
 
 
+class FPLGameweekUnavailable(FPLAPIError):
+    """The requested final/current Gameweek data is not available yet."""
+
+
 class FPLClient:
     def __init__(self, base_url: str = BASE_URL, timeout: float = 20.0) -> None:
         self.base_url = base_url.rstrip("/")
@@ -58,7 +62,7 @@ class FPLClient:
             if exc.code in (401, 403):
                 raise FPLAccessError(
                     "FPL refused this request. The league may be private or authentication may "
-                    "be required. Save an authenticated snapshot and use --snapshot instead."
+                    "be required. Only publicly accessible leagues are supported."
                 ) from exc
             raise FPLAPIError(f"FPL returned HTTP {exc.code} for {path}") from exc
         except (URLError, TimeoutError, json.JSONDecodeError) as exc:
@@ -72,8 +76,17 @@ class FPLClient:
         max_entries: int | None = None,
     ) -> dict[str, Any]:
         bootstrap = self._get("bootstrap-static/")
+        current_gameweek = _current_gameweek(bootstrap)
         if gameweek is None:
-            gameweek = _current_gameweek(bootstrap)
+            gameweek = current_gameweek
+        event = next((item for item in bootstrap.get("events", []) if item["id"] == gameweek), None)
+        if event is None:
+            raise FPLGameweekUnavailable("That Gameweek is not available in the current season.")
+        historical = gameweek != current_gameweek
+        if historical and not event.get("finished"):
+            raise FPLGameweekUnavailable(
+                "Only the current Gameweek and completed previous Gameweeks can be viewed."
+            )
 
         standings: list[dict[str, Any]] = []
         page = 1
@@ -97,9 +110,21 @@ class FPLClient:
                 raise FPLAPIError("League pagination exceeded 100 pages; refusing an unsafe fetch")
 
         picks: dict[str, Any] = {}
+        if not standings:
+            raise FPLNotFoundError("No managers were found in that public classic league.")
         for row in standings:
             entry_id = int(row["entry"])
-            picks[str(entry_id)] = self._get(f"entry/{entry_id}/event/{gameweek}/picks/")
+            try:
+                picks[str(entry_id)] = self._get(f"entry/{entry_id}/event/{gameweek}/picks/")
+            except FPLNotFoundError as exc:
+                raise FPLGameweekUnavailable(
+                    "Historical squad data is unavailable for one or more current league members. "
+                    "Choose another Gameweek."
+                    if historical
+                    else "Gameweek squads are not public yet. Try again after the deadline."
+                ) from exc
+            if historical and picks[str(entry_id)].get("entry_history", {}).get("points") is None:
+                raise FPLGameweekUnavailable("Final points are unavailable for this Gameweek.")
 
         return {
             "schema_version": 1,
@@ -107,6 +132,8 @@ class FPLClient:
             "league_id": league_id,
             "league_name": league_name,
             "gameweek": gameweek,
+            "current_gameweek": current_gameweek,
+            "historical": historical,
             "bootstrap": bootstrap,
             "fixtures": self._get(f"fixtures/?event={gameweek}"),
             "live": self._get(f"event/{gameweek}/live/"),
@@ -126,7 +153,9 @@ def _current_gameweek(bootstrap: dict[str, Any]) -> int:
     upcoming = [int(event["id"]) for event in events if event.get("is_next")]
     if upcoming:
         return min(upcoming)
-    raise FPLAPIError("The bootstrap response did not identify a usable Gameweek")
+    raise FPLGameweekUnavailable(
+        "FPL has not published an active Gameweek yet. Please check back later."
+    )
 
 
 def save_snapshot(snapshot: dict[str, Any], path: Path) -> None:

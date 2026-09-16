@@ -17,7 +17,11 @@ def current_standings(state: LeagueState) -> tuple[CurrentStanding, ...]:
     standings = [
         CurrentStanding(
             manager=manager,
-            effective_score=score_manager(manager, state.players, state.live_scores, complete),
+            effective_score=(
+                manager.official_points - manager.transfer_cost
+                if state.raw.get("historical") and manager.official_points is not None
+                else score_manager(manager, state.players, state.live_scores, complete)
+            ),
         )
         for manager in state.managers
     ]

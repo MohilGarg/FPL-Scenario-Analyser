@@ -8,6 +8,7 @@ from .settings import (
     DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION,
     DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION,
 )
+from .substitutions import effective_multipliers
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,15 +44,34 @@ def conservative_score_bounds(
     for manager in state.managers:
         low_swing = 0
         high_swing = 0
+        current_multipliers = effective_multipliers(
+            manager, state.players, state.live_scores, state.team_complete()
+        )
+        pending_lineup = any(
+            pick.is_starter
+            and not state.live_scores[pick.player_id].appeared
+            and state.unfinished_fixtures_for_team(state.players[pick.player_id].team_id)
+            for pick in manager.picks
+        )
         for pick in manager.picks:
             player = state.players[pick.player_id]
-            if not state.unfinished_fixtures_for_team(player.team_id):
-                continue
             maximum_multiplier = 1
             if pick.is_captain or pick.is_vice_captain:
                 maximum_multiplier = 3 if manager.active_chip == "3xc" else 2
-            low_swing += min_remaining_player_contribution * maximum_multiplier
-            high_swing += max_remaining_player_contribution * maximum_multiplier
+            if state.unfinished_fixtures_for_team(player.team_id):
+                low_swing += min_remaining_player_contribution * maximum_multiplier
+                high_swing += max_remaining_player_contribution * maximum_multiplier
+            # A future absence may bring in points ALREADY scored on the bench, or transfer
+            # captaincy to a vice whose fixtures are complete. Those are not future player
+            # returns, so account for the multiplier change separately from the -10/+35 range.
+            if pending_lineup and (not pick.is_starter or pick.is_captain or pick.is_vice_captain):
+                points = state.live_scores[pick.player_id].points
+                current = current_multipliers[pick.player_id]
+                adjustments = [
+                    (multiplier - current) * points for multiplier in (0, maximum_multiplier)
+                ]
+                low_swing += min(0, *adjustments)
+                high_swing += max(0, *adjustments)
         current = current_scores[manager.entry_id]
         result[manager.entry_id] = ScoreBounds(current + low_swing, current + high_swing)
     return result

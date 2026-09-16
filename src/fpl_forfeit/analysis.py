@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .exposures import (
+    conditional_exposure_notes,
     differential_exposures,
     effective_exposures,
     remaining_effective_multipliers,
@@ -13,6 +14,7 @@ from .safety import SafetyAssessment, assess_safety
 from .settings import AnalysisSettings
 from .solver import SearchResult, SolvedScenario, core_condition, solve_candidate
 from .state import CurrentStanding, current_standings
+from .substitutions import effective_multipliers
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +26,13 @@ class AnalysisResult:
     searches: dict[int, SearchResult]
 
 
-def analyse_state(state: LeagueState, settings: AnalysisSettings | None = None) -> AnalysisResult:
+def analyse_state(
+    state: LeagueState,
+    settings: AnalysisSettings | None = None,
+    *,
+    include_scenarios: bool = True,
+    candidate_id: int | None = None,
+) -> AnalysisResult:
     settings = settings or AnalysisSettings()
     standings = current_standings(state)
     scores = {row.manager.entry_id: row.effective_score for row in standings}
@@ -36,13 +44,17 @@ def analyse_state(state: LeagueState, settings: AnalysisSettings | None = None) 
         allow_tied_last=settings.allow_tied_last,
     )
     remaining_variable_count = _remaining_variable_count(state)
-    has_live_fixture = any(fixture.started and not fixture.finished for fixture in state.fixtures)
-    broad_early_state = (
-        remaining_variable_count > settings.max_relevant_players and not has_live_fixture
-    )
+    broad_early_state = remaining_variable_count > settings.max_relevant_players
+    complete = _gameweek_payload(state, 0)["status"] == "complete"
     searches: dict[int, SearchResult] = {}
     for row in standings:
-        if safety[row.manager.entry_id].safe or broad_early_state:
+        if (
+            safety[row.manager.entry_id].safe
+            or broad_early_state
+            or complete
+            or not include_scenarios
+            or candidate_id not in (None, row.manager.entry_id)
+        ):
             continue
         searches[row.manager.entry_id] = solve_candidate(
             state,
@@ -66,7 +78,8 @@ def analysis_to_dict(result: AnalysisResult) -> dict[str, Any]:
         state.managers, state.players, state.live_scores, state.team_complete()
     )
     all_manager_ids = [manager.entry_id for manager in state.managers]
-    all_differentials = differential_exposures(exposures, all_manager_ids)
+    conditional = conditional_exposure_notes(state)
+    all_differentials = differential_exposures(exposures, all_manager_ids, conditional)
     differential_ids = set(all_differentials)
 
     managers = [
@@ -79,6 +92,7 @@ def analysis_to_dict(result: AnalysisResult) -> dict[str, Any]:
             differential_ids,
             row.manager.entry_id in bottom_ids,
             row.manager.entry_id in current_last_ids,
+            conditional,
         )
         for row in result.standings
     ]
@@ -94,13 +108,20 @@ def analysis_to_dict(result: AnalysisResult) -> dict[str, Any]:
     relevant_manager_ids = [item["entry_id"] for item in managers if item["status"] != "safe"]
     if len(relevant_manager_ids) < 2:
         relevant_manager_ids = all_manager_ids
-    focused_differentials = differential_exposures(exposures, relevant_manager_ids)
+    focused_differentials = differential_exposures(exposures, relevant_manager_ids, conditional)
     unfinished_differentials = [
         player_id
         for player_id in focused_differentials
         if state.unfinished_fixtures_for_team(state.players[player_id].team_id)
+        or any(entry_id in conditional.get(player_id, {}) for entry_id in relevant_manager_ids)
     ]
-    gameweek = _gameweek_payload(state, len(unfinished_differentials))
+    gameweek = _gameweek_payload(
+        state,
+        sum(
+            bool(state.unfinished_fixtures_for_team(state.players[player_id].team_id))
+            for player_id in unfinished_differentials
+        ),
+    )
 
     return {
         "api_version": "2",
@@ -109,6 +130,21 @@ def analysis_to_dict(result: AnalysisResult) -> dict[str, Any]:
             "name": state.league_name,
             "gameweek": state.gameweek,
             "fetched_at": state.fetched_at.isoformat(),
+            "historical": bool(state.raw.get("historical")),
+            "current_gameweek": state.raw.get("current_gameweek", state.gameweek),
+            "history_note": (
+                "Final results for current league members. Historical live scenarios are not reconstructed; "
+                "player team/position labels use the current season catalogue."
+                if state.raw.get("historical")
+                else None
+            ),
+            "available_gameweeks": [
+                {"id": int(event["id"]), "finished": bool(event.get("finished"))}
+                for event in state.raw.get("bootstrap", {}).get("events", [])
+                if event.get("finished")
+                or int(event["id"]) == state.raw.get("current_gameweek", state.gameweek)
+            ]
+            or [{"id": state.gameweek, "finished": gameweek["status"] == "complete"}],
             **gameweek,
         },
         "summary": {
@@ -126,9 +162,6 @@ def analysis_to_dict(result: AnalysisResult) -> dict[str, Any]:
             "scenario_search_state": (
                 "broad"
                 if _remaining_variable_count(result.state) > result.settings.max_relevant_players
-                and not any(
-                    fixture.started and not fixture.finished for fixture in result.state.fixtures
-                )
                 else "active"
             ),
         },
@@ -140,11 +173,20 @@ def analysis_to_dict(result: AnalysisResult) -> dict[str, Any]:
                 player_id,
                 focused_differentials[player_id],
                 relevant_manager_ids,
+                conditional.get(player_id, {}),
             )
             for player_id in sorted(
                 unfinished_differentials,
                 key=lambda value: state.players[value].name.casefold(),
             )
+        ],
+        "all_differentials": [
+            _differential_payload(
+                state, player_id, values, all_manager_ids, conditional.get(player_id, {})
+            )
+            for player_id, values in sorted(all_differentials.items())
+            if state.unfinished_fixtures_for_team(state.players[player_id].team_id)
+            or player_id in conditional
         ],
         "model": {
             "minimum_remaining_player_contribution": (
@@ -158,8 +200,9 @@ def analysis_to_dict(result: AnalysisResult) -> dict[str, Any]:
             "ties_count_as_last": result.settings.allow_tied_last,
             "scenario_rank_is_probability": False,
             "scenario_vocabulary_note": (
-                "Examples are bounded and not exhaustive; bonus points and every unusual "
-                "multi-return combination are not modelled."
+                "Examples are bounded, not exhaustive. Future bonus/BPS, defensive-contribution "
+                "awards, every goal-concession deduction and every multi-return combination are not "
+                "predicted. Official points already awarded are retained."
             ),
         },
     }
@@ -234,6 +277,7 @@ def _manager_payload(
     differential_ids: set[int],
     is_bottom: bool,
     is_current_last: bool,
+    conditional_notes: dict[int, dict[int, str]],
 ) -> dict[str, Any]:
     state = result.state
     assessment = result.safety[manager.entry_id]
@@ -242,9 +286,25 @@ def _manager_payload(
     multipliers = remaining_effective_multipliers(
         manager, state.players, state.live_scores, state.team_complete()
     )
+    scoring_multipliers = effective_multipliers(
+        manager, state.players, state.live_scores, state.team_complete()
+    )
+    if state.raw.get("historical"):
+        multipliers = scoring_multipliers = {
+            pick.player_id: pick.api_multiplier for pick in manager.picks
+        }
+    if _gameweek_payload(state, 0)["status"] == "complete":
+        status = "can_finish_last" if is_current_last else "safe"
     squad = [
-        _pick_payload(state, manager, pick, multipliers[pick.player_id]) for pick in manager.picks
+        _pick_payload(
+            state, manager, pick, multipliers[pick.player_id], scoring_multipliers[pick.player_id]
+        )
+        for pick in manager.picks
     ]
+    for item in squad:
+        item["conditional_exposure"] = conditional_notes.get(item["player_id"], {}).get(
+            manager.entry_id
+        )
     remaining = [
         item
         for item in squad
@@ -270,6 +330,12 @@ def _manager_payload(
         "effective_score": effective_score,
         "official_points": official_points,
         "raw_official_points": effective_score + manager.transfer_cost,
+        "score_source": "official_final" if state.raw.get("historical") else "live_recalculation",
+        "score_notes": [
+            "Effective score is counted player points minus transfer deductions.",
+            "Autosubs must preserve a legal formation: 1 goalkeeper, at least 3 defenders, 2 midfielders and 1 forward.",
+            "Zero-minute starters stay pending until all their Gameweek fixtures finish; vice-captain takeover also waits.",
+        ],
         "bottom_gap": effective_score - lowest_score,
         "transfer_cost": manager.transfer_cost,
         "active_chip": manager.active_chip,
@@ -288,7 +354,29 @@ def _manager_payload(
             else None
         ),
         "safety_detail": assessment.reason if assessment.safe else None,
-        "core_condition": core_condition(state, manager, scores) if not assessment.safe else None,
+        "safety_explanation": {
+            "current_score": effective_score,
+            "worst_remaining_change": assessment.bounds.lower - effective_score,
+            "minimum_final_score": assessment.bounds.lower,
+            "witness_name": next(
+                (
+                    m.manager_name
+                    for m in state.managers
+                    if m.entry_id == assessment.witness_entry_id
+                ),
+                None,
+            ),
+            "witness_maximum_score": result.safety[assessment.witness_entry_id].bounds.upper
+            if assessment.witness_entry_id is not None
+            else None,
+        }
+        if assessment.safe
+        else None,
+        "core_condition": core_condition(
+            state, manager, scores, allow_tied_last=result.settings.allow_tied_last
+        )
+        if not assessment.safe
+        else None,
         "scenarios": [
             _scenario_payload(state, manager, scenario, differential_ids, rank)
             for rank, scenario in enumerate(search.scenarios if search else (), start=1)
@@ -296,17 +384,25 @@ def _manager_payload(
         "search": {
             "nodes_checked": search.nodes_checked if search else 0,
             "truncated_player_fixtures": search.truncated_players if search else 0,
-            "exhausted": search.exhausted if search else True,
+            "exhausted": search.exhausted if search else False,
+            "loaded": search is not None,
         },
         "squad": squad,
     }
 
 
 def _pick_payload(
-    state: LeagueState, manager: Manager, pick: Pick, effective_multiplier: int
+    state: LeagueState,
+    manager: Manager,
+    pick: Pick,
+    effective_multiplier: int,
+    scoring_multiplier: int,
 ) -> dict[str, Any]:
     player = state.players[pick.player_id]
     score = state.live_scores[pick.player_id]
+    historical_points_available = not state.raw.get("historical") or any(
+        int(item["id"]) == pick.player_id for item in state.raw.get("live", {}).get("elements", [])
+    )
     fixtures = state.fixtures_for_team(player.team_id)
     remaining = tuple(fixture for fixture in fixtures if not fixture.finished)
     has_live = any(fixture.started and not fixture.finished for fixture in remaining)
@@ -328,6 +424,8 @@ def _pick_payload(
         autosub_status = "subbed_in"
     elif not pick.is_starter and remaining and manager.active_chip != "bboost":
         autosub_status = "possible"
+    elif pick.is_starter and score.minutes == 0 and remaining:
+        autosub_status = "pending"
 
     return {
         "player_id": player.id,
@@ -340,9 +438,19 @@ def _pick_payload(
         "is_captain": pick.is_captain,
         "is_vice_captain": pick.is_vice_captain,
         "effective_multiplier": effective_multiplier,
-        "official_points": score.points,
-        "effective_points": score.points * effective_multiplier,
-        "minutes": score.minutes,
+        "scoring_multiplier": scoring_multiplier,
+        "captaincy_status": (
+            "Vice-captain takeover"
+            if pick.is_vice_captain and effective_multiplier > 1
+            else "Captain pending"
+            if pick.is_captain and score.minutes == 0 and remaining
+            else None
+        ),
+        "official_points": score.points if historical_points_available else None,
+        "effective_points": score.points * scoring_multiplier
+        if historical_points_available
+        else None,
+        "minutes": score.minutes if historical_points_available else None,
         "fixture_status": fixture_status,
         "remaining_fixtures": [_fixture_payload(fixture, player.team_id) for fixture in remaining],
         "autosub_status": autosub_status,
@@ -353,6 +461,7 @@ def _fixture_payload(fixture: Fixture, team_id: int) -> dict[str, Any]:
     return {
         "fixture_id": fixture.id,
         "opponent": fixture.team_name(fixture.opponent_of(team_id)),
+        "status": "finished" if fixture.finished else "live" if fixture.started else "not_started",
         "started": fixture.started,
         "finished": fixture.finished,
         "kickoff_time": fixture.kickoff_time.isoformat() if fixture.kickoff_time else None,
@@ -372,7 +481,7 @@ def _scenario_payload(
         for outcome in scenario.outcomes
         if outcome.baseline and outcome.player_id in differential_ids
     ]
-    shown = (meaningful + baseline_differentials)[:6]
+    shown = meaningful + baseline_differentials
     if shown:
         description = "; ".join(
             f"{state.players[outcome.player_id].name} {outcome.label}" for outcome in shown
@@ -405,7 +514,12 @@ def _scenario_payload(
         "bottom_scores": bottom_scores,
         "share_text": (
             f"For {manager.manager_name} to finish last: {description}. "
-            f"They would finish on {candidate_score}, with the next-lowest score on {next_lowest}."
+            f"They would finish on {candidate_score}, "
+            + (
+                f"tied for lowest on {next_lowest}."
+                if candidate_score == next_lowest
+                else f"below the next manager on {next_lowest}."
+            )
         ),
         "events": [
             {
@@ -437,6 +551,7 @@ def _differential_payload(
     player_id: int,
     values: dict[int, int],
     manager_ids: list[int],
+    conditional: dict[int, str] | None = None,
 ) -> dict[str, Any]:
     player = state.players[player_id]
     managers = {manager.entry_id: manager for manager in state.managers}
@@ -449,14 +564,41 @@ def _differential_payload(
         "team_name": player.team_name,
         "current_points": score.points,
         "minutes": score.minutes,
-        "fixture_status": "live" if any(fixture.started for fixture in fixtures) else "not_started",
-        "has_double_gameweek_remaining": len(fixtures) > 1,
-        "fixtures": [_fixture_payload(fixture, player.team_id) for fixture in fixtures],
+        "fixture_status": "live"
+        if any(fixture.started for fixture in fixtures)
+        else "not_started"
+        if fixtures
+        else "finished",
+        "has_double_gameweek_remaining": len(state.fixtures_for_team(player.team_id)) > 1
+        and bool(fixtures),
+        "fixtures": [
+            _fixture_payload(fixture, player.team_id)
+            for fixture in state.fixtures_for_team(player.team_id)
+        ],
         "exposures": [
             {
                 "entry_id": entry_id,
                 "manager_name": managers[entry_id].manager_name,
                 "multiplier": values.get(entry_id, 0),
+                "note": (conditional or {}).get(entry_id)
+                or next(
+                    (
+                        "Triple Captain"
+                        if pick.is_captain and managers[entry_id].active_chip == "3xc"
+                        else "Captain"
+                        if pick.is_captain
+                        else "Bench Boost"
+                        if not pick.is_starter and managers[entry_id].active_chip == "bboost"
+                        else "Bench / legal autosub only"
+                        if not pick.is_starter
+                        else "Vice-captain"
+                        if pick.is_vice_captain
+                        else None
+                        for pick in managers[entry_id].picks
+                        if pick.player_id == player_id
+                    ),
+                    None,
+                ),
             }
             for entry_id in manager_ids
         ],

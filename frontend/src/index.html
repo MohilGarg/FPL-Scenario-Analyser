@@ -14,7 +14,7 @@
       const requestedTheme = new URLSearchParams(window.location.search).get("theme");
       document.documentElement.dataset.theme =
         requestedTheme === "dark" ||
-        (requestedTheme !== "light" && localStorage.getItem("fpl-theme") === "dark")
+        (requestedTheme !== "light" && (() => { try { return localStorage.getItem("fpl-theme"); } catch { return null; } })() === "dark")
           ? "dark"
           : "light";
     </script>
@@ -38,12 +38,20 @@
               <option value="strict">Strictly lowest only</option>
             </select>
             <p>The selected rule is used for safety checks, scenarios and final results.</p>
+            <button id="theme-toggle" class="icon-button" type="button" aria-label="Use dark mode">
+              <span id="theme-label">Dark mode</span>
+            </button>
+            <label for="demo-select">Demo Mode</label>
+            <select id="demo-select">
+              <option value="">Off — real league</option>
+              <option value="early">Early Gameweek</option>
+              <option value="late">Late Gameweek</option>
+              <option value="live">Live match</option>
+              <option value="complete">Completed Gameweek</option>
+            </select>
+            <p>Development examples using the real analysis engine.</p>
           </div>
         </details>
-        <button id="theme-toggle" class="icon-button" type="button" aria-label="Use dark mode">
-          <span class="theme-icon" aria-hidden="true">◐</span>
-          <span id="theme-label">Dark mode</span>
-        </button>
       </div>
     </header>
 
@@ -77,15 +85,6 @@
           <div id="recent-list"></div>
         </div>
 
-        <div class="demo-callout">
-          <div>
-            <strong>Gameweek already over?</strong>
-            <span>Try the analyser with a deterministic live match.</span>
-          </div>
-          <button class="secondary-button demo-button" type="button" data-demo="live">
-            Try live demo
-          </button>
-        </div>
       </section>
 
       <section id="loading-state" class="state-card hidden" aria-live="polite" aria-busy="true">
@@ -103,9 +102,8 @@
           <p id="error-message"></p>
           <div class="inline-actions">
             <button id="retry-button" class="secondary-button" type="button">Try again</button>
-            <button id="error-demo-button" class="text-button demo-button" type="button" data-demo="late">
-              Open a demo instead
-            </button>
+            <button id="error-change-league" class="text-button" type="button">Change league</button>
+            <button id="current-gameweek-button" class="text-button" type="button">Current Gameweek</button>
           </div>
         </div>
       </section>
@@ -122,16 +120,11 @@
             <p id="updated-at"></p>
           </div>
           <div class="league-actions">
+            <label class="gameweek-field" for="gameweek-select">Gameweek
+              <select id="gameweek-select" class="compact-select"></select>
+            </label>
             <button id="change-league-button" class="text-button" type="button">Change league</button>
             <button id="refresh-button" class="secondary-button" type="button">Refresh</button>
-            <label class="demo-select-label" for="demo-select">Demo</label>
-            <select id="demo-select" class="compact-select">
-              <option value="">Try demo…</option>
-              <option value="early">Early Gameweek</option>
-              <option value="late">Late Gameweek</option>
-              <option value="live">Live match</option>
-              <option value="complete">Completed Gameweek</option>
-            </select>
           </div>
         </section>
 
@@ -160,7 +153,7 @@
             </label>
           </div>
           <div id="scenario-detail"></div>
-          <details class="comparison-panel">
+          <details id="comparison-panel" class="comparison-panel">
             <summary>Compare two managers</summary>
             <div class="comparison-controls">
               <label for="compare-a">Manager A<select id="compare-a"></select></label>
@@ -178,6 +171,9 @@
               <h2>Effective differentials</h2>
               <p>Captaincy, chips and confirmed substitutions are reflected. Identical exposure is omitted.</p>
             </div>
+            <label class="select-field" for="differential-scope">Compare exposure
+              <select id="differential-scope"><option value="risk">Bottom-place battle</option><option value="all">All league managers</option></select>
+            </label>
           </div>
           <div id="differential-content"></div>
         </section>
@@ -208,6 +204,7 @@
     </footer>
 
     <script src="./config.js"></script>
+    <script src="./input.js"></script>
     <script src="./app.js" defer></script>
   </body>
 </html>

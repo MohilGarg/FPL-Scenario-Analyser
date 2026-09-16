@@ -3,6 +3,17 @@
 The frontend and backend deploy separately. Deploy the backend first so its URL can be placed into
 the GitHub Pages build.
 
+## Updating an existing deployment
+
+No new secrets, database, environment variables or hosting services are needed for historical
+Gameweeks, manager comparisons or lazy scenarios. Push the changes to `main`: the existing Render
+auto-deploy updates the API and the Pages workflow updates the static site. Deploy both sides;
+an older API cannot serve the new manager/comparison endpoints. If Render auto-deploy is disabled,
+select the service, then **Manual Deploy → Deploy latest commit**.
+
+After deployment, check `/api/league/188263?detail=summary` for `available_gameweeks`, then try a
+completed `gameweek` from that list. The original full endpoint and CLI remain compatible.
+
 ## 1. Deploy the FastAPI backend on Render
 
 1. Sign in at [dashboard.render.com](https://dashboard.render.com) using GitHub.
