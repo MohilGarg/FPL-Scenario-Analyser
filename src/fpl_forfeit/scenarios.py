@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from .availability import minutes_cost
 from .models import ElementScore, Fixture, Player, Position
 
 
@@ -17,6 +18,8 @@ class Outcome:
     opponent_min_goals: int = 0
     opponent_max_goals: int | None = None
     baseline: bool = False
+    shared_event: tuple[int, int, str] | None = None
+    shared_event_cost: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +42,14 @@ def _outcome(
     opponent_max: int | None = None,
     baseline: bool = False,
 ) -> Outcome:
+    shared_event = None
+    shared_cost = 0.0
+    if not fixture.started and opponent_max == 0:
+        shared_event = (fixture.id, player.team_id, "clean_sheet")
+        shared_cost = min(cost, 1.0 if player.position == Position.MIDFIELDER else 1.1)
+    elif fixture.started and "loses the clean sheet" in label:
+        shared_event = (fixture.id, player.team_id, "clean_sheet_loss")
+        shared_cost = min(cost, 0.9)
     return Outcome(
         player_id=player.id,
         fixture_id=fixture.id,
@@ -50,6 +61,8 @@ def _outcome(
         opponent_min_goals=opponent_goals,
         opponent_max_goals=opponent_max,
         baseline=baseline,
+        shared_event=shared_event,
+        shared_event_cost=shared_cost,
     )
 
 
@@ -127,7 +140,9 @@ def outcome_catalog(player: Player, fixture: Fixture, current: ElementScore) -> 
                 own_goals=2,
                 opponent_goals=1,
             ),
-            _outcome(player, fixture, "plays 60+ minutes and is sent off", -1, 60, 3.5),
+            _outcome(
+                player, fixture, "plays 60+ minutes and is sent off", -1, 60, 3.5, opponent_goals=1
+            ),
         ]
         if player.position == Position.DEFENDER:
             values.append(
@@ -185,8 +200,18 @@ def outcome_catalog(player: Player, fixture: Fixture, current: ElementScore) -> 
             _outcome(player, fixture, "gets two assists", 8, 60, 3.4, own_goals=2),
             _outcome(player, fixture, "scores twice", 12, 60, 4.2, own_goals=2),
             _outcome(player, fixture, "scores a hat-trick", 17, 60, 7.2, own_goals=3),
-            _outcome(player, fixture, "plays 60+ minutes and misses a penalty", 0, 60, 3.0),
-            _outcome(player, fixture, "plays 60+ minutes and is sent off", -1, 60, 3.5),
+            _outcome(
+                player,
+                fixture,
+                "plays 60+ minutes and misses a penalty",
+                0,
+                60,
+                3.0,
+                opponent_goals=1,
+            ),
+            _outcome(
+                player, fixture, "plays 60+ minutes and is sent off", -1, 60, 3.5, opponent_goals=1
+            ),
         ]
         return _pregame_extensions(player, fixture, values)
 
@@ -243,6 +268,8 @@ def _pregame_extensions(
                         plausibility_cost=item.plausibility_cost + 1,
                         opponent_min_goals=0,
                         opponent_max_goals=0,
+                        shared_event=(fixture.id, player.team_id, "clean_sheet"),
+                        shared_event_cost=1.0,
                     )
                 )
     values.extend(
@@ -261,6 +288,33 @@ def _pregame_extensions(
             ),
         ]
     )
+    if player.position == Position.MIDFIELDER:
+        values.extend(
+            [
+                _outcome(player, fixture, "is sent off before 60 minutes", -2, 1, 3.6),
+                _outcome(
+                    player,
+                    fixture,
+                    "plays under 60 minutes, assists and misses a penalty",
+                    2,
+                    1,
+                    4.8,
+                    own_goals=1,
+                ),
+            ]
+        )
+    if player.position != Position.FORWARD:
+        values.append(
+            _outcome(
+                player,
+                fixture,
+                "keeps a clean sheet but is booked",
+                5 if defensive else 2,
+                60,
+                1.9,
+                opponent_max=0,
+            )
+        )
     if player.position in (Position.MIDFIELDER, Position.FORWARD):
         values.append(
             _outcome(
@@ -314,6 +368,15 @@ def _pregame_extensions(
                 opponent_max=0,
             )
         )
+    values = [
+        replace(
+            item,
+            plausibility_cost=round(
+                max(0, item.plausibility_cost + minutes_cost(player, item.minutes_delta)), 3
+            ),
+        )
+        for item in values
+    ]
     return tuple(sorted(values, key=lambda item: item.plausibility_cost))
 
 
@@ -386,7 +449,16 @@ def _live_outcomes(player: Player, fixture: Fixture, current: ElementScore) -> t
         _outcome(
             player,
             fixture,
-            "is booked and otherwise follows the baseline",
+            (
+                "reaches 60 minutes and is booked"
+                if reaches_sixty
+                else "is booked with no further attacking return"
+            )
+            + (
+                " while keeping the clean sheet"
+                if clean_now and clean_sheet_value
+                else " without a clean sheet"
+            ),
             baseline_delta - 1,
             minutes_delta,
             0.8,
@@ -479,6 +551,8 @@ def _live_outcomes(player: Player, fixture: Fixture, current: ElementScore) -> t
                         opponent_max_goals=None,
                         opponent_min_goals=1,
                         plausibility_cost=item.plausibility_cost + 0.9,
+                        shared_event=(fixture.id, player.team_id, "clean_sheet_loss"),
+                        shared_event_cost=0.9,
                     )
                 )
     values.append(
@@ -494,6 +568,20 @@ def _live_outcomes(player: Player, fixture: Fixture, current: ElementScore) -> t
     )
     if reaches_sixty:
         values.append(_outcome(player, fixture, "leaves before 60 minutes", 0, 0, 0.8))
+        if player.position == Position.MIDFIELDER:
+            # Preserve the same narrow two-point route before and after kick-off:
+            # appearance already earned + assist (3) - missed penalty (2), no 60-min point.
+            values.append(
+                _outcome(
+                    player,
+                    fixture,
+                    "assists and misses a penalty, then leaves before 60 minutes",
+                    1,
+                    0,
+                    4.8,
+                    own_goals=1,
+                )
+            )
     if player.position in (Position.MIDFIELDER, Position.FORWARD):
         values.append(
             _outcome(
@@ -556,7 +644,7 @@ def route_key(outcome: Outcome) -> str:
         return "red_card"
     if "loses the clean sheet" in label:
         return "clean_sheet_loss"
-    if outcome.opponent_max_goals == 0 and "booked" not in label:
+    if outcome.opponent_max_goals == 0:
         return "clean_sheet"
     if "does not" in label:
         return "no_appearance"

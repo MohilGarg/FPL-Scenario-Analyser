@@ -28,6 +28,13 @@ class Player:
     team_id: int
     team_name: str
     position: Position
+    season_starts: int | None = None
+    season_minutes: int | None = None
+    price_tenths: int | None = None
+    availability_status: str | None = None
+    availability_news: str = ""
+    chance_of_playing: int | None = None
+    season_team_matches: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

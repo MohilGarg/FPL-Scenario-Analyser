@@ -11,6 +11,9 @@ DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION = 35
 DEFAULT_SCENARIO_COUNT = 3
 DEFAULT_MAX_RELEVANT_PLAYERS = 8
 DEFAULT_MAX_SEARCH_NODES = 50_000
+# Bounds on the constraint-guided search itself, not football outcomes.
+MAX_SCENARIO_LINEUPS = 1_024
+MAX_COMPLETION_NODES = 2_000
 
 
 @dataclass(frozen=True, slots=True)

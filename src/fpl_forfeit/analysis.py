@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .availability import availability_payload
 from .exposures import (
     conditional_exposure_notes,
     differential_exposures,
@@ -12,7 +13,13 @@ from .exposures import (
 from .models import Fixture, LeagueState, Manager, Pick
 from .safety import SafetyAssessment, assess_safety
 from .settings import AnalysisSettings
-from .solver import SearchResult, SolvedScenario, core_condition, solve_candidate
+from .solver import (
+    SearchResult,
+    SolvedScenario,
+    core_condition,
+    projected_player_scores,
+    solve_candidate,
+)
 from .state import CurrentStanding, current_standings
 from .substitutions import effective_multipliers
 
@@ -50,7 +57,7 @@ def analyse_state(
     for row in standings:
         if (
             safety[row.manager.entry_id].safe
-            or broad_early_state
+            or (broad_early_state and candidate_id is None)
             or complete
             or not include_scenarios
             or candidate_id not in (None, row.manager.entry_id)
@@ -199,6 +206,12 @@ def analysis_to_dict(result: AnalysisResult) -> dict[str, Any]:
             "bounds_are_theoretical_maxima": False,
             "ties_count_as_last": result.settings.allow_tied_last,
             "scenario_rank_is_probability": False,
+            "minutes_ranking_note": (
+                "Before kick-off, FPL injury/availability flags and season starts/minutes rank "
+                "appearance assumptions. Price is a weak supporting signal only. No appearance "
+                "means zero minutes, not simply missing the starting XI. These are not confirmed "
+                "lineups or calibrated probabilities; they never change safety or scoring."
+            ),
             "scenario_vocabulary_note": (
                 "Examples are bounded, not exhaustive. Future bonus/BPS, defensive-contribution "
                 "awards, every goal-concession deduction and every multi-return combination are not "
@@ -386,6 +399,25 @@ def _manager_payload(
             "truncated_player_fixtures": search.truncated_players if search else 0,
             "exhausted": search.exhausted if search else False,
             "loaded": search is not None,
+            "requested_count": result.settings.scenario_count,
+            "found_count": len(search.scenarios) if search else 0,
+            "shortfall_note": (
+                f"Found {len(search.scenarios)} distinct example(s), fewer than the requested "
+                f"{result.settings.scenario_count}. "
+                + (
+                    "The bounded search finished; extra copies would not be new routes."
+                    if search.exhausted
+                    else "The search budget was reached; other routes may exist."
+                )
+                if search and 0 < len(search.scenarios) < result.settings.scenario_count
+                else None
+            ),
+            "assumptions_note": (
+                f"{search.truncated_players} other player-fixture contributions follow explicit "
+                "baseline outcomes while this manager's main differentials vary."
+                if search and search.truncated_players
+                else None
+            ),
         },
         "squad": squad,
     }
@@ -451,6 +483,7 @@ def _pick_payload(
         if historical_points_available
         else None,
         "minutes": score.minutes if historical_points_available else None,
+        "availability": availability_payload(player),
         "fixture_status": fixture_status,
         "remaining_fixtures": [_fixture_payload(fixture, player.team_id) for fixture in remaining],
         "autosub_status": autosub_status,
@@ -475,11 +508,46 @@ def _scenario_payload(
     differential_ids: set[int],
     rank: int,
 ) -> dict[str, Any]:
-    meaningful = [outcome for outcome in scenario.outcomes if not outcome.baseline]
+    next_score = min(
+        (score for entry, score in scenario.final_scores.items() if entry != manager.entry_id),
+        default=0,
+    )
+    close_ids = {manager.entry_id} | {
+        entry for entry, score in scenario.final_scores.items() if score == next_score
+    }
+    final_exposures = effective_exposures(
+        state.managers,
+        state.players,
+        projected_player_scores(state, scenario.outcomes),
+        {player.team_id: True for player in state.players.values()},
+    )
+    initial_exposures = effective_exposures(
+        state.managers, state.players, state.live_scores, state.team_complete()
+    )
+    relevant = {
+        outcome.player_id
+        for outcome in scenario.outcomes
+        if len({final_exposures.get(outcome.player_id, {}).get(entry, 0) for entry in close_ids})
+        > 1
+        or (
+            "does not" in outcome.label
+            and len(
+                {initial_exposures.get(outcome.player_id, {}).get(entry, 0) for entry in close_ids}
+            )
+            > 1
+        )
+    }
+    meaningful = [
+        outcome
+        for outcome in scenario.outcomes
+        if not outcome.baseline and outcome.player_id in relevant
+    ]
     baseline_differentials = [
         outcome
         for outcome in scenario.outcomes
-        if outcome.baseline and outcome.player_id in differential_ids
+        if outcome.baseline
+        and outcome.player_id in differential_ids
+        and outcome.player_id in relevant
     ]
     shown = meaningful + baseline_differentials
     if shown:
@@ -509,6 +577,7 @@ def _scenario_payload(
         "plausibility_cost": scenario.plausibility_cost,
         "plausibility": _plausibility_label(scenario.plausibility_cost),
         "description": description,
+        "context_note": "Headline shows the deciding bottom-group differences. All other modelled contributions are listed in the details and included in the whole-league check.",
         "candidate_final_score": candidate_score,
         "next_lowest_score": next_lowest,
         "bottom_scores": bottom_scores,
@@ -530,6 +599,7 @@ def _scenario_payload(
                 "points_delta": outcome.points_delta,
                 "minutes_delta": outcome.minutes_delta,
                 "baseline": outcome.baseline,
+                "availability": availability_payload(state.players[outcome.player_id]),
             }
             for outcome in scenario.outcomes
         ],
@@ -564,6 +634,7 @@ def _differential_payload(
         "team_name": player.team_name,
         "current_points": score.points,
         "minutes": score.minutes,
+        "availability": availability_payload(player),
         "fixture_status": "live"
         if any(fixture.started for fixture in fixtures)
         else "not_started"

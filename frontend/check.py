@@ -21,6 +21,11 @@ def main() -> None:
         "--league", type=int, help="Also check Analytics against this real public league"
     )
     parser.add_argument(
+        "--scenario-league",
+        type=int,
+        help="Also check candidate scenario loading for a live league",
+    )
+    parser.add_argument(
         "--browser-executable",
         default=(
             r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
@@ -128,6 +133,39 @@ def main() -> None:
         page.locator("#league-form button").click()
         assert page.locator("#error-state").is_visible()
         assert page.locator("#retry-button").is_hidden()
+        page.goto(args.url + "/?demo=early")
+        page.locator("#analysis:not(.hidden)").wait_for()
+        page.locator("#tab-scenarios").click()
+        start = len(requests)
+        page.locator("#scenario-detail .show-more").click()
+        page.wait_for_function("appState.data.managers.some(m => m.search.loaded)")
+        assert page.evaluate("appState.data.managers.filter(m => m.search.loaded).length") == 1
+        assert sum("/scenarios?" in url for url in requests[start:]) == 1
+        assert page.evaluate(
+            "appState.data.managers.find(m => m.search.loaded).search.assumptions_note"
+        )
+        if args.scenario_league:
+            page.goto(args.url + f"/?league={args.scenario_league}&view=scenarios")
+            page.locator("#analysis:not(.hidden)").wait_for(timeout=120_000)
+            if page.evaluate(
+                "appState.data.league.status !== 'complete' && appState.data.summary.scenario_search_state !== 'broad'"
+            ):
+                page.wait_for_function(
+                    "appState.data.managers.filter(m => m.status !== 'safe').every(m => m.search.loaded || m.search.error)",
+                    timeout=120_000,
+                )
+                managers = page.evaluate("appState.data.managers")
+                assert not any(m["search"].get("error") for m in managers)
+                for manager in managers:
+                    if manager["status"] != "can_finish_last":
+                        continue
+                    page.locator("#scenario-manager").select_option(str(manager["entry_id"]))
+                    count = page.locator("#scenario-detail .scenario-card").count()
+                    assert count == len(manager["scenarios"]) and count > 0
+                    assert count == 3 or manager["search"]["shortfall_note"]
+                    page.locator("#scenario-detail .scenario-context > summary").first.click()
+                    assert page.locator("#scenario-detail .availability-details").count() > 0
+                page.screenshot(path=str(output / "live-scenarios.png"), full_page=True)
         if args.league:
             page.goto(
                 args.url + f"/?league={args.league}&view=analytics&section=gameweeks&theme=light"

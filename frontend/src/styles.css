@@ -675,6 +675,11 @@ footer a { color: var(--muted); }
 .similarity-table button:hover { outline: 2px solid var(--primary); }
 .pair-detail { margin-top: 20px; padding: 18px; background: var(--surface-subtle); border-radius: 8px; font-size: 0.85rem; line-height: 1.7; }
 .pair-detail h4 { margin: 0 0 12px; }
+.availability-details, .scenario-context { margin-top: 8px; color: var(--muted); font-size: 0.76rem; line-height: 1.6; font-weight: 400; }
+.availability-details summary, .scenario-context > summary { padding: 5px 0; color: var(--ink); cursor: pointer; }
+.availability-details p { margin: 6px 0; max-width: 48ch; white-space: normal; }
+.scenario-context > div { margin: 12px 0; }
+.safe-section > .fine-print, .safe-section > .risk-grid { margin: 16px; }
 @media (max-width: 760px) {
   .capabilities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 30px; }
   .analytics-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }

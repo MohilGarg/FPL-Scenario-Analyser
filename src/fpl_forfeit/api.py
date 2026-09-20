@@ -7,6 +7,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .cache import TTLCache
 from .models import (
     POSITION_BY_ELEMENT_TYPE,
     ElementScore,
@@ -45,6 +46,9 @@ class FPLClient:
     def __init__(self, base_url: str = BASE_URL, timeout: float = 20.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._season_fixture_cache: TTLCache[int, list[dict[str, Any]]] = TTLCache(
+            3600, max_items=1
+        )
 
     def _get(self, path: str) -> Any:
         request = Request(
@@ -126,6 +130,18 @@ class FPLClient:
             if historical and picks[str(entry_id)].get("entry_history", {}).get("points") is None:
                 raise FPLGameweekUnavailable("Final points are unavailable for this Gameweek.")
 
+        # The season-wide feed can lag the event feed while a match is live. Never use
+        # it as the source of current scorelines; it is only a minutes-history denominator.
+        fixtures = self._get(f"fixtures/?event={gameweek}")
+        season_fixtures = self._season_fixture_cache.get(1)
+        if season_fixtures is None:
+            try:
+                season_fixtures = self._get("fixtures/")
+                self._season_fixture_cache.set(1, season_fixtures)
+            except FPLAPIError:
+                pass  # Missing optional context must not prevent live analysis.
+        season = {item["id"]: item for item in season_fixtures or []}
+        season.update({item["id"]: item for item in fixtures})
         return {
             "schema_version": 1,
             "fetched_at": datetime.now(UTC).isoformat(),
@@ -135,7 +151,8 @@ class FPLClient:
             "current_gameweek": current_gameweek,
             "historical": historical,
             "bootstrap": bootstrap,
-            "fixtures": self._get(f"fixtures/?event={gameweek}"),
+            "fixtures": fixtures,
+            **({"season_fixtures": list(season.values())} if season_fixtures is not None else {}),
             "live": self._get(f"event/{gameweek}/live/"),
             "standings": standings,
             "picks": picks,
@@ -176,6 +193,14 @@ def load_snapshot(path: Path) -> dict[str, Any]:
 def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
     bootstrap = snapshot["bootstrap"]
     teams = {int(team["id"]): str(team["name"]) for team in bootstrap["teams"]}
+    team_matches = {
+        team_id: sum(
+            bool(item.get("started"))
+            for item in snapshot.get("season_fixtures", [])
+            if team_id in (item["team_h"], item["team_a"])
+        )
+        for team_id in teams
+    }
     players = {
         int(element["id"]): Player(
             id=int(element["id"]),
@@ -183,6 +208,15 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
             team_id=int(element["team"]),
             team_name=teams[int(element["team"])],
             position=POSITION_BY_ELEMENT_TYPE[int(element["element_type"])],
+            season_starts=_optional_int(element.get("starts")),
+            season_minutes=_optional_int(element.get("minutes")),
+            price_tenths=_optional_int(element.get("now_cost")),
+            availability_status=element.get("status"),
+            availability_news=str(element.get("news") or ""),
+            chance_of_playing=_optional_int(element.get("chance_of_playing_this_round")),
+            season_team_matches=team_matches[int(element["team"])]
+            if "season_fixtures" in snapshot
+            else None,
         )
         for element in bootstrap["elements"]
     }

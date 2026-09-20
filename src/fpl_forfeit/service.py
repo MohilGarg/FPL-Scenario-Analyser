@@ -6,7 +6,7 @@ from threading import Lock
 from typing import Any
 
 from .analysis import analyse_state, analysis_to_dict
-from .api import FPLClient, FPLNotFoundError, state_from_snapshot
+from .api import FPLClient, FPLGameweekUnavailable, FPLNotFoundError, state_from_snapshot
 from .cache import TTLCache
 from .comparison import compare_managers
 from .demo import DemoMode, demo_state
@@ -15,6 +15,7 @@ from .state import current_standings
 
 DEFAULT_CACHE_TTL_SECONDS = 90.0
 DEFAULT_MAX_LEAGUE_ENTRIES = 50
+SCENARIO_SOURCE_TTL_SECONDS = 600.0
 
 
 class AnalysisService:
@@ -29,6 +30,9 @@ class AnalysisService:
         self.client = client or FPLClient()
         self.max_league_entries = max_league_entries
         self._snapshots: TTLCache[tuple, dict[str, Any]] = TTLCache(ttl, max_items=16)
+        self._generations: TTLCache[tuple, dict[str, Any]] = TTLCache(
+            max(ttl, SCENARIO_SOURCE_TTL_SECONDS), max_items=32
+        )
         self._analyses: TTLCache[tuple, dict[str, Any]] = TTLCache(ttl, max_items=64)
         self._demos: TTLCache[tuple, dict[str, Any]] = TTLCache(ttl, max_items=16)
         self._fetch_locks = tuple(Lock() for _ in range(16))
@@ -45,11 +49,20 @@ class AnalysisService:
         gameweek: int | None = None,
         include_scenarios: bool = True,
         candidate_id: int | None = None,
+        source: str | None = None,
     ) -> dict[str, Any]:
         if isinstance(league_id, bool) or league_id <= 0:
             raise ValueError("League ID must be a positive integer")
         settings = settings or AnalysisSettings()
-        snapshot = self._snapshots.get((league_id, gameweek))
+        snapshot = (
+            self._generations.get((league_id, gameweek, source))
+            if source
+            else self._snapshots.get((league_id, gameweek))
+        )
+        if source and snapshot is None:
+            raise FPLGameweekUnavailable(
+                "This scores update has expired. Refresh the league to generate scenarios for the latest scores."
+            )
         snapshot_cache_hit = snapshot is not None
         if snapshot is None:
             # Coalesce simultaneous refreshes of the same league instead of duplicating FPL calls.
@@ -61,6 +74,9 @@ class AnalysisService:
                         league_id, gameweek=gameweek, max_entries=self.max_league_entries
                     )
                     self._snapshots.set((league_id, gameweek), snapshot)
+                    self._generations.set(
+                        (league_id, gameweek, snapshot.get("fetched_at")), snapshot
+                    )
 
         # Derived entries must never outlive their source generation. A late Show more request
         # must not mix an old candidate result with a freshly refreshed league summary.

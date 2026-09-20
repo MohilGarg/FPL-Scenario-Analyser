@@ -105,7 +105,10 @@ is used, including ten points for a goalkeeper goal.
 
 Direct fixture consistency and the selected tie rule determine validity. A separate rarity/complexity
 heuristic ranks valid examples; it is not a probability model. Diversity groups ignore incidental
-bookings and minutes changes when identifying distinct routes. Future bonus/BPS, defensive-contribution
+bookings/minutes-only changes. A shared team clean sheet or loss is ranked once, not as an
+independent coincidence for every owned teammate. Distinct combinations that reach a narrow points
+condition are retained, including clean sheet plus booking and assist plus missed penalty.
+Future bonus/BPS, defensive-contribution
 awards, every goal-concession deduction and every possible multi-return combination remain outside
 the bounded vocabulary. Official points already awarded are always retained.
 
@@ -114,7 +117,8 @@ and vice-captain takeover are explicitly conditional. A comparison against one m
 not prove last place against the whole league. **Why safe?** explains the score bound and the opponent
 who guarantees safety; already-scored bench/captaincy points are included when they may move.
 
-Broad early-Gameweek states defer detailed scenario enumeration and point users to Differentials.
+Broad early-Gameweek states defer automatic scenario enumeration and point users to Differentials;
+an explicit per-manager request can still generate focused examples with disclosed baselines.
 This keeps requests bounded and avoids pretending a handful of examples explains a huge state space.
 The league summary loads before scenarios. At-risk managers are searched individually afterwards;
 **Show more scenarios** only extends that manager's search, up to twelve examples. `NO MODELLED PATH`
@@ -193,8 +197,8 @@ bounded in memory. Invalid/unpublished/historical-unavailable Gameweeks return a
 
 ### `GET /api/league/{league_id}/managers/{entry_id}/scenarios`
 
-Accepts `scenarios=1..12`, `ties`, and optional `gameweek`. Returns only the selected manager's result
-plus league/cache metadata. Safe managers and completed/broad Gameweeks are not searched. The
+Accepts `scenarios=1..12`, `ties`, optional `gameweek` and `source=<league.fetched_at>`. Returns only
+the selected manager's result plus league/cache metadata. Safe managers and completed Gameweeks are not searched. The
 frontend retains the summary if this deeper request fails, with a separate retry control.
 
 ### `GET /api/league/{league_id}/compare?a={entry_id}&b={entry_id}`
@@ -256,6 +260,39 @@ Blueprint deploys the separate FastAPI service. Neither deployment contains a se
 
 ## Tests and build
 
+### Scenario searches and playing-time context
+
+The summary stays cheap. Late-Gameweek candidate searches run separately and request three distinct,
+whole-league-checked examples by default. An early/broad state also supports an explicit **Generate 3
+scenarios** request for one manager; non-searched players retain disclosed baseline contributions,
+not implicit zero minutes. Fixed legal-lineup score-gap bounds prune impossible outcome combinations
+before the existing final scorer verifies every example. The search budget is bounded; fewer than
+three materially different routes can exist, and that shortfall is reported rather than filled with
+duplicates. **Can finish last** requires a verified example. **Unresolved**, **No modelled path** and
+**SAFE under the configured envelope** remain distinct.
+
+Manager scenario requests accept `source=<league.fetched_at>` so every card uses the displayed scores.
+Live snapshots still refresh on the normal 90-second cache, while source generations are retained for
+10 minutes (at most 32 in memory). An expired source returns HTTP 409 with a refresh instruction,
+not a silent mixture of scores or an endless refresh loop. Process restarts can expire sources early.
+
+Before kick-off, ranking uses public FPL `status`, injury/news text, `chance_of_playing_this_round`,
+season `starts` and `minutes`. Season fixtures provide a team-match denominator, including doubles;
+that optional feed is cached for an hour and never replaces the fresher current-Gameweek score feed.
+counts can differ after a club transfer or while FPL updates. Unknown values remain unknown. A price
+adjustment is capped at 0.3 heuristic cost units and only supports existing minutes evidence; it cannot
+make an expensive substitute a reliable starter. Healthy regulars' absence/cameo routes rank lower,
+and injury flags lower the cost of no-appearance assumptions. Live observed minutes take precedence
+over pre-match availability heuristics. None of this changes scoring, the safety envelope or route
+validity, and it is not a trained probability model or a confirmed starting lineup.
+
+Expand **Playing-time context** on a scenario, or the availability label in Managers/Differentials,
+to inspect season starts, minutes, price and FPL news. FPL's chance of playing is **not** a chance of
+starting. A no-appearance route requires **zero minutes**, not simply starting on the bench. Historical
+views label this metadata as current, not reconstructed availability at a past deadline.
+
+### Verification commands
+
 ```powershell
 python -m unittest discover -s tests -v
 ruff check .
@@ -277,6 +314,7 @@ Optional browser checks (with the local API and frontend running):
 python -m pip install playwright
 python frontend/check.py
 python frontend/check.py --league 188263
+python frontend/check.py --scenario-league 188263
 ```
 
 On Windows this uses installed Microsoft Edge; otherwise install a Playwright Chromium browser
@@ -286,3 +324,5 @@ theme persistence, comparison, manager-only Show more and completed-state UX. Th
 checks real historical Analytics sections, shared URLs, charts, ownership search and overlap in
 both themes. It makes public FPL requests through the backend. Screenshots go to a temporary directory, never the Pages
 build. Playwright is not a production dependency.
+`--scenario-league` additionally checks live candidate loading, displayed example counts and playing-time
+context. All browser runs check that early-Gameweek generation searches only the selected manager.

@@ -99,6 +99,7 @@ def create_app(
         ties: Literal["include", "strict"] = Query(default="include"),
         gameweek: int | None = Query(default=None, ge=1, le=38),
         demo: DemoMode | None = None,
+        source: str | None = Query(default=None, min_length=1, max_length=80),
     ) -> dict[str, Any]:
         if league_id <= 0 or entry_id <= 0:
             raise HTTPException(400, "League and manager IDs must be positive integers")
@@ -108,7 +109,7 @@ def create_app(
                 analysis_service.analyse_demo(demo, settings, candidate_id=entry_id)
                 if demo
                 else analysis_service.analyse_league(
-                    league_id, settings, gameweek=gameweek, candidate_id=entry_id
+                    league_id, settings, gameweek=gameweek, candidate_id=entry_id, source=source
                 )
             )
         )

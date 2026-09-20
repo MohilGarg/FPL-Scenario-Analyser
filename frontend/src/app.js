@@ -79,7 +79,7 @@ function parseLeagueId(value) {
 function statusLabel(manager) {
   if (manager.is_current_last) return "Currently last";
   if (manager.is_bottom) return "Bottom tie";
-  if (manager.status === "can_finish_last") return "At risk";
+  if (manager.status === "can_finish_last") return "Can finish last";
   if (manager.status === "safe") return "Safe";
   if (manager.status === "no_modelled_path") return "No modelled path";
   return "Unresolved";
@@ -204,18 +204,26 @@ function detailEndpoint(suffix) {
   const params = new URLSearchParams({ ties: appState.tieRule });
   if (appState.demoMode) params.set("demo", appState.demoMode);
   else if (appState.gameweek) params.set("gameweek", appState.gameweek);
+  if (!appState.demoMode && suffix.endsWith("/scenarios")) params.set("source", appState.data.league.fetched_at);
   return `${apiBaseUrl}/api/league/${id}/${suffix}?${params}`;
 }
 
 async function hydrateScenarios(data, generation) {
-  for (const manager of data.managers.filter((item) => item.status !== "safe")) {
+  const candidates = data.managers.filter((item) => item.status !== "safe");
+  candidates.sort((a, b) => Number(b.entry_id === appState.selectedManager) - Number(a.entry_id === appState.selectedManager));
+  for (const manager of candidates) {
     if (generation !== appState.generation) return;
+    if (appState.data.managers.find((item) => item.entry_id === manager.entry_id)?.search.loaded) continue;
     await loadManagerScenarios(manager.entry_id, 3, generation);
   }
 }
 
 async function loadManagerScenarios(entryId, count, generation = appState.generation) {
   if (appState.managerRequests.has(entryId)) return appState.managerRequests.get(entryId);
+  const initial = appState.data.managers.find((item) => item.entry_id === entryId);
+  initial.search.loading = true;
+  initial.search.error = null;
+  renderApplication();
   const work = (async () => {
     const controller = new AbortController();
     const parentSignal = appState.requestController?.signal;
@@ -225,11 +233,16 @@ async function loadManagerScenarios(entryId, count, generation = appState.genera
     try {
       const response = await fetch(`${detailEndpoint(`managers/${entryId}/scenarios`)}&scenarios=${count}`, { signal: controller.signal });
       const payload = await response.json();
-      if (!response.ok) throw new Error(responseError(response.status, payload.detail));
+      if (!response.ok) {
+        const error = new Error(responseError(response.status, payload.detail));
+        error.expiredSource = response.status === 409;
+        throw error;
+      }
       if (generation !== appState.generation) return;
       if (payload.league.fetched_at !== appState.data.league.fetched_at) {
-        loadAnalysis({ background: true });
-        return;
+        const error = new Error("The scores changed. Refresh the league before loading more scenarios.");
+        error.expiredSource = true;
+        throw error;
       }
       const index = appState.data.managers.findIndex((item) => item.entry_id === entryId);
       payload.manager.search.requested_count = count;
@@ -238,7 +251,9 @@ async function loadManagerScenarios(entryId, count, generation = appState.genera
     } catch (error) {
       if (generation !== appState.generation) return;
       const manager = appState.data.managers.find((item) => item.entry_id === entryId);
-      manager.search.error = true;
+      manager.search.error = friendlyError(error);
+      manager.search.expiredSource = Boolean(error.expiredSource);
+      manager.search.loading = false;
       renderApplication();
       showToast("Scenario search unavailable. Scores and safety are still shown; retry below.");
     } finally {
@@ -300,7 +315,8 @@ function renderOverview(data) {
   const managers = managerMap(data);
   const bottom = data.summary.bottom_entry_ids.map((id) => managers.get(id)).filter(Boolean);
   const primary = bottom[0];
-  const atRisk = data.managers.filter((manager) => manager.status !== "safe");
+  const atRisk = data.managers.filter((manager) => manager.status === "can_finish_last");
+  const unchecked = data.managers.filter((manager) => ["unresolved", "no_modelled_path"].includes(manager.status));
   const safe = data.managers.filter((manager) => manager.status === "safe");
   const names = bottom.map((manager) => manager.manager_name).join(" & ");
   const teams = bottom.map((manager) => manager.team_name).join(" · ");
@@ -318,10 +334,15 @@ function renderOverview(data) {
       </div>
     </article>
     <section class="section-block" aria-labelledby="risk-heading">
-      <div class="section-header"><div><h2 id="risk-heading">Still at risk</h2><p>Open a manager for their core condition and example routes to last.</p></div><span class="count-badge">${atRisk.length}</span></div>
-      <div class="risk-grid">${atRisk.map((manager, index) => overviewRiskCard(manager, index, data)).join("")}</div>
+      <div class="section-header"><div><h2 id="risk-heading">Can finish last</h2><p>Verified examples, checked against every manager in the league.</p></div><span class="count-badge">${atRisk.length}</span></div>
+      <div class="risk-grid">${atRisk.length ? atRisk.map((manager, index) => overviewRiskCard(manager, index, data)).join("") : emptyState("No verified routes yet", "Being outside the SAFE group does not by itself prove a route to last. See the checks below.")}</div>
     </section>
     ${safeOverview(safe)}
+    ${unchecked.length ? `<details class="safe-section" data-card="unverified" ${atRisk.length ? "" : "open"}>
+      <summary><span>Not ruled safe · routes unverified</span><span class="count-badge">${unchecked.length}</span></summary>
+      <p class="fine-print">These managers are not proven able to finish last. Unresolved means a search is pending or limited; No modelled path means the bounded outcome list found none. Neither means SAFE.</p>
+      <div class="risk-grid">${unchecked.map((manager, index) => overviewRiskCard(manager, atRisk.length ? -1 : index, data)).join("")}</div>
+    </details>` : ""}
   `;
 }
 
@@ -350,14 +371,13 @@ function overviewRiskCard(manager, index, data) {
   let scenarioContent;
   if (scenarios.length) {
     scenarioContent = `<div class="scenario-list">${scenarios.map((scenario) => scenarioCard(scenario, manager)).join("")}</div>`;
-  } else if (data.summary.scenario_search_state === "broad") {
-    scenarioContent = emptyState("Too many routes to summarise yet", "Use Differentials now; focused scenarios will become useful as fixtures finish.");
+  } else if (data.summary.scenario_search_state === "broad" && !manager.search.loaded && !manager.search.loading && !manager.search.error) {
+    scenarioContent = emptyState("Many players still remain", "Generate three focused examples for this manager, or use Differentials to explore the wider picture. Other contributions follow explicit baselines.");
   } else if (manager.status === "no_modelled_path") {
     scenarioContent = emptyState("No modelled path found", "The bounded event vocabulary was exhausted. This is not the same as SAFE.");
   } else {
     scenarioContent = pendingScenarioState(manager);
   }
-  const canLoadMore = manager.search.error || (scenarios.length && !manager.search.exhausted && (manager.search.requested_count || 3) < 12);
   return `
     <details class="risk-card" data-card="risk-${manager.entry_id}" ${index === 0 && data.league.phase !== "early" ? "open" : ""}>
       <summary>
@@ -368,7 +388,7 @@ function overviewRiskCard(manager, index, data) {
         <div class="risk-facts"><span class="stat-chip">${manager.bottom_gap ? `+${manager.bottom_gap} from bottom` : "At the bottom"}</span>${manager.transfer_cost ? `<span class="stat-chip">−${manager.transfer_cost} hit</span>` : ""}</div>
         ${conditionBox(manager)}
         ${scenarioContent}
-        ${canLoadMore ? `<button class="show-more" type="button" data-manager="${manager.entry_id}">${manager.search.error ? "Retry scenarios" : "Show more scenarios"}</button>` : ""}
+        ${scenarioControls(manager)}
         ${manager.scenarios.length ? '<p class="fine-print">These are examples, not an exhaustive list of every valid route.</p>' : ""}
       </div>
     </details>`;
@@ -412,8 +432,8 @@ function renderScenarioView(data) {
   let list;
   if (scenarios.length) {
     list = `<div class="scenario-list">${scenarios.map((scenario) => scenarioCard(scenario, selected)).join("")}</div>`;
-  } else if (data.summary.scenario_search_state === "broad") {
-    list = emptyState("Scenario space is still broad", "Use the Differentials view until more fixtures have finished.");
+  } else if (data.summary.scenario_search_state === "broad" && !selected.search.loaded && !selected.search.loading && !selected.search.error) {
+    list = emptyState("Many players still remain", "Generate focused examples below. Other player contributions will follow explicit baselines; Differentials shows the wider picture.");
   } else if (selected.status === "no_modelled_path") {
     list = emptyState("No modelled path", "The bounded vocabulary found no route. The manager is not marked SAFE.");
   } else {
@@ -428,7 +448,7 @@ function renderScenarioView(data) {
     </div>
     ${conditionBox(selected)}
     ${list}
-    ${selected.search.error || (scenarios.length && !selected.search.exhausted && (selected.search.requested_count || 3) < 12) ? `<button class="show-more" type="button" data-manager="${selected.entry_id}">${selected.search.error ? "Retry scenarios" : "Show more scenarios"}</button>` : ""}
+    ${scenarioControls(selected)}
     ${scenarios.length ? `<p class="fine-print">Other valid routes may exist. ${escapeHtml(data.model.scenario_vocabulary_note)}</p>` : ""}
   `;
   populateComparison(data);
@@ -439,9 +459,31 @@ function conditionBox(manager) {
 }
 
 function pendingScenarioState(manager) {
-  if (manager.search.error) return emptyState("Scenarios unavailable", "Scores remain available. Retry the scenario request below.");
+  if (manager.search.error) return emptyState("Scenarios unavailable", manager.search.error);
+  if (manager.search.loading) return emptyState("Finding distinct scenarios…", "Checking final points against the whole league.");
   if (!manager.search.loaded) return emptyState("Checking scenario routes…", "Scores and practical safety checks are ready. Examples load next.");
   return emptyState("Unresolved", "No concise route was found within the bounded search. This does not mean SAFE.");
+}
+
+function scenarioControls(manager) {
+  const search = manager.search;
+  const more = !search.exhausted && (search.requested_count || 3) < 12;
+  const label = search.expiredSource ? "Refresh scores" : search.error ? "Retry scenarios" : !search.loaded ? "Generate 3 scenarios" : "Show more scenarios";
+  return `${search.shortfall_note ? `<p class="fine-print">${escapeHtml(search.shortfall_note)}</p>` : ""}
+    ${search.assumptions_note ? `<p class="fine-print">${escapeHtml(search.assumptions_note)}</p>` : ""}
+    ${search.error || !search.loaded || more ? `<button class="show-more" type="button" data-manager="${manager.entry_id}" ${search.loading ? "disabled" : ""}>${search.loading ? "Finding scenarios…" : label}</button>` : ""}`;
+}
+
+function availabilityDetails(player) {
+  const context = player.availability;
+  if (!context) return "";
+  const stats = [context.season_starts != null ? `${context.season_starts} season starts` : "Starts unavailable",
+    context.season_minutes != null ? `${context.season_minutes} season minutes` : "",
+    context.price_millions != null ? `£${context.price_millions.toFixed(1)}m` : ""].filter(Boolean).join(" · ");
+  return `<details class="availability-details"><summary>${escapeHtml(context.label)}</summary>
+    <p>${escapeHtml(stats)}</p>${context.news ? `<p>${escapeHtml(context.news)}</p>` : ""}
+    ${context.fpl_chance_of_playing != null ? `<p>FPL chance of playing: ${context.fpl_chance_of_playing}% (not chance of starting).</p>` : ""}
+    <p>${escapeHtml(context.note)}</p></details>`;
 }
 
 function scenarioCard(scenario, manager) {
@@ -450,6 +492,11 @@ function scenarioCard(scenario, manager) {
     <article class="scenario-card">
       <div class="scenario-top"><strong>Scenario ${scenario.rank}</strong><span class="plausibility">${escapeHtml(scenario.plausibility)}</span></div>
       <p>${escapeHtml(scenario.description)}</p>
+      <details class="scenario-context"><summary>All outcomes & playing-time context</summary><p class="fine-print">${escapeHtml(scenario.context_note || "")}</p>
+        <ul>${scenario.events.map((event) => `<li>${escapeHtml(event.player_name)} ${escapeHtml(event.description)} (${event.points_delta >= 0 ? "+" : ""}${event.points_delta} points from here).</li>`).join("")}</ul>
+        <p class="fine-print">A no-appearance route means zero minutes, not just missing the starting XI. Before kick-off, injury flags and season starts/minutes affect ranking; price has only a small supporting weight. These are not confirmed lineups or probabilities.</p>
+        ${scenario.events.filter((event, index, events) => events.findIndex((other) => other.player_id === event.player_id) === index).map((event) => `<div><strong>${escapeHtml(event.player_name)}</strong>${availabilityDetails(event)}</div>`).join("")}
+      </details>
       <div class="scenario-footer"><span>Bottom scores: ${scores}</span><button class="copy-button" type="button" data-copy-manager="${manager.entry_id}" data-copy-rank="${scenario.rank}">Copy</button></div>
     </article>`;
 }
@@ -523,7 +570,7 @@ function renderDifferentials(data) {
         const exposure = new Map(player.exposures.map((item) => [item.entry_id, item]));
         const fixtures = player.fixtures.map((fixture) => `${fixture.finished ? "Finished vs" : fixture.started ? "Live vs" : "Not started vs"} ${fixture.opponent}`).join(" · ");
         return `<tr>
-          <td class="player-cell"><strong>${escapeHtml(player.player_name)}</strong><span>${escapeHtml(player.team_name)} · ${player.position}</span></td>
+          <td class="player-cell"><strong>${escapeHtml(player.player_name)}</strong><span>${escapeHtml(player.team_name)} · ${player.position}</span>${availabilityDetails(player)}</td>
           <td><span class="fixture-copy ${player.fixture_status === "live" ? "fixture-live" : ""}">${escapeHtml(fixtures)}${player.has_double_gameweek_remaining ? " · DGW" : ""}</span></td>
           <td>${player.current_points} pts<br><span class="fixture-copy">${player.minutes} min</span></td>
           ${ids.map((id) => { const item = exposure.get(id); const value = item?.multiplier || 0; return `<td><span class="multiplier ${value ? "active" : ""}">${value}×</span>${item?.note ? `<br><span class="fixture-copy">${escapeHtml(item.note)}</span>` : ""}</td>`; }).join("")}
@@ -572,7 +619,7 @@ function squadRow(player) {
     bench_boost: "Bench Boost",
   }[player.autosub_status] || "";
   return `<tr>
-    <td class="player-cell"><strong>${escapeHtml(player.player_name)} ${flags ? `<span class="player-flags">${flags}</span>` : ""}</strong><span>${escapeHtml(player.team_name)} · ${player.position}</span></td>
+    <td class="player-cell"><strong>${escapeHtml(player.player_name)} ${flags ? `<span class="player-flags">${flags}</span>` : ""}</strong><span>${escapeHtml(player.team_name)} · ${player.position}</span>${availabilityDetails(player)}</td>
     <td>${role}${autosub ? `<br><span class="autosub-note">${autosub}</span>` : ""}${player.captaincy_status ? `<br><span class="autosub-note">${escapeHtml(player.captaincy_status)}</span>` : ""}${player.conditional_exposure ? `<br><span class="autosub-note">${escapeHtml(player.conditional_exposure)}</span>` : ""}</td>
     <td>${player.official_points ?? "Unavailable"}</td><td>${player.minutes ?? "Unavailable"}</td><td>${escapeHtml(state)}</td>
   </tr>`;
@@ -658,7 +705,8 @@ function bindDynamicControls() {
     button.onclick = () => {
       appState.selectedManager = Number(button.dataset.manager);
       const manager = appState.data.managers.find((item) => item.entry_id === appState.selectedManager);
-      const count = Math.min(12, (manager.search.requested_count || 3) + (manager.search.error ? 0 : 3));
+      if (manager.search.expiredSource) { loadAnalysis({ background: true }); return; }
+      const count = !manager.search.loaded ? 3 : Math.min(12, (manager.search.requested_count || 3) + (manager.search.error ? 0 : 3));
       button.disabled = true;
       button.textContent = "Finding more…";
       loadManagerScenarios(manager.entry_id, count);
@@ -829,6 +877,8 @@ elements.scenarioManager.addEventListener("change", () => {
   renderScenarioView(appState.data);
   bindDynamicControls();
   updateUrl();
+  const manager = appState.data.managers.find((item) => item.entry_id === appState.selectedManager);
+  if (manager && !manager.search.loaded && appState.data.summary.scenario_search_state !== "broad") loadManagerScenarios(manager.entry_id, 3);
 });
 elements.compareA.addEventListener("change", () => renderComparison(appState.data));
 elements.compareB.addEventListener("change", () => renderComparison(appState.data));
