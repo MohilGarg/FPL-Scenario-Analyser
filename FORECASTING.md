@@ -41,11 +41,12 @@ and [bonus changes](https://www.premierleague.com/en/news/4679946/).
   priors. Goal priors are GK .003, DEF .06, MID .20, FWD .35 per 90; assist priors are .005, .07,
   .15, .10. These are transparent starter priors, not evidence of calibration. Goal times are
   shared; a scorer must be on the pitch, and an assist cannot go to that same player. Unowned
-  roster members contribute an anonymous allocation weight. Sparse rosters also retain an
-  anonymous teammate allowance.
+  roster members contribute an anonymous allocation weight scaled to the remaining on-field
+  slots. A fully owned eleven cannot acquire an additional anonymous scorer.
 * Appearances: starts divided by observed team matches, shrunk by four matches towards .8,
   with official availability percentages applied. Without history, .8 is used. Starting owned
-  players receive sampled 55/60/70/80/90-minute windows. Non-starters can make short late cameos.
+  outfield players receive sampled 55/60/70/80/90-minute windows. Starting goalkeepers receive
+  90 minutes unless minutes are explicitly selected. Non-starters can make short late cameos.
   Windows allow at most eleven simultaneous owned players and one goalkeeper per team.
   Anonymous teammates fill the remaining positions; this is not a verified starting-lineup model.
 * Clean sheets and conceded deductions: shared goals affect players present at that goal's time.
@@ -57,10 +58,14 @@ and [bonus changes](https://www.premierleague.com/en/news/4679946/).
 * Live substitution uncertainty: public explanations do not supply on/off timestamps. Players
   whose minutes trail the observed clock by more than two are conservatively held at their current
   minutes. This can understate the involvement of a player who came on earlier and remains active.
-  Incompatible forced events are rejected rather than silently extending such a player's minutes.
+  The exact solver uses the same conservative assumption, preserving the player's points without
+  capping later opposition goals. In the explorer, explicitly selected final minutes can state
+  that an active live substitute continues playing; a red-carded player cannot be extended.
 * Bonus: a shared performance-weighted 3/2/1 approximation, including unowned competitors. It
   uses goals, assists, clean sheets and a random residual. It does **not** reproduce Opta BPS or
-  BPS ties. Previously awarded live bonus is provisional and can change in the same fixture.
+  BPS ties. Anonymous competitors vary with the modelled participating owned players rather than
+  adding four fictitious competitors to a fully owned match. This still approximates anonymous
+  substitutions and performance. Previously awarded live bonus is provisional and can change.
 * Saves and defensive actions: Poisson rates from observed season totals with five-match priors
   (GK three saves, DEF seven defensive actions, MID/FWD five). DC awards cap at two per match at
   the official 10/12 thresholds. Yellow cards use an observed rate shrunk towards .14 per 90.
@@ -94,8 +99,10 @@ Decisive players compare mean effective exposure across the sampled bottom conte
 possible autosubs and vice-captain handover. Their indicative swing is the 10th–90th percentile
 remaining-player range multiplied by that exposure spread. The model also reports association
 between above-average player returns and sampled last place; this is explicitly not a causal or
-necessary condition. Fixture leverage is a ranking heuristic; a player's aggregate DGW range
-can appear in both of their remaining fixture rankings.
+necessary condition. Fixture leverage uses each fixture's separate score contributions and
+exposure differences within the bottom contest, avoiding repeated aggregate DGW ranges.
+Beneficiary membership uses entry IDs, so duplicate manager names do not change attribution.
+Higher/lower exposure groups compare with the contest average and cannot overlap.
 
 ## Scenario Explorer
 
@@ -108,6 +115,14 @@ The model enforces selected player returns exactly, raises team goal totals as n
 distinct assists coherently and resamples other events. A goal plus assist by one player requires
 two team goals. Scorelines cannot erase recorded goals. Completed results cannot be changed.
 Contradictory conditions yield an actionable 422 response and the interface retains the baseline.
+Maximum matching pairs forced scorers and assisters with shared playing windows. Unspecified
+attacking-player windows are restricted to permit selected late assists; explicit disjoint windows
+are rejected before sampling when the selected score cannot support separate goals. Equivalent
+condition orders and reordered managers produce identical seeded samples. Each team, separately,
+can have up to five explicitly selected substitute appearances.
+Overview shortcuts preselect the player, fixture and goal/blank/clean-sheet event in the explorer.
+Minute limits come from Python's fixture clock; a live cameo defaults to a duration that fits the
+remaining time, and a player who has already featured cannot be selected as a new substitute.
 
 These are **forced-event model comparisons**, not calibrated Bayesian probabilities conditional
 on an event occurring. Other outcomes remain sampled. Same seed and sample count reduce some
@@ -137,7 +152,10 @@ unresolved; projections and simulation still use the correct scoring.
 Use `gameweek` for a selected event and `demo` for an existing deterministic demo. The source
 generation is mandatory. In-memory sources are retained for at least ten minutes; expired sources
 return 409 and require refresh. Forecast cache keys include source, tie rule, count and conditions.
-Locks coalesce concurrent identical computations; cache responses are deep copies. Forecast cache
+Locks coalesce concurrent identical summaries and forecasts; cache responses are deep copies. Parsed
+states are reused within retained generations. Within a simulation, legal multipliers are reused
+for each manager's identical appearance/minute presence patterns, with points still scored afresh.
+Forecast cache
 holds at most 64 payloads. One backend worker shares these caches. There is no new hosting service,
 database, persistent-disk requirement or paid dependency. POST is now allowed by CORS.
 On Windows, API retrieval automatically uses system curl when present to avoid an observed
@@ -156,14 +174,23 @@ real gameweeks at several times, then save their official final snapshot:
 
 ```powershell
 python -m fpl_forfeit.evaluation record YOUR_LEAGUE_ID --directory snapshots
-python -m fpl_forfeit.evaluation replay snapshots/league-...-input.json --samples 1600
-fpl-forfeit YOUR_LEAGUE_ID --save-snapshot snapshots/final.json --expected-managers 0
-python -m fpl_forfeit.evaluation evaluate --final snapshots/final.json snapshots/league-...-forecast.json
+# Repeat record later during the same Gameweek, then compare the saved forecasts:
+python -m fpl_forfeit.evaluation timeline snapshots/first-forecast.json snapshots/second-forecast.json --output snapshots/timeline.json
+python -m fpl_forfeit.evaluation replay snapshots/league-...-input.json --samples 1600 --output snapshots/replayed.json
+python -m fpl_forfeit.evaluation final YOUR_LEAGUE_ID --gameweek 6 --directory snapshots
+python -m fpl_forfeit.evaluation evaluate --final snapshots/league-...-final-input.json snapshots/first-forecast.json snapshots/second-forecast.json --output snapshots/evaluation.json
 ```
 
 Record filenames include real UTC source time, league and Gameweek. The evaluator requires an
 official final event, matching league/Gameweek, all current members and forecasts recorded before
-final retrieval. It reports mean binary Brier score per manager, clipped binary log loss, score
-error and reliability bins. Repeated snapshots of one Gameweek are correlated; assessment across
+final retrieval. Version 2 records also include forecast creation time, input checksum, model version,
+seed, assumptions, coverage and explicit recorded/replay provenance. Evaluation requires creation
+within ten minutes of the captured source and before final retrieval. Replays and legacy records
+without recording evidence are excluded; they remain useful for reproducibility, not proof of an
+earlier prediction. It reports pooled and per-snapshot binary Brier/log loss, score error and
+reliability bins. Timeline comparisons require matching league, event, model, membership and tie
+rule. Repeated snapshots of one Gameweek are correlated; assessment across
 many independent gameweeks is required before any calibration claim. Raw snapshots stay ignored
 by Git. The existing `--snapshot` and `--save-snapshot` CLI paths remain available.
+
+See [VALIDATION.md](VALIDATION.md) for measured tests, timings, official-data coverage and data readiness.

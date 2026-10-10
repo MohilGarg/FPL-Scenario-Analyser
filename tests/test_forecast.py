@@ -614,4 +614,7 @@ class EvaluationTests(unittest.TestCase):
 
     def test_replay_records_are_reproducible(self):
         state = fixture_state(5)
-        self.assertEqual(prediction_record(state, samples=30), prediction_record(state, samples=30))
+        first, second = prediction_record(state, samples=30), prediction_record(state, samples=30)
+        first.pop("recorded_at")
+        second.pop("recorded_at")
+        self.assertEqual(first, second)

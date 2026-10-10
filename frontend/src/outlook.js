@@ -3,7 +3,8 @@ window.ForfeitOutlook = (() => {
   let baseline = null;
   let modified = null;
   let conditions = [];
-  let error = "";
+  let forecastError = "";
+  let scenarioError = "";
   let loading = false;
   let scenarioLoading = false;
   let controller = null;
@@ -11,7 +12,9 @@ window.ForfeitOutlook = (() => {
   let revision = 0;
   let fixtureId = null;
   let playerId = null;
+  let teamId = null;
   let kind = "goal";
+  let resetDraft = false;
   const pct = (value) => value == null ? "Pending" : `${(100 * value).toFixed(1)}%`;
   const signed = (value) => `${value > 0 ? "+" : ""}${Number(value).toFixed(1)}`;
   const shortNames = (names) => names.length > 2 ? `${names.slice(0,2).join(", ")} and ${names.length-2} others` : names.join(", ");
@@ -37,7 +40,8 @@ window.ForfeitOutlook = (() => {
   async function start(data, generation) {
     cancel();
     baseline = data.outlook || null;
-    modified = null; conditions = []; error = "";
+    modified = null; conditions = []; forecastError = ""; scenarioError = "";
+    fixtureId = null; playerId = null; teamId = null; kind = "goal";
     scenarioLoading = false;
     loading = data.league.status !== "complete";
     refresh();
@@ -49,7 +53,7 @@ window.ForfeitOutlook = (() => {
       baseline = payload;
     } catch (failure) {
       if (generation !== appState.generation) return;
-      error = failure.name === "AbortError" ? "Risk estimation timed out. Projections remain available; refresh to retry." : failure.message;
+      forecastError = failure.name === "AbortError" ? "Risk estimation timed out. Projections remain available; refresh to retry." : failure.message;
     } finally {
       if (generation === appState.generation) { loading = false; refresh(); }
     }
@@ -85,7 +89,7 @@ window.ForfeitOutlook = (() => {
       <article class="outlook-headline"><span>Projected bottom</span><strong>${h(projected || "Unavailable")}</strong><small>Model mean final score · includes uncertain appearances</small></article>
       <article class="outlook-headline"><span>Highest estimated risk</span><strong>${high ? `${h(lookup.get(high.entry_id)?.manager_name)} · ${pct(high.last_probability)}` : loading ? "Estimating risk…" : "Risk unavailable"}</strong><small>${baseline?.state === "ready" ? `${baseline.simulations.toLocaleString()} shared-fixture samples · uncalibrated model` : "Point projections available while risk loads"}</small></article>
     </div>
-    ${error ? `<p class="outlook-message" role="status">${h(error)}</p>` : ""}
+    ${forecastError ? `<p class="outlook-message" role="status">${h(forecastError)}</p>` : ""}
     <section class="section-block"><div class="section-header"><div><h2>The forfeit outlook</h2><p>Confirmed points and estimated final scores, side by side. Select a manager for their squad and exposure.</p></div></div>
       <div class="battle-grid">${battle.slice(0,4).map(m=>{
         const r=rowLookup.get(m.entry_id);
@@ -108,7 +112,7 @@ window.ForfeitOutlook = (() => {
       </details>
     </section>
     <section class="section-block"><div class="section-header"><div><h2>What can decide last place?</h2><p>Effective exposure across the bottom contest, including captaincy and pending substitutions.</p></div><button type="button" class="secondary-button" data-explore>Explore an outcome</button></div>
-      <div class="decisive-grid">${decisive.slice(0,5).map((p) => `<article class="decisive-card"><span class="table-note">${h(p.team_name)} · ${p.status === "live" ? "Playing" : "Yet to play"}</span><h3>${h(p.player_name)}</h3><strong>~${p.swing_points} point swing</strong><p>A strong return helps ${h(shortNames(p.strong_performance_helps))}. No further attacking return helps ${h(shortNames(p.blank_helps))}.</p><details><summary>Why this matters</summary><p>${h(p.explanation)}</p><p>Higher exposure: ${h(p.strong_performance_helps.join(", "))}. Lower exposure: ${h(p.blank_helps.join(", "))}.</p><p>${h(p.association_note)}</p></details><button type="button" class="text-button" data-explore-player="${p.player_id}" data-explore-fixture="${p.fixture_ids[0]}">Test a performance</button></article>`).join("") || '<p class="fine-print">No substantial remaining differential appears in these samples. Pending absences can still affect effective exposures; inspect Managers.</p>'}</div>
+      <div class="decisive-grid">${decisive.slice(0,5).map((p) => `<article class="decisive-card"><span class="table-note">${h(p.team_name)} · ${p.status === "live" ? "Fixture live" : "Yet to play"}</span><h3>${h(p.player_name)}</h3><strong>~${p.swing_points} point swing</strong><p>A strong return helps ${h(shortNames(p.strong_performance_helps))}. A smaller return favours ${h(shortNames(p.blank_helps))}.</p><details><summary>Why this matters</summary><p>${h(p.explanation)}</p><p>Higher exposure: ${h(p.strong_performance_helps.join(", "))}. Lower exposure: ${h(p.blank_helps.join(", "))}.</p><p>${h(p.association_note)}</p></details><div class="decisive-actions">${[["goal","Goal"],["blank","Blank"],...(["GK","DEF","MID"].includes(p.position) ? [["clean_sheet","Clean sheet"]] : [])].map(([event,label])=>`<button type="button" class="text-button" data-explore-player="${p.player_id}" data-explore-fixture="${p.fixture_ids[0]}" data-explore-kind="${event}" data-explore-team="${p.team_id}">Test ${label.toLowerCase()}</button>`).join("")}</div></article>`).join("") || '<p class="fine-print">No substantial remaining differential appears in these samples. Pending absences can still affect effective exposures; inspect Managers.</p>'}</div>
       <div class="fixture-strip">${(baseline?.important_fixtures || []).map((f) => `<span>${h(f.label)} · ${h(f.status)}</span>`).join("")}</div>
     </section>${assumptions()}`;
   }
@@ -116,8 +120,8 @@ window.ForfeitOutlook = (() => {
   function managerFacts(manager) {
     const r = rows().get(manager.entry_id);
     if (!r || baseline?.state === "complete") return "";
-    const helps = (baseline.decisive_players || []).filter((p) => p.strong_performance_helps.includes(manager.manager_name));
-    const hurts = (baseline.decisive_players || []).filter((p) => p.blank_helps.includes(manager.manager_name));
+    const helps = (baseline.decisive_players || []).filter((p) => p.strong_performance_helps_entry_ids?.includes(manager.entry_id));
+    const hurts = (baseline.decisive_players || []).filter((p) => p.blank_helps_entry_ids?.includes(manager.entry_id));
     return `<div class="manager-outlook"><div class="manager-facts">
       <div class="manager-fact"><span>Projected final</span><strong>${r.projected_score.toFixed(1)}</strong></div>
       <div class="manager-fact"><span>Estimated last-place chance</span><strong>${pct(r.last_probability)}</strong></div>
@@ -140,24 +144,29 @@ window.ForfeitOutlook = (() => {
     const player = fixture.players.find((p) => p.player_id === playerId) || fixture.players[0];
     playerId = player?.player_id || null;
     const currentForm = document.querySelector("#what-if-form");
-    const sameForm = currentForm && Number(currentForm.querySelector("#what-if-fixture")?.value) === fixtureId && currentForm.querySelector("#what-if-kind")?.value === kind;
+    const sameForm = !resetDraft && currentForm && Number(currentForm.querySelector("#what-if-fixture")?.value) === fixtureId && currentForm.querySelector("#what-if-kind")?.value === kind;
+    resetDraft = false;
     const draftValue = (id, fallback) => h(sameForm ? currentForm.querySelector(id)?.value ?? fallback : fallback);
     const teamKind = ["clean_sheet", "lose_clean_sheet"].includes(kind);
     const scoreKind = kind === "score";
+    const maxMinutes = kind === "substitute" ? player?.maximum_substitute_minutes ?? 90 : player?.maximum_final_minutes ?? 90;
+    const minMinutes = kind === "minutes" ? Math.max(1, player?.minutes || 0) : 1;
+    const minutesKind = ["minutes","substitute"].includes(kind);
+    const unavailable = minutesKind && maxMinutes < minMinutes;
     const result = modified || baseline;
     const lookup = managerMap(data);
     return `<section class="explorer-panel"><div class="view-heading"><div><p class="kicker">Try the football events that matter</p><h2>Scenario Explorer</h2><p>Combine outcomes and compare the estimated final table with the unmodified baseline.</p></div></div>
       <form id="what-if-form" class="explorer-controls">
         <label>Fixture<select id="what-if-fixture">${catalog.map((f) => `<option value="${f.fixture_id}" ${f.fixture_id === fixtureId ? "selected" : ""}>${h(f.label)}${f.started ? " · Live" : ""}</option>`).join("")}</select></label>
         <label>Outcome<select id="what-if-kind">${[["goal","Scores a goal"],["assist","Gets an assist"],["blank","No further goals / assists"],["dnp","Does not appear"],["clean_sheet","Team clean sheet"],["lose_clean_sheet","Team concedes"],["substitute","Comes on as a substitute"],["minutes","Final playing minutes (advanced)"],["score","Final match score (advanced)"]].map(([k,label]) => `<option value="${k}" ${kind === k ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-        ${teamKind ? `<label>Team<select id="what-if-team"><option value="${fixture.home_team_id}">${h(fixture.home_team_name)}</option><option value="${fixture.away_team_id}" ${draftValue("#what-if-team",fixture.home_team_id) === String(fixture.away_team_id) ? "selected" : ""}>${h(fixture.away_team_name)}</option></select></label>` : scoreKind ? `<label>Home goals<input id="what-if-home" type="number" min="0" max="15" value="${draftValue("#what-if-home",2)}" required></label><label>Away goals<input id="what-if-away" type="number" min="0" max="15" value="${draftValue("#what-if-away",1)}" required></label>` : `<label>Player<select id="what-if-player">${fixture.players.map((p)=>`<option value="${p.player_id}" ${p.player_id === playerId ? "selected" : ""}>${h(p.name)}</option>`).join("")}</select></label>`}
-        ${["goal","assist","minutes","substitute"].includes(kind) ? `<label>${["minutes","substitute"].includes(kind) ? "Final fixture minutes" : "Further returns"}<input id="what-if-value" type="number" min="1" max="${["minutes","substitute"].includes(kind) ? "90" : "6"}" value="${draftValue("#what-if-value",["minutes","substitute"].includes(kind) ? 20 : 1)}" required></label>` : ""}
-        <button class="primary-button" type="submit" ${conditions.length >= 12 ? "disabled" : ""}>Add condition</button>
+        ${teamKind ? `<label>Team<select id="what-if-team">${[[fixture.home_team_id,fixture.home_team_name],[fixture.away_team_id,fixture.away_team_name]].map(([id,name])=>`<option value="${id}" ${String(teamId ?? draftValue("#what-if-team",fixture.home_team_id)) === String(id) ? "selected" : ""}>${h(name)}</option>`).join("")}</select></label>` : scoreKind ? `<label>Home goals<input id="what-if-home" type="number" min="0" max="15" value="${draftValue("#what-if-home",2)}" required></label><label>Away goals<input id="what-if-away" type="number" min="0" max="15" value="${draftValue("#what-if-away",1)}" required></label>` : `<label>Player<select id="what-if-player">${fixture.players.map((p)=>`<option value="${p.player_id}" ${p.player_id === playerId ? "selected" : ""}>${h(p.name)}</option>`).join("")}</select></label>`}
+        ${["goal","assist","minutes","substitute"].includes(kind) ? `<label>${minutesKind ? "Final fixture minutes" : "Further returns"}<input id="what-if-value" type="number" min="${minutesKind ? minMinutes : 1}" max="${minutesKind ? maxMinutes : 6}" value="${draftValue("#what-if-value",minutesKind ? Math.max(minMinutes,Math.min(20,maxMinutes)) : 1)}" ${unavailable ? "disabled" : ""} required></label>` : ""}
+        <button class="primary-button" type="submit" ${conditions.length >= 12 || unavailable ? "disabled" : ""}>Add condition</button>
       </form>
-      <p class="fine-print">A blank still earns appearance and other points. Selected goals/assists are additional from now; the fixture score and team clean sheets update together. Advanced minutes apply to this fixture only, including Double Gameweeks.</p>
+      <p class="fine-print">${unavailable ? "This player has already featured or has no time left for the selected appearance. Choose another player or event. " : ""}A blank still earns appearance and other points. Selected goals/assists are additional from now; the fixture score and team clean sheets update together. Advanced minutes apply to this fixture only, including Double Gameweeks.</p>
       <ul class="condition-list">${conditions.map((c,i) => `<li>${h(c.label || conditionLabel(c,fixture,catalog))}<button type="button" class="text-button" data-remove-condition="${i}" aria-label="Remove condition ${i+1}">Remove</button></li>`).join("")}</ul>
       <div class="inline-actions">${conditions.length ? '<button type="button" class="secondary-button" data-reset-conditions>Reset scenario</button>' : ""}<span role="status" aria-live="polite">${scenarioLoading ? "Recalculating shared outcomes…" : conditions.length && modified ? "Conditional estimate ready" : "Unmodified baseline"}</span></div>
-      ${error ? `<p class="outlook-message" role="alert">${h(error)}</p>` : ""}
+      ${scenarioError ? `<p class="outlook-message" role="alert">${h(scenarioError)}</p>` : ""}
       ${modified ? `<p class="condition-box">Projected bottom: ${h(modified.projected_bottom_entry_ids.map(id=>lookup.get(id)?.manager_name).join(" & "))}. ${modified.projected_last_entry_ids.length ? "" : "No sole projected last under the strict tie rule. "}${h(modified.comparison_note || "")}</p>` : ""}
       ${result ? `<div class="table-wrap"><table class="outlook-table"><thead><tr><th>Manager</th><th>Live</th><th>${modified ? "Scenario" : "Baseline"} mean final</th><th>Point change</th><th>Last-place estimate</th><th>Risk change</th></tr></thead><tbody>${result.managers.map((r) => `<tr><th>${h(lookup.get(r.entry_id)?.manager_name)}</th><td>${r.current_score}</td><td>${r.projected_score.toFixed(1)}</td><td>${r.score_change == null ? "—" : signed(r.score_change)}</td><td>${pct(r.last_probability)}</td><td>${r.risk_change == null ? "—" : `${signed(100*r.risk_change)} pp`}</td></tr>`).join("")}</tbody></table></div>` : ""}
       <p class="fine-print">Conditional estimates sample the other players and fixtures; they are not a fixed final result or a necessary route to last place. Invalid conditions show an explanation and leave the baseline visible.</p>
@@ -173,7 +182,7 @@ window.ForfeitOutlook = (() => {
   async function recalculate() {
     scenarioController?.abort();
     const localRevision = ++revision;
-    modified = null; error = "";
+    modified = null; scenarioError = "";
     if (!conditions.length) { scenarioLoading = false; refresh(); return; }
     scenarioLoading = true; refresh();
     scenarioController = new AbortController();
@@ -188,7 +197,7 @@ window.ForfeitOutlook = (() => {
       modified = payload; conditions = payload.conditions;
     } catch (failure) {
       if (localRevision !== revision || generation !== appState.generation) return;
-      error = failure.name === "AbortError" ? "Scenario calculation timed out. Remove a condition or refresh to retry." : failure.message;
+      scenarioError = failure.name === "AbortError" ? "Scenario calculation timed out. Remove a condition or refresh to retry." : failure.message;
     } finally {
       if (localRevision === revision && generation === appState.generation) { scenarioLoading = false; refresh(); }
     }
@@ -204,9 +213,10 @@ window.ForfeitOutlook = (() => {
     conditions.push(c); recalculate();
   });
   document.addEventListener("change", (event) => {
-    if (event.target.id === "what-if-fixture") { fixtureId = Number(event.target.value); playerId = null; refresh(); }
+    if (event.target.id === "what-if-fixture") { fixtureId = Number(event.target.value); playerId = null; teamId = null; refresh(); }
+    if (event.target.id === "what-if-team") teamId = Number(event.target.value);
     if (event.target.id === "what-if-kind") { kind = event.target.value; refresh(); }
-    if (event.target.id === "what-if-player") playerId = Number(event.target.value);
+    if (event.target.id === "what-if-player") { playerId = Number(event.target.value); refresh(); }
   });
   document.addEventListener("click", (event) => {
     const button = event.target.closest("button");
@@ -214,7 +224,7 @@ window.ForfeitOutlook = (() => {
     if (button.hasAttribute("data-remove-condition")) { conditions.splice(Number(button.dataset.removeCondition),1); recalculate(); }
     if (button.hasAttribute("data-reset-conditions")) { conditions=[]; recalculate(); }
     if (button.hasAttribute("data-explore") || button.hasAttribute("data-explore-player")) {
-      if (button.dataset.explorePlayer) { playerId=Number(button.dataset.explorePlayer); fixtureId=Number(button.dataset.exploreFixture); kind="goal"; }
+      if (button.dataset.explorePlayer) { playerId=Number(button.dataset.explorePlayer); fixtureId=Number(button.dataset.exploreFixture); kind=button.dataset.exploreKind || "goal"; teamId=Number(button.dataset.exploreTeam) || null; resetDraft=true; }
       activateView("scenarios"); refresh(); document.querySelector("#explorer-content").scrollIntoView({block:"start"});
     }
     if (button.hasAttribute("data-open-manager")) {

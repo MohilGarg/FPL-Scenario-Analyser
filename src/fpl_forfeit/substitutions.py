@@ -135,8 +135,11 @@ def score_manager(
     players: Mapping[int, Player],
     scores: Mapping[int, ElementScore],
     team_complete: Mapping[int, bool],
+    *,
+    multipliers: Mapping[int, int] | None = None,
 ) -> int:
-    multipliers = effective_multipliers(manager, players, scores, team_complete)
+    if multipliers is None:
+        multipliers = effective_multipliers(manager, players, scores, team_complete)
     gross = sum(
         scores[player_id].points * multiplier for player_id, multiplier in multipliers.items()
     )

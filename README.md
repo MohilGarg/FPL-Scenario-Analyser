@@ -132,6 +132,7 @@ See [FORECASTING.md](FORECASTING.md) for the projection/simulation assumptions, 
 API contract, caching, known limitations and real-snapshot evaluation commands. These are initial
 uncalibrated estimates: a sampled zero chance is never a safety proof. Official awarded points,
 chips, captaincy, legal autosubs and hits remain the scoring foundation for every layer.
+See [VALIDATION.md](VALIDATION.md) for the measured audit, fixes, data coverage and remaining gaps.
 
 ## Architecture
 

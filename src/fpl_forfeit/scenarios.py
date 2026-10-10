@@ -101,6 +101,7 @@ def outcome_catalog(
     *,
     stats: Mapping[str, int] | None = None,
     remaining_minutes: int | None = None,
+    off_field: bool = False,
 ) -> tuple[Outcome, ...]:
     """Small, explicit outcome vocabulary for one player in one unfinished fixture.
 
@@ -108,6 +109,12 @@ def outcome_catalog(
     deliberately bounded: it produces useful late-Gameweek examples, not a probability model.
     """
 
+    if fixture.started and off_field:
+        # Later team goals cannot revoke an ordinary substituted player's clean
+        # sheet or cause new conceded deductions. This explicit baseline adds no
+        # fixture-wide goal cap and preserves already awarded categories.
+        return (Outcome(player.id, fixture.id, "no further points; assumed off the pitch",
+                        0, 0, 0, baseline=True),)
     if fixture.started:
         values = _live_outcomes(player, fixture, current)
         if remaining_minutes is not None:

@@ -100,6 +100,9 @@ def build_variables(
             ),
             stats=state.fixture_stats.get((player_id, fixture.id)) if fixture.started else None,
             remaining_minutes=max(0, 90 - clock) if fixture.started else None,
+            off_field=(fixture.started
+                       and 0 < state.fixture_minutes.get((player_id, fixture.id), 0) < clock-2
+                       and not state.fixture_stats.get((player_id, fixture.id), {}).get("red_cards")),
         )
         if fixture.started:
             clock = max(

@@ -715,6 +715,8 @@ footer a { color: var(--muted); }
 .decisive-card h3 { margin: .6rem 0; }
 .decisive-card p, .decisive-card details { font-size: .85rem; line-height: 1.6; }
 .decisive-card > .text-button { margin-top: .8rem; }
+.decisive-actions { display: flex; gap: .7rem; flex-wrap: wrap; margin-top: .8rem; }
+.decisive-actions .text-button { min-height: 44px; text-align: left; }
 .fixture-strip { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
 .fixture-strip > span { background: var(--surface); padding: .6rem .8rem; border-radius: 6px; border: 1px solid var(--line); font-size: .8rem; }
 .forecast-assumptions { margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--line); border-radius: 8px; font-size: .85rem; line-height: 1.7; }

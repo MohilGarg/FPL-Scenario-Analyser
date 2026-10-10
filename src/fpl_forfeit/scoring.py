@@ -42,7 +42,7 @@ def event_points(position: Position, stats: Mapping[str, int]) -> int:
             if position in (Position.GOALKEEPER, Position.DEFENDER)
             else 0
         )
-        + stats.get("saves", 0) // 3
+        + (stats.get("saves", 0) // 3 if position == Position.GOALKEEPER else 0)
         + 5 * stats.get("penalties_saved", 0)
         - 2 * stats.get("penalties_missed", 0)
         - stats.get("yellow_cards", 0)
@@ -59,7 +59,12 @@ def event_points(position: Position, stats: Mapping[str, int]) -> int:
     )
 
 
-def final_manager_scores(state: LeagueState, scores: Mapping[int, ElementScore]) -> dict[int, int]:
+def final_manager_scores(
+    state: LeagueState,
+    scores: Mapping[int, ElementScore],
+    *,
+    multipliers: Mapping[int, Mapping[int, int]] | None = None,
+) -> dict[int, int]:
     if state.event_final:
         return {
             m.entry_id: m.official_points - m.transfer_cost
@@ -68,7 +73,16 @@ def final_manager_scores(state: LeagueState, scores: Mapping[int, ElementScore])
             for m in state.managers
         }
     complete = {p.team_id: True for p in state.players.values()}
-    return {m.entry_id: score_manager(m, state.players, scores, complete) for m in state.managers}
+    return {
+        m.entry_id: score_manager(
+            m,
+            state.players,
+            scores,
+            complete,
+            multipliers=multipliers.get(m.entry_id) if multipliers else None,
+        )
+        for m in state.managers
+    }
 
 
 def last_ids(scores: Mapping[int, float], allow_tied_last: bool = True) -> tuple[int, ...]:

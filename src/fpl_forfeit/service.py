@@ -10,7 +10,16 @@ from .api import FPLClient, FPLGameweekUnavailable, FPLNotFoundError, state_from
 from .cache import TTLCache
 from .comparison import compare_managers
 from .demo import DemoMode, demo_state
-from .forecast import DEFAULT_SAMPLES, DEFAULT_SEED, Condition, ScenarioConflict, outlook
+from .forecast import (
+    DEFAULT_SAMPLES,
+    DEFAULT_SEED,
+    Condition,
+    FixtureModel,
+    ScenarioConflict,
+    canonical_conditions,
+    outlook,
+)
+from .models import LeagueState
 from .settings import AnalysisSettings
 from .state import current_standings
 
@@ -37,6 +46,10 @@ class AnalysisService:
         self._analyses: TTLCache[tuple, dict[str, Any]] = TTLCache(ttl, max_items=64)
         self._demos: TTLCache[tuple, dict[str, Any]] = TTLCache(ttl, max_items=16)
         self._fetch_locks = tuple(Lock() for _ in range(16))
+        self._analysis_locks = tuple(Lock() for _ in range(16))
+        self._states: TTLCache[tuple, LeagueState] = TTLCache(
+            max(ttl, SCENARIO_SOURCE_TTL_SECONDS), max_items=32
+        )
         self._outlooks: TTLCache[tuple, dict[str, Any]] = TTLCache(
             max(ttl, SCENARIO_SOURCE_TTL_SECONDS), max_items=64
         )
@@ -98,20 +111,36 @@ class AnalysisService:
             response = copy.deepcopy(cached)
             response["cache"] = {"hit": True, "ttl_seconds": self._snapshots.ttl_seconds}
             return response
-        state = state_from_snapshot(snapshot)
-        if candidate_id is not None and not any(m.entry_id == candidate_id for m in state.managers):
-            raise FPLNotFoundError("That manager is not in this league")
-        result = analysis_to_dict(
-            analyse_state(
-                state, settings, include_scenarios=include_scenarios, candidate_id=candidate_id
+        with self._analysis_locks[hash(cache_key) % len(self._analysis_locks)]:
+            cached = self._analyses.get(cache_key)
+            if cached is not None:
+                response = copy.deepcopy(cached)
+                response["cache"] = {"hit": True, "ttl_seconds": self._snapshots.ttl_seconds}
+                return response
+            state = self._state(snapshot, gameweek)
+            if candidate_id is not None and not any(
+                m.entry_id == candidate_id for m in state.managers
+            ):
+                raise FPLNotFoundError("That manager is not in this league")
+            result = analysis_to_dict(
+                analyse_state(
+                    state, settings, include_scenarios=include_scenarios, candidate_id=candidate_id
+                )
             )
-        )
-        result["cache"] = {
-            "hit": snapshot_cache_hit,
-            "ttl_seconds": self._snapshots.ttl_seconds,
-        }
-        self._analyses.set(cache_key, result)
+            result["cache"] = {
+                "hit": snapshot_cache_hit,
+                "ttl_seconds": self._snapshots.ttl_seconds,
+            }
+            self._analyses.set(cache_key, result)
         return copy.deepcopy(result)
+
+    def _state(self, snapshot: dict[str, Any], gameweek: int | None) -> LeagueState:
+        key = (snapshot["league_id"], gameweek, snapshot.get("fetched_at"))
+        state = self._states.get(key)
+        if state is None:
+            state = state_from_snapshot(snapshot)
+            self._states.set(key, state)
+        return state
 
     def analyse_demo(
         self,
@@ -160,7 +189,7 @@ class AnalysisService:
                 snapshot = self.client.fetch_snapshot(
                     league_id, gameweek=gameweek, max_entries=self.max_league_entries
                 )
-            state = state_from_snapshot(snapshot)
+            state = self._state(snapshot, gameweek)
         managers = {m.entry_id: m for m in state.managers}
         if a not in managers or b not in managers:
             raise FPLNotFoundError("Choose managers from this league")
@@ -195,10 +224,20 @@ class AnalysisService:
                 raise FPLGameweekUnavailable(
                     "This scores update expired. Refresh before exploring outcomes."
                 )
-            state = state_from_snapshot(snapshot)
         if len(conditions) > 12:
             raise ScenarioConflict("Use at most twelve conditions in one scenario.")
+        conditions = canonical_conditions(conditions)
         key = (league_id, gameweek, demo, source, allow_tied_last, conditions, samples)
+        cached = self._outlooks.get(key)
+        if cached is not None:
+            response = copy.deepcopy(cached)
+            response["cache"] = {"hit": True}
+            return response
+        if not demo:
+            state = self._state(snapshot, gameweek)
+        # Reject contradictory input before spending time on a missing baseline.
+        if conditions:
+            FixtureModel(state, conditions)
         baseline = (
             self.forecast(
                 league_id,

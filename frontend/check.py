@@ -26,6 +26,12 @@ def main() -> None:
         help="Also check candidate scenario loading for a live league",
     )
     parser.add_argument(
+        "--phase-leagues",
+        type=int,
+        nargs=3,
+        help="Local validation league IDs with five, three and one fixture remaining",
+    )
+    parser.add_argument(
         "--browser-executable",
         default=(
             r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
@@ -139,7 +145,25 @@ def main() -> None:
         )
         assert "Projected bottom" in page.locator(".outlook-headlines").inner_text()
         assert page.locator(".decisive-card").count() > 0
+        for kind in ("goal", "blank", "clean_sheet"):
+            page.locator("#tab-overview").click()
+            button = page.locator(f".decisive-card [data-explore-kind='{kind}']").first
+            player_id = button.get_attribute("data-explore-player")
+            fixture_id = button.get_attribute("data-explore-fixture")
+            team_id = button.get_attribute("data-explore-team")
+            button.click()
+            assert page.locator("#what-if-kind").input_value() == kind
+            assert page.locator("#what-if-fixture").input_value() == fixture_id
+            if kind == "clean_sheet":
+                assert page.locator("#what-if-team").input_value() == team_id
+            else:
+                assert page.locator("#what-if-player").input_value() == player_id
+            assert page.locator(".condition-list li").count() == 0
         page.locator("#tab-scenarios").click()
+        page.locator("#what-if-fixture").select_option(
+            str(page.evaluate("appState.data.outlook.catalog[0].fixture_id"))
+        )
+        page.locator("#what-if-kind").select_option("goal")
         page.locator("#what-if-player").select_option("9001")
         page.locator("#what-if-form button[type=submit]").click()
         page.wait_for_function(
@@ -157,6 +181,9 @@ def main() -> None:
         page.locator("#what-if-form button[type=submit]").click()
         page.locator("#explorer-content [role=alert]").wait_for()
         assert "cannot blank" in page.locator("#explorer-content [role=alert]").inner_text()
+        page.locator("#tab-overview").click()
+        assert page.locator("#overview-content .outlook-message[role=status]").count() == 0
+        page.locator("#tab-scenarios").click()
         page.locator("[data-remove-condition='2']").click()
         page.wait_for_function(
             "document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')"
@@ -178,6 +205,49 @@ def main() -> None:
         assert page.evaluate(
             "appState.data.managers.find(m => m.search.loaded).search.assumptions_note"
         )
+        page.route(
+            "**/outlook?**",
+            lambda route: route.fulfill(
+                status=503,
+                content_type="application/json",
+                body='{"detail":"Temporary risk service error"}',
+            ),
+        )
+        page.goto(args.url + "/?demo=early")
+        page.locator("#analysis:not(.hidden)").wait_for()
+        page.wait_for_function(
+            "document.querySelector('.outlook-message')?.textContent.includes('Temporary risk service error')"
+        )
+        assert "Projected bottom" in page.locator(".outlook-headlines").inner_text()
+        assert page.locator(".battle-card").count() > 0
+        assert "Projected" in page.locator(".battle-card").first.inner_text()
+        page.unroute("**/outlook?**")
+        page.locator("#refresh-button").click()
+        page.wait_for_function(
+            "document.querySelector('.outlook-headlines').textContent.includes('shared-fixture samples')"
+        )
+        assert page.locator(".outlook-message[role=status]").count() == 0
+        for remaining, league_id in zip((5, 3, 1), args.phase_leagues or (), strict=False):
+            page.goto(args.url + f"/?league={league_id}")
+            page.locator("#analysis:not(.hidden)").wait_for()
+            page.wait_for_function(
+                "document.querySelector('.outlook-headlines').textContent.includes('shared-fixture samples')"
+            )
+            assert page.locator(".battle-card").count() > 0
+            assert page.locator(".decisive-card").count() > 0
+            for width in (320, 390, 1440):
+                page.set_viewport_size({"width": width, "height": 900})
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (
+                    remaining,
+                    width,
+                )
+            page.screenshot(path=str(output / f"{remaining}-fixtures-overview.png"), full_page=True)
+            page.locator(".decisive-card [data-explore-kind=goal]").first.click()
+            page.locator("#what-if-form button[type=submit]").click()
+            page.wait_for_function(
+                "document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')"
+            )
+            assert page.locator("#explorer-content .outlook-table tbody tr").count() == 12
         if args.scenario_league:
             page.goto(args.url + f"/?league={args.scenario_league}&view=scenarios")
             page.locator("#analysis:not(.hidden)").wait_for(timeout=120_000)
@@ -290,7 +360,7 @@ def main() -> None:
             assert "league=" not in page.url
         assert not errors, errors
         print(
-            f"Browser checks passed: neutral home (new/recent visitor), input parsing, five views at 320/390/1440px, themes, outlook, combined what-ifs/conflicts/reset, comparison, manager-only show more, completed UX. Analytics league: {args.league}. Scenario league: {args.scenario_league}. Screenshots: {output}"
+            f"Browser checks passed: neutral home (new/recent visitor), input parsing, five views at 320/390/1440px, themes, outlook, combined what-ifs/conflicts/reset, comparison, manager-only show more, completed UX, event shortcuts and error recovery. Phase leagues: {args.phase_leagues}. Analytics league: {args.league}. Scenario league: {args.scenario_league}. Screenshots: {output}"
         )
         browser.close()
 

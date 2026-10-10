@@ -18,7 +18,7 @@ from .scoring import event_points, final_manager_scores, last_ids
 from .state import current_standings
 from .substitutions import effective_multipliers
 
-MODEL_VERSION = "shared-fixtures-v1"
+MODEL_VERSION = "shared-fixtures-v2"
 DEFAULT_SEED = 20261010
 OVERVIEW_SAMPLES = 96
 DEFAULT_SAMPLES = 1600
@@ -50,6 +50,24 @@ class Condition:
     value: int = 1
     home_goals: int | None = None
     away_goals: int | None = None
+
+
+def canonical_conditions(conditions: tuple[Condition, ...]) -> tuple[Condition, ...]:
+    """Equivalent conjunctions consume random values and use caches identically."""
+    return tuple(
+        sorted(
+            conditions,
+            key=lambda c: (
+                c.fixture_id,
+                c.kind,
+                c.player_id or 0,
+                c.team_id or 0,
+                c.value,
+                -1 if c.home_goals is None else c.home_goals,
+                -1 if c.away_goals is None else c.away_goals,
+            ),
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,17 +138,33 @@ def _rates(player: Player) -> PlayerRates:
     )
 
 
+def fixture_clock(state: LeagueState, fixture: Fixture) -> int:
+    if not fixture.started:
+        return 0
+    observed = max(
+        (
+            minutes
+            for (pid, fid), minutes in state.fixture_minutes.items()
+            if fid == fixture.id
+            and pid in state.players
+            and fixture.involves(state.players[pid].team_id)
+        ),
+        default=0,
+    )
+    return min(90, max(fixture.elapsed_minutes or 0, observed))
+
+
 class FixtureModel:
     def __init__(self, state: LeagueState, conditions: tuple[Condition, ...] = ()) -> None:
         self.state = state
         self.owned = {p.player_id for m in state.managers for p in m.picks}
-        self.players = {pid: state.players[pid] for pid in self.owned}
+        self.players = {pid: state.players[pid] for pid in sorted(self.owned)}
         self.rates = {pid: _rates(p) for pid, p in state.players.items()}
         self.fixtures = tuple(f for f in state.fixtures if not f.finished and not state.event_final)
         self.by_fixture = {f.id: f for f in self.fixtures}
         self.rules: dict[int, dict[tuple[str, int], Condition]] = defaultdict(dict)
-        self.conditions = conditions
-        for c in conditions:
+        self.conditions = canonical_conditions(conditions)
+        for c in self.conditions:
             self._add(c)
         self._validate()
         self.clock = {f.id: self._clock(f) for f in self.fixtures}
@@ -150,19 +184,18 @@ class FixtureModel:
             for team in (f.home_team_id, f.away_team_id)
             for kind in ("goal", "assist")
         }
+        self.unowned_starts = {
+            (f.id, team): sum(
+                self.rates[p.id].start
+                for p in state.players.values()
+                if p.team_id == team and p.id not in self.owned
+            )
+            for f in self.fixtures
+            for team in (f.home_team_id, f.away_team_id)
+        }
 
     def _clock(self, f: Fixture) -> int:
-        if not f.started:
-            return 0
-        observed = max(
-            (
-                self.state.fixture_minutes.get((p.id, f.id), 0)
-                for p in self.state.players.values()
-                if f.involves(p.team_id)
-            ),
-            default=0,
-        )
-        return min(90, max(f.elapsed_minutes or 0, observed))
+        return fixture_clock(self.state, f)
 
     def _add(self, c: Condition) -> None:
         f = self.by_fixture.get(c.fixture_id)
@@ -213,6 +246,8 @@ class FixtureModel:
                 minutes = self.state.fixture_minutes.get((p.id, f.id), 0)
                 if ("dnp", p.id) in rules and (
                     minutes
+                    or old.get("yellow_cards")
+                    or old.get("red_cards")
                     or any(
                         (kind, p.id) in rules
                         for kind in ("goal", "assist", "minutes", "substitute")
@@ -236,9 +271,17 @@ class FixtureModel:
                 if f.started and any(
                     (kind, p.id) in rules for kind in ("goal", "assist", "minutes", "substitute")
                 ):
-                    if old.get("red_cards") or (minutes and minutes < clock - 2):
+                    confirmed_future = forced and forced.value > minutes
+                    if old.get("red_cards") or (minutes and minutes < clock - 2 and not forced):
                         raise ScenarioConflict(
-                            f"{p.name} is sent off or has no confirmed future involvement in this feed."
+                            f"{p.name} is sent off or has no confirmed future involvement in this feed. "
+                            "For an active substitute, set final fixture minutes explicitly."
+                        )
+                    if any((kind, p.id) in rules for kind in ("goal", "assist")) and (
+                        minutes and minutes < clock - 2 and not confirmed_future
+                    ):
+                        raise ScenarioConflict(
+                            f"{p.name} needs some selected future minutes to add a return."
                         )
                     if clock >= 90:
                         raise ScenarioConflict("No regulation time remains for additional events.")
@@ -281,24 +324,101 @@ class FixtureModel:
                     raise ScenarioConflict(
                         "The final score cannot erase existing goals or omit selected attacking events."
                     )
+                potential = {
+                    p.id: self._potential_window(f, p.id)
+                    for p in self.players.values()
+                    if p.team_id == team
+                }
+                needed = len(self._return_pairs(f, team, potential))
+                if fixed is not None and fixed - current < needed:
+                    raise ScenarioConflict(
+                        "The selected score needs more goals to allow distinct scorers and "
+                        "assisters with overlapping playing minutes."
+                    )
                 required = {
                     pid
                     for (kind, pid) in rules
                     if kind in {"goal", "assist", "minutes", "substitute"}
                     and self.players[pid].team_id == team
                 }
+                for t in {a for a, _ in potential.values()}:
+                    active = [pid for pid in required if potential[pid][0] <= t < potential[pid][1]]
+                    if (
+                        len(active) > 11
+                        or sum(self.players[pid].position == Position.GOALKEEPER for pid in active)
+                        > 1
+                    ):
+                        raise ScenarioConflict(
+                            "Selected players cannot coexist in the modelled lineup."
+                        )
                 if (
-                    len(required) > 11
-                    or sum(self.players[pid].position == Position.GOALKEEPER for pid in required)
-                    > 1
+                    sum(
+                        kind == "substitute" and self.players[pid].team_id == team
+                        for kind, pid in rules
+                    )
+                    > 5
                 ):
                     raise ScenarioConflict(
-                        "Selected players cannot all participate in the modelled lineup."
+                        "Use at most five specified substitute appearances per team."
                     )
-            if sum(kind == "substitute" for kind, _ in rules) > 5:
-                raise ScenarioConflict(
-                    "This model allows at most five specified substitute appearances per fixture."
-                )
+
+    def _potential_window(self, f: Fixture, pid: int) -> tuple[int, int]:
+        """Widest permitted window for deterministic condition validation."""
+        rules, clock = self.rules[f.id], self._clock(f)
+        minutes = self.state.fixture_minutes.get((pid, f.id), 0)
+        cameo = rules.get(("substitute", pid))
+        forced = rules.get(("minutes", pid))
+        if cameo:
+            return 90 - cameo.value, 90
+        if forced:
+            start = max(0, clock - minutes) if minutes else (90 - forced.value if f.started else 0)
+            return start, start + forced.value
+        return (max(0, clock - minutes) if minutes else clock), 90
+
+    def _return_pairs(
+        self,
+        f: Fixture,
+        team: int,
+        windows: dict[int, tuple[int, int]],
+    ) -> list[tuple[int | None, int | None]]:
+        goals = [
+            pid
+            for (kind, pid), c in self.rules[f.id].items()
+            if kind == "goal" and self.players[pid].team_id == team
+            for _ in range(c.value)
+        ]
+        assists = [
+            pid
+            for (kind, pid), c in self.rules[f.id].items()
+            if kind == "assist" and self.players[pid].team_id == team
+            for _ in range(c.value)
+        ]
+        matched: dict[int, int] = {}
+        clock = self._clock(f)
+
+        def augment(g: int, visited: set[int]) -> bool:
+            scorer = goals[g]
+            for a, assister in enumerate(assists):
+                if (
+                    a in visited
+                    or scorer == assister
+                    or max(clock, windows[scorer][0], windows[assister][0])
+                    >= min(windows[scorer][1], windows[assister][1])
+                ):
+                    continue
+                visited.add(a)
+                if a not in matched or augment(matched[a], visited):
+                    matched[a] = g
+                    return True
+            return False
+
+        for g in range(len(goals)):
+            augment(g, set())
+        goal_matches = {g: a for a, g in matched.items()}
+        return [
+            (pid, assists[goal_matches[g]] if g in goal_matches else None)
+            for g, pid in enumerate(goals)
+        ] + [(None, pid) for a, pid in enumerate(assists) if a not in matched]
 
     def _windows(self, f: Fixture, team: int, rng: random.Random) -> dict[int, tuple[int, int]]:
         rules, clock = self.rules[f.id], self.clock[f.id]
@@ -345,6 +465,8 @@ class FixtureModel:
                 if cameo:
                     start, end = 90 - cameo.value, 90
                 windows[p.id] = (start, end)
+            elif cameo:
+                windows[p.id] = (90 - cameo.value, 90)
             elif p.id in required or rng.random() < self.rates[p.id].start:
                 starters.append(p)
             else:
@@ -359,7 +481,20 @@ class FixtureModel:
             starters = starters[:11]
             for p in starters:
                 forced = rules.get(("minutes", p.id))
-                end = forced.value if forced else rng.choice((90, 90, 90, 80, 70, 60, 55))
+                choices = (
+                    (90,) if p.position == Position.GOALKEEPER else (90, 90, 90, 80, 70, 60, 55)
+                )
+                if any((kind, p.id) in rules for kind in ("goal", "assist")):
+                    latest_start = max(
+                        (
+                            self._potential_window(f, pid)[0]
+                            for (kind, pid) in rules
+                            if kind in {"goal", "assist"} and self.players[pid].team_id == team
+                        ),
+                        default=0,
+                    )
+                    choices = tuple(t for t in choices if t > latest_start)
+                end = forced.value if forced else rng.choice(choices)
                 cameo = rules.get(("substitute", p.id))
                 windows[p.id] = (90 - cameo.value, 90) if cameo else (0, end)
             # Anonymous teammates occupy the remaining eleven slots. A reserve replaces
@@ -427,11 +562,25 @@ class FixtureModel:
         ]
         weights = [getattr(self.rates[pid], kind) for pid in ids]
         # In synthetic/sparse rosters missing players still account for goals/assists.
-        anonymous = max(
-            0.05,
-            self.unowned_weights[(f.id, team, kind)],
-            (11 - len(ids)) * (0.10 if kind == "goal" else 0.07),
+        active = sum(
+            a <= minute < b for pid, (a, b) in windows.items() if self.players[pid].team_id == team
         )
+        sent_off = sum(
+            bool(self.state.fixture_stats.get((p.id, f.id), {}).get("red_cards"))
+            for p in self.team_players[(f.id, team)]
+        )
+        slots = max(0, 11 - sent_off - active)
+        anonymous = max(
+            self.unowned_weights[(f.id, team, kind)]
+            * min(1, slots / max(1, self.unowned_starts[(f.id, team)])),
+            slots * (0.10 if kind == "goal" else 0.07),
+        )
+        if not ids and not anonymous:
+            if kind == "assist":
+                return None
+            raise ScenarioConflict(
+                "No eligible goalscorer is on the pitch for the selected events."
+            )
         return rng.choices(ids + [None], weights=weights + [anonymous], k=1)[0]
 
     def sample_fixture(self, f: Fixture, rng: random.Random) -> FixtureSample:
@@ -443,36 +592,7 @@ class FixtureModel:
             (f.home_team_id, f.away_team_id, f.home_score or 0, True),
             (f.away_team_id, f.home_team_id, f.away_score or 0, False),
         ):
-            forced_goals = [
-                pid
-                for (kind, pid), c in rules.items()
-                if kind == "goal" and self.players[pid].team_id == team
-                for _ in range(c.value)
-            ]
-            forced_assists = [
-                pid
-                for (kind, pid), c in rules.items()
-                if kind == "assist" and self.players[pid].team_id == team
-                for _ in range(c.value)
-            ]
-            # Pair returns with distinct teammates when possible; an anonymous teammate
-            # can always supply a goal/assist when the only selected player is excluded.
-            pairs: list[tuple[int | None, int | None]] = []
-            for scorer in forced_goals:
-                assist = next(
-                    (
-                        pid
-                        for pid in forced_assists
-                        if pid != scorer
-                        and max(windows[pid][0], windows[scorer][0], clock)
-                        < min(windows[pid][1], windows[scorer][1])
-                    ),
-                    None,
-                )
-                if assist is not None:
-                    forced_assists.remove(assist)
-                pairs.append((scorer, assist))
-            pairs.extend((None, pid) for pid in forced_assists)
+            pairs = self._return_pairs(f, team, windows)
             score = rules.get(("score", 0))
             fixed = (score.home_goals if home else score.away_goals) if score else None
             cs = ("clean_sheet", opponent) in rules
@@ -568,7 +688,8 @@ class FixtureModel:
             for pid, s in stats.items()
             if s["minutes"] > 0
         ]
-        merit.extend((None, rng.random() * 12 + 3) for _ in range(4))
+        anonymous_competitors = max(0, 22 - len(merit))
+        merit.extend((None, rng.random() * 12 + 3) for _ in range(anonymous_competitors))
         for bonus, (pid, _) in zip((3, 2, 1), sorted(merit, key=lambda x: -x[1])):
             if pid is not None:
                 stats[pid]["bonus"] = bonus
@@ -625,13 +746,34 @@ def outlook(
     totals: dict[int, list[int]] = {m.entry_id: [] for m in state.managers}
     counted = {m.entry_id: 0 for m in state.managers}
     outright, tied = counted.copy(), counted.copy()
-    player_points: dict[int, list[int]] = {pid: [] for pid in model.owned}
+    remaining = {
+        pid for pid in model.owned if state.unfinished_fixtures_for_team(state.players[pid].team_id)
+    }
+    player_points: dict[int, list[int]] = {pid: [] for pid in remaining}
+    fixture_points = {
+        f.id: {pid: [] for pid in remaining if f.involves(state.players[pid].team_id)}
+        for f in model.fixtures
+    }
     exposures: dict[int, dict[int, float]] = {pid: defaultdict(float) for pid in model.owned}
+    complete = {p.team_id: True for p in state.players.values()}
+    multiplier_cache: dict[int, dict[tuple[int, int], dict[int, int]]] = {
+        m.entry_id: {} for m in state.managers
+    }
     bottom_samples: list[tuple[int, ...]] = []
     n = samples if model.fixtures else 1
     for _ in range(n):
-        scores, _fixtures = model.draw(rng)
-        final = final_manager_scores(state, scores)
+        scores, fixtures = model.draw(rng)
+        resolved = {}
+        for m in state.managers:
+            appearance = sum(1 << i for i, p in enumerate(m.picks) if scores[p.player_id].appeared)
+            minutes = sum(1 << i for i, p in enumerate(m.picks) if scores[p.player_id].minutes > 0)
+            key = (appearance, minutes)
+            cached = multiplier_cache[m.entry_id].get(key)
+            if cached is None:
+                cached = effective_multipliers(m, state.players, scores, complete)
+                multiplier_cache[m.entry_id][key] = cached
+            resolved[m.entry_id] = cached
+        final = final_manager_scores(state, scores, multipliers=resolved)
         bottom = last_ids(final)
         selected = last_ids(final, allow_tied_last)
         bottom_samples.append(selected)
@@ -640,11 +782,20 @@ def outlook(
             counted[entry] += entry in selected
             outright[entry] += entry in bottom and len(bottom) == 1
             tied[entry] += entry in bottom and len(bottom) > 1
-        for pid in model.owned:
+        for pid in remaining:
             player_points[pid].append(scores[pid].points - state.live_scores[pid].points)
-        complete = {p.team_id: True for p in state.players.values()}
+        for f in fixtures:
+            for pid, values in fixture_points[f.fixture_id].items():
+                stats = f.stats.get(pid)
+                old = state.fixture_stats.get((pid, f.fixture_id), {})
+                values.append(
+                    event_points(state.players[pid].position, stats)
+                    - event_points(state.players[pid].position, old)
+                    if stats
+                    else 0
+                )
         for m in state.managers:
-            multipliers = effective_multipliers(m, state.players, scores, complete)
+            multipliers = resolved[m.entry_id]
             for pid, multiplier in multipliers.items():
                 exposures[pid][m.entry_id] += multiplier / n
     means = {entry: fmean(values) for entry, values in totals.items()}
@@ -722,14 +873,14 @@ def outlook(
         if allow_tied_last or len(projected_bottom) == 1
         else [],
         "decisive_players": _decisive(state, model, rows, player_points, exposures, bottom_samples),
-        "important_fixtures": _important_fixtures(state, model, player_points, exposures),
+        "important_fixtures": _important_fixtures(state, model, fixture_points, exposures, rows),
         "assumptions": ASSUMPTIONS,
         "coverage": {
             "remaining_owned_players_using_priors": missing,
             "live_player_breakdowns_missing_and_frozen": live_missing,
             "team_history_available": bool(state.team_goal_rates),
         },
-        "conditions": [condition_payload(state, c) for c in conditions],
+        "conditions": [condition_payload(state, c) for c in model.conditions],
         "catalog": catalog(state),
     }
 
@@ -775,23 +926,31 @@ def _decisive(
             if high and low
             else {}
         )
-        max_exposure = max(multipliers)
+        average_exposure = fmean(multipliers)
         beneficiaries = [
-            names[e] for e in contenders if exposure[pid].get(e, 0) > min(multipliers) + 0.05
+            names[e] for e in contenders if exposure[pid].get(e, 0) > average_exposure + 1e-9
         ]
         blank_beneficiaries = [
-            names[e] for e in contenders if exposure[pid].get(e, 0) < max_exposure - 0.05
+            names[e] for e in contenders if exposure[pid].get(e, 0) < average_exposure - 1e-9
         ]
         result.append(
             {
                 "player_id": pid,
                 "player_name": p.name,
+                "position": p.position.value,
+                "team_id": p.team_id,
                 "team_name": p.team_name,
                 "swing_points": round(swing, 1),
                 "expected_points_from_here": round(mean, 2),
                 "exposure_spread": round(spread, 2),
                 "strong_performance_helps": beneficiaries,
                 "blank_helps": blank_beneficiaries,
+                "strong_performance_helps_entry_ids": [
+                    e for e in contenders if exposure[pid].get(e, 0) > average_exposure + 1e-9
+                ],
+                "blank_helps_entry_ids": [
+                    e for e in contenders if exposure[pid].get(e, 0) < average_exposure - 1e-9
+                ],
                 "sampled_risk_association": {str(e): round(v, 3) for e, v in sensitivity.items()},
                 "association_note": "Observed association within shared-fixture samples; not a causal or necessary condition.",
                 "status": "live"
@@ -800,6 +959,7 @@ def _decisive(
                 "fixture_ids": [f.id for f in state.unfinished_fixtures_for_team(p.team_id)],
                 "explanation": f"{spread:.1f}× effective exposure difference across the bottom contest; "
                 f"about {swing:.1f} net points between the sampled 10th/90th percentiles. "
+                "Higher/lower exposure groups are compared with that contest's average. "
                 "Exposure averages include possible autosubs and vice-captain handover.",
             }
         )
@@ -809,19 +969,26 @@ def _decisive(
 def _important_fixtures(
     state: LeagueState,
     model: FixtureModel,
-    points: dict[int, list[int]],
+    points: dict[int, dict[int, list[int]]],
     exposure: dict[int, dict[int, float]],
+    rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    contenders = [
+        r["entry_id"]
+        for r in rows
+        if r["gap_from_projected_bottom"] <= 15 or (r["last_probability"] or 0) >= 0.01
+    ]
+    if len(contenders) < 2:
+        contenders = [r["entry_id"] for r in sorted(rows, key=lambda r: r["mean_score"])[:2]]
     result = []
     for f in model.fixtures:
         leverage = sum(
             (_quantile(values, 0.9) - _quantile(values, 0.1))
             * (
-                max(exposure[pid].values(), default=0)
-                - min((exposure[pid].get(m.entry_id, 0) for m in state.managers), default=0)
+                max((exposure[pid].get(e, 0) for e in contenders), default=0)
+                - min((exposure[pid].get(e, 0) for e in contenders), default=0)
             )
-            for pid, values in points.items()
-            if f.involves(state.players[pid].team_id)
+            for pid, values in points[f.id].items()
         )
         result.append(
             {
@@ -848,12 +1015,20 @@ def catalog(state: LeagueState) -> list[dict[str, Any]]:
             "away_team_name": f.away_team_name,
             "home_score": f.home_score or 0,
             "away_score": f.away_score or 0,
+            "remaining_minutes": 90 - fixture_clock(state, f),
             "players": [
                 {
                     "player_id": pid,
                     "name": state.players[pid].name,
                     "team_id": state.players[pid].team_id,
+                    "position": state.players[pid].position.value,
                     "minutes": state.fixture_minutes.get((pid, f.id), 0),
+                    "maximum_final_minutes": state.fixture_minutes.get((pid, f.id), 0)
+                    + 90
+                    - fixture_clock(state, f),
+                    "maximum_substitute_minutes": 0
+                    if state.fixture_minutes.get((pid, f.id), 0)
+                    else 90 - fixture_clock(state, f),
                 }
                 for pid in sorted(owned)
                 if f.involves(state.players[pid].team_id)
