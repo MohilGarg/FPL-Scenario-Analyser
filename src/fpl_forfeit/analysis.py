@@ -10,6 +10,7 @@ from .exposures import (
     effective_exposures,
     remaining_effective_multipliers,
 )
+from .forecast import OVERVIEW_SAMPLES, outlook
 from .models import Fixture, LeagueState, Manager, Pick
 from .safety import SafetyAssessment, assess_safety
 from .settings import AnalysisSettings
@@ -173,6 +174,12 @@ def analysis_to_dict(result: AnalysisResult) -> dict[str, Any]:
             ),
         },
         "managers": managers,
+        "outlook": outlook(
+            state,
+            samples=OVERVIEW_SAMPLES,
+            include_risk=False,
+            allow_tied_last=result.settings.allow_tied_last,
+        ),
         "differential_manager_ids": relevant_manager_ids,
         "differentials": [
             _differential_payload(
@@ -262,6 +269,7 @@ def _gameweek_payload(state: LeagueState, differential_count: int) -> dict[str, 
     return {
         "status": status,
         "phase": phase,
+        "results_final": state.event_final or bool(state.raw.get("historical")),
         "fixtures": {
             "total": len(state.fixtures),
             "finished": finished_count,
@@ -302,7 +310,9 @@ def _manager_payload(
     scoring_multipliers = effective_multipliers(
         manager, state.players, state.live_scores, state.team_complete()
     )
-    if state.raw.get("historical"):
+    if state.raw.get("historical") or (
+        state.event_final and any(pick.api_multiplier > 0 for pick in manager.picks)
+    ):
         multipliers = scoring_multipliers = {
             pick.player_id: pick.api_multiplier for pick in manager.picks
         }
@@ -343,11 +353,14 @@ def _manager_payload(
         "effective_score": effective_score,
         "official_points": official_points,
         "raw_official_points": effective_score + manager.transfer_cost,
-        "score_source": "official_final" if state.raw.get("historical") else "live_recalculation",
+        "score_source": "official_final"
+        if state.event_final or state.raw.get("historical")
+        else "live_recalculation",
         "score_notes": [
             "Effective score is counted player points minus transfer deductions.",
             "Autosubs must preserve a legal formation: 1 goalkeeper, at least 3 defenders, 2 midfielders and 1 forward.",
             "Zero-minute starters stay pending until all their Gameweek fixtures finish; vice-captain takeover also waits.",
+            "A zero-minute disciplinary appearance blocks an autosub; captain handover still follows the separate no-minutes rule.",
         ],
         "bottom_gap": effective_score - lowest_score,
         "transfer_cost": manager.transfer_cost,
@@ -418,6 +431,18 @@ def _manager_payload(
                 if search and search.truncated_players
                 else None
             ),
+            "limitations_note": (
+                "A zero-minute disciplinary appearance is counted in scoring, but this exact search's "
+                "presence vocabulary is incomplete for that case. The result remains UNRESOLVED."
+                if search
+                and any(
+                    state.live_scores[p.player_id].carded
+                    and state.live_scores[p.player_id].minutes == 0
+                    for m in state.managers
+                    for p in m.picks
+                )
+                else None
+            ),
         },
         "squad": squad,
     }
@@ -456,7 +481,7 @@ def _pick_payload(
         autosub_status = "subbed_in"
     elif not pick.is_starter and remaining and manager.active_chip != "bboost":
         autosub_status = "possible"
-    elif pick.is_starter and score.minutes == 0 and remaining:
+    elif pick.is_starter and not score.appeared and remaining:
         autosub_status = "pending"
 
     return {
@@ -552,8 +577,10 @@ def _scenario_payload(
     shown = meaningful + baseline_differentials
     if shown:
         description = "; ".join(
-            f"{state.players[outcome.player_id].name} {outcome.label}" for outcome in shown
+            f"{state.players[outcome.player_id].name} {outcome.label}" for outcome in shown[:3]
         )
+        if len(shown) > 3:
+            description += f"; plus {len(shown) - 3} further deciding outcomes (expand below)"
     else:
         description = "No special swing is needed; baseline outcomes leave them last"
     opponent_scores = [
@@ -577,7 +604,9 @@ def _scenario_payload(
         "plausibility_cost": scenario.plausibility_cost,
         "plausibility": _plausibility_label(scenario.plausibility_cost),
         "description": description,
-        "context_note": "Headline shows the deciding bottom-group differences. All other modelled contributions are listed in the details and included in the whole-league check.",
+        "condition_type": "sufficient_under_listed_assumptions",
+        "minimality_proven": False,
+        "context_note": "This is a sufficient example under the complete listed outcomes, not a necessary condition or a proven minimum. The exact solver's explicit appearance baselines are separate from the statistical projection. All outcomes are included in the whole-league check.",
         "candidate_final_score": candidate_score,
         "next_lowest_score": next_lowest,
         "bottom_scores": bottom_scores,

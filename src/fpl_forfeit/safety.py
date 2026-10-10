@@ -49,7 +49,10 @@ def conservative_score_bounds(
         )
         pending_lineup = any(
             pick.is_starter
-            and not state.live_scores[pick.player_id].appeared
+            and (
+                not state.live_scores[pick.player_id].appeared
+                or (pick.is_captain and state.live_scores[pick.player_id].minutes == 0)
+            )
             and state.unfinished_fixtures_for_team(state.players[pick.player_id].team_id)
             for pick in manager.picks
         )

@@ -60,8 +60,8 @@
         <p class="kicker">Your mini-league. The whole story.</p>
         <h1 id="page-title">Last place, explained.</h1>
         <p class="landing-copy">
-          See who can still finish bottom of your FPL mini-league, what needs to happen
-          for each manager to lose, and explore your league’s season analytics.
+          See the live bottom contest, projected final scores and estimated forfeit risks.
+          Explore football outcomes, or inspect your league’s separate season analytics.
         </p>
 
         <form id="league-form" class="league-form">
@@ -85,8 +85,8 @@
           <div id="recent-list"></div>
         </div>
         <div class="capabilities">
-          <article><span class="capability-number">01</span><h2>Live forfeit analysis</h2><p>Who is last, who is safe, and who can still finish bottom.</p></article>
-          <article><span class="capability-number">02</span><h2>Scenario analysis</h2><p>Realistic football outcomes that decide each manager’s route to last.</p></article>
+          <article><span class="capability-number">01</span><h2>Live forfeit outlook</h2><p>Confirmed scores, estimated risks and projected standings throughout the Gameweek.</p></article>
+          <article><span class="capability-number">02</span><h2>Scenario exploration</h2><p>Test goals, blanks and clean sheets together, then inspect exact routes late in the week.</p></article>
           <article><span class="capability-number">03</span><h2>League differentials</h2><p>Shared players, captaincy and the exposure that separates managers.</p></article>
           <article><span class="capability-number">04</span><h2>League analytics</h2><p>Gameweek history, captaincy, bench points, hits and your season in context.</p></article>
         </div>
@@ -147,11 +147,12 @@
         </section>
 
         <section id="view-scenarios" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-scenarios">
-          <div class="view-heading">
+          <div id="explorer-content"></div>
+          <div id="exact-heading" class="view-heading exact-heading">
             <div>
               <p class="kicker">Detailed routes to last</p>
-              <h2>Scenarios</h2>
-              <p>Examples are ranked by practical plausibility, not assigned fake probabilities.</p>
+              <h2>Exact Scenarios</h2>
+              <p>Verified sufficient examples under listed assumptions. Most useful with one or two fixtures left.</p>
             </div>
             <label class="select-field" for="scenario-manager">
               Manager
@@ -228,6 +229,7 @@
     <script src="./input.js"></script>
     <script src="./charts.js"></script>
     <script src="./analytics.js"></script>
+    <script src="./outlook.js"></script>
     <script src="./app.js" defer></script>
   </body>
 </html>

@@ -19,6 +19,17 @@ Historical enrichment uses up to two jobs and four concurrent FPL requests per A
 bounded in-memory caches are lost on restart; there is no persistent-disk or database requirement.
 Keep the existing single Uvicorn worker on the free service so requests share caches and progress.
 
+The forfeit outlook overhaul also uses this same architecture. Deploy frontend and backend together:
+the SPA now calls generation-bound `/outlook` and `POST /what-if` endpoints after the cheap summary.
+CORS allows GET and POST. No paid projection API or numerical dependency is required. The default
+is 96 overview samples followed by 1,600 cached/coalesced risk samples. Sources and forecasts stay
+in bounded in-memory caches; a restart expires sources and prompts a league refresh. Python still
+runs on the API host; GitHub Pages cannot execute simulation. See [FORECASTING.md](FORECASTING.md).
+
+Smoke-check `?demo=early`: risk cards and decisive players must load before any exact search. Open
+Scenarios, add a player goal and a team clean sheet, then remove/reset conditions. `?demo=complete`
+must suppress the explorer. Verify both palettes and the neutral root with no league query.
+
 ## 1. Deploy the FastAPI backend on Render
 
 1. Sign in at [dashboard.render.com](https://dashboard.render.com) using GitHub.
@@ -109,5 +120,10 @@ python -m http.server 8080 --directory frontend/dist
 ```
 
 Open `http://localhost:8080`.
+
+Windows uses the system `curl.exe` HTTPS transport automatically when available, with normal
+certificate verification and bounded timeouts. This avoids an OpenSSL process failure observed
+in the local Python runtime. Linux/Render keeps the standard-library urllib transport. Override
+with `FPL_HTTP_TRANSPORT=urllib` or `curl` if needed; no override is required for the existing host.
 
 Use `http://localhost:8080/?demo=late` for a deterministic end-to-end deployment check.

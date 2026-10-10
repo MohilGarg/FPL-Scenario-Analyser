@@ -37,7 +37,7 @@ def remaining_effective_multipliers(
         player = players[captain.player_id]
         if (
             multipliers[captain.player_id] > 0
-            and not scores[captain.player_id].appeared
+            and scores[captain.player_id].minutes == 0
             and not team_complete.get(player.team_id, False)
         ):
             # FPL does not apply captaincy to the live score until the player appears,
@@ -103,10 +103,10 @@ def conditional_exposure_notes(state: LeagueState) -> dict[int, dict[int, str]]:
             if (
                 pick.is_vice_captain
                 and captain
-                and not state.live_scores[captain.player_id].appeared
+                and state.live_scores[captain.player_id].minutes == 0
                 and state.unfinished_fixtures_for_team(state.players[captain.player_id].team_id)
             ):
                 notes[pick.player_id][manager.entry_id] = (
-                    "Possible vice-captain takeover if the captain never appears"
+                    "Possible vice-captain takeover if the captain plays no minutes"
                 )
     return dict(notes)

@@ -163,6 +163,20 @@ def demo_state(mode: DemoMode) -> LeagueState:
     fixture_minutes = (
         {(player_id, 701): 68 for player_id in (9001, 9002, 9003)} if mode == "live" else {}
     )
+    # Enrich the existing fixed live input with its per-fixture scoring categories.
+    # These are input events, not hard-coded projections or analysed results.
+    fixture_stats = {}
+    if mode == "live":
+        fixture_stats = {
+            (9001, 701): {"minutes": 68},
+            (9002, 701): {
+                "minutes": 68,
+                "clean_sheets": 1,
+                "defensive_contribution": 12,
+                "bonus": 1,
+            },
+            (9003, 701): {"minutes": 68, "clean_sheets": 1},
+        }
     return LeagueState(
         league_id=900000 + DEMO_MODES.index(mode),
         league_name=f"Demo League — {mode.title()} Gameweek",
@@ -173,6 +187,8 @@ def demo_state(mode: DemoMode) -> LeagueState:
         live_scores=scores,
         fetched_at=now,
         fixture_minutes=fixture_minutes,
+        fixture_stats=fixture_stats,
+        event_final=mode == "complete",
         raw={
             "demo_mode": mode,
             "bootstrap": {

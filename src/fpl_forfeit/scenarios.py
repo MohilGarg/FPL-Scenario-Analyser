@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from .availability import minutes_cost
 from .models import ElementScore, Fixture, Player, Position
+from .scoring import CLEAN_SHEET_POINTS, GOAL_POINTS, event_points
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +22,9 @@ class Outcome:
     baseline: bool = False
     shared_event: tuple[int, int, str] | None = None
     shared_event_cost: float = 0.0
+    goals: int = 0
+    assists: int = 0
+    own_goals: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +49,18 @@ def _outcome(
 ) -> Outcome:
     shared_event = None
     shared_cost = 0.0
+    # A defensive two-point 'concedes' route assumes one goal, not an arbitrary
+    # unbounded score which would incur omitted goals-conceded deductions.
+    if (
+        player.position in (Position.GOALKEEPER, Position.DEFENDER)
+        and opponent_max is None
+        and (
+            minutes >= 60
+            or (fixture.started and "does not" not in label and "comes on" not in label)
+        )
+    ):
+        conceded = fixture.goals_against(player.team_id) or 0
+        opponent_max = conceded + opponent_goals
     if not fixture.started and opponent_max == 0:
         shared_event = (fixture.id, player.team_id, "clean_sheet")
         shared_cost = min(cost, 1.0 if player.position == Position.MIDFIELDER else 1.1)
@@ -63,10 +80,28 @@ def _outcome(
         baseline=baseline,
         shared_event=shared_event,
         shared_event_cost=shared_cost,
+        goals=(
+            3
+            if "hat-trick" in label
+            else 2
+            if "scores twice" in label
+            else 1
+            if "scores" in label and "own goal" not in label
+            else 0
+        ),
+        assists=(2 if "two assists" in label else 1 if "assist" in label else 0),
+        own_goals=int("own goal" in label),
     )
 
 
-def outcome_catalog(player: Player, fixture: Fixture, current: ElementScore) -> tuple[Outcome, ...]:
+def outcome_catalog(
+    player: Player,
+    fixture: Fixture,
+    current: ElementScore,
+    *,
+    stats: Mapping[str, int] | None = None,
+    remaining_minutes: int | None = None,
+) -> tuple[Outcome, ...]:
     """Small, explicit outcome vocabulary for one player in one unfinished fixture.
 
     Values are additions to official points already reported by FPL. The vocabulary is
@@ -74,10 +109,34 @@ def outcome_catalog(player: Player, fixture: Fixture, current: ElementScore) -> 
     """
 
     if fixture.started:
-        return _live_outcomes(player, fixture, current)
+        values = _live_outcomes(player, fixture, current)
+        if remaining_minutes is not None:
+            adjusted = []
+            for o in values:
+                if o.minutes_delta > remaining_minutes and current.minutes > 0:
+                    lost_appearance = int(current.minutes < 60)
+                    lost_clean = (
+                        CLEAN_SHEET_POINTS[player.position]
+                        if current.minutes < 60 and fixture.goals_against(player.team_id) == 0
+                        else 0
+                    )
+                    label = o.label.replace("reaches 60 minutes", "plays the remaining minutes")
+                    label = label.replace("keeps the clean sheet", "team concede no further goals")
+                    o = replace(
+                        o,
+                        minutes_delta=remaining_minutes,
+                        points_delta=o.points_delta - lost_appearance - lost_clean,
+                        label=label + "; finishes under 60 minutes",
+                    )
+                if o.minutes_delta <= remaining_minutes and (
+                    remaining_minutes > 0 or not (o.goals or o.assists)
+                ):
+                    adjusted.append(o)
+            values = tuple(adjusted)
+        return _official_deltas(player, current, stats, values) if stats is not None else values
 
     if player.position in (Position.GOALKEEPER, Position.DEFENDER):
-        goal_points = 10 if player.position == Position.GOALKEEPER else 6
+        goal_points = GOAL_POINTS[player.position]
         values = [
             _outcome(
                 player,
@@ -248,12 +307,7 @@ def _pregame_extensions(
     official points are retained. Goalkeeper goals follow the 10-point scoring rule.
     """
     defensive = player.position in (Position.GOALKEEPER, Position.DEFENDER)
-    goal_points = {
-        Position.GOALKEEPER: 10,
-        Position.DEFENDER: 6,
-        Position.MIDFIELDER: 5,
-        Position.FORWARD: 4,
-    }[player.position]
+    goal_points = GOAL_POINTS[player.position]
     if player.position == Position.MIDFIELDER:
         # Existing attack totals omit the midfielder's clean-sheet point: make that assumption
         # explicit, and offer separate clean-sheet + return routes.
@@ -334,6 +388,24 @@ def _pregame_extensions(
                 _outcome(
                     player,
                     fixture,
+                    "plays 60+ minutes and concedes twice",
+                    1,
+                    60,
+                    1.0,
+                    opponent_goals=2,
+                ),
+                _outcome(
+                    player,
+                    fixture,
+                    "plays 60+ minutes and concedes three",
+                    1,
+                    60,
+                    1.6,
+                    opponent_goals=3,
+                ),
+                _outcome(
+                    player,
+                    fixture,
                     "assists and keeps a clean sheet",
                     9,
                     60,
@@ -377,16 +449,62 @@ def _pregame_extensions(
         )
         for item in values
     ]
-    return tuple(sorted(values, key=lambda item: item.plausibility_cost))
+    return _official_deltas(
+        player,
+        ElementScore(0, 0),
+        {},
+        tuple(sorted(values, key=lambda item: item.plausibility_cost)),
+    )
+
+
+def _official_deltas(
+    player: Player, current: ElementScore, stats: Mapping[str, int], outcomes: tuple[Outcome, ...]
+) -> tuple[Outcome, ...]:
+    """Route the bounded catalogue through the same category scorer as simulations.
+
+    Labels describe a fixed, internal event vocabulary. No user text is parsed here.
+    Existing live categories are preserved; only declared new events are applied.
+    """
+    result = []
+    for outcome in outcomes:
+        if stats.get("red_cards") and (outcome.goals or outcome.assists or outcome.minutes_delta):
+            continue
+        if stats.get("yellow_cards") and "booked" in outcome.label:
+            continue  # A second booking requires a different red-card outcome.
+        final = dict(stats)
+        final["minutes"] = current.minutes + outcome.minutes_delta
+        final["goals_scored"] = stats.get("goals_scored", 0) + outcome.goals
+        final["assists"] = stats.get("assists", 0) + outcome.assists
+        final["own_goals"] = stats.get("own_goals", 0) + outcome.own_goals
+        final["goals_conceded"] = stats.get("goals_conceded", 0) + outcome.opponent_min_goals
+        final["clean_sheets"] = int(
+            final["minutes"] >= 60
+            and (
+                outcome.opponent_max_goals == 0
+                or (
+                    current.minutes > 0
+                    and final["goals_conceded"] == 0
+                    and "clean sheet" in outcome.label
+                    and "loses" not in outcome.label
+                )
+            )
+        )
+        if "booked" in outcome.label:
+            final["yellow_cards"] = stats.get("yellow_cards", 0) + 1
+        if "sent off" in outcome.label:
+            final["red_cards"] = 1
+        if "misses a penalty" in outcome.label:
+            final["penalties_missed"] = stats.get("penalties_missed", 0) + 1
+        if "saves a penalty" in outcome.label:
+            final["penalties_saved"] = stats.get("penalties_saved", 0) + 1
+            final["saves"] = stats.get("saves", 0) + 1
+        points = event_points(player.position, final) - event_points(player.position, stats)
+        result.append(replace(outcome, points_delta=points))
+    return tuple(sorted(result, key=lambda item: item.plausibility_cost))
 
 
 def _live_outcomes(player: Player, fixture: Fixture, current: ElementScore) -> tuple[Outcome, ...]:
-    goal_points = {
-        Position.GOALKEEPER: 10,
-        Position.DEFENDER: 6,
-        Position.MIDFIELDER: 5,
-        Position.FORWARD: 4,
-    }[player.position]
+    goal_points = GOAL_POINTS[player.position]
     if current.minutes == 0:
         # Once a fixture is live, a new entrant cannot be assumed to reach 60 minutes.
         values = [
@@ -421,12 +539,7 @@ def _live_outcomes(player: Player, fixture: Fixture, current: ElementScore) -> t
     appearance_delta = 1 if reaches_sixty else 0
     goals_against = fixture.goals_against(player.team_id)
     clean_now = goals_against == 0
-    clean_sheet_value = {
-        Position.GOALKEEPER: 4,
-        Position.DEFENDER: 4,
-        Position.MIDFIELDER: 1,
-        Position.FORWARD: 0,
-    }[player.position]
+    clean_sheet_value = CLEAN_SHEET_POINTS[player.position]
 
     baseline_delta = appearance_delta + (clean_sheet_value if reaches_sixty and clean_now else 0)
     baseline_max = 0 if clean_now and clean_sheet_value else None
@@ -523,7 +636,7 @@ def _live_outcomes(player: Player, fixture: Fixture, current: ElementScore) -> t
             3.0,
             opponent_max=baseline_max,
         ),
-        _outcome(player, fixture, "is sent off", -3, 0, 3.4),
+        _outcome(player, fixture, "is sent off", -3, 0, 3.4, opponent_max=baseline_max),
     ]
     if clean_now and clean_sheet_value:
         # FPL already includes the clean-sheet points at 60; before 60 they simply never arrive.
@@ -607,6 +720,16 @@ def _live_outcomes(player: Player, fixture: Fixture, current: ElementScore) -> t
                 opponent_max=baseline_max,
             )
         )
+    if player.position in (Position.GOALKEEPER, Position.DEFENDER):
+        conceded = goals_against or 0
+        values = [
+            replace(
+                o,
+                points_delta=o.points_delta
+                - ((conceded + o.opponent_min_goals) // 2 - conceded // 2),
+            )
+            for o in values
+        ]
     return tuple(sorted(values, key=lambda item: item.plausibility_cost))
 
 
@@ -657,6 +780,8 @@ def football_consistent(
     by_key = {(variable.player.id, variable.fixture.id): variable for variable in variables}
     minimum: dict[tuple[int, int], int] = {}
     maximum: dict[tuple[int, int], int] = {}
+    goals: dict[tuple[int, int], int] = {}
+    assists: dict[tuple[int, int], int] = {}
     for variable in variables:
         fixture = variable.fixture
         minimum[(fixture.id, fixture.home_team_id)] = fixture.home_score or 0
@@ -670,6 +795,9 @@ def football_consistent(
         own_current = variable.fixture.goals_against(opponent) or 0
         opponent_current = variable.fixture.goals_against(own) or 0
         minimum[own_key] = max(minimum.get(own_key, 0), own_current + outcome.own_team_min_goals)
+        goals[own_key] = goals.get(own_key, 0) + outcome.goals
+        assists[own_key] = assists.get(own_key, 0) + outcome.assists
+        goals[opponent_key] = goals.get(opponent_key, 0) + outcome.own_goals
         minimum[opponent_key] = max(
             minimum.get(opponent_key, 0), opponent_current + outcome.opponent_min_goals
         )
@@ -678,4 +806,10 @@ def football_consistent(
                 maximum.get(opponent_key, outcome.opponent_max_goals),
                 outcome.opponent_max_goals,
             )
+    for key in goals.keys() | assists.keys():
+        fixture = next(v.fixture for v in variables if v.fixture.id == key[0])
+        current = fixture.goals_against(fixture.opponent_of(key[1])) or 0
+        minimum[key] = max(
+            minimum.get(key, 0), current + goals.get(key, 0), current + assists.get(key, 0)
+        )
     return all(minimum.get(key, 0) <= limit for key, limit in maximum.items())

@@ -35,6 +35,11 @@ class Player:
     availability_news: str = ""
     chance_of_playing: int | None = None
     season_team_matches: int | None = None
+    season_goals: int | None = None
+    season_assists: int | None = None
+    season_saves: int | None = None
+    season_defensive_contribution: int | None = None
+    season_yellow_cards: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +55,7 @@ class Fixture:
     kickoff_time: datetime | None = None
     home_score: int | None = None
     away_score: int | None = None
+    elapsed_minutes: int | None = None
 
     def involves(self, team_id: int) -> bool:
         return team_id in (self.home_team_id, self.away_team_id)
@@ -108,10 +114,11 @@ class Manager:
 class ElementScore:
     points: int
     minutes: int
+    carded: bool = False
 
     @property
     def appeared(self) -> bool:
-        return self.minutes > 0
+        return self.minutes > 0 or self.carded
 
 
 @dataclass(slots=True)
@@ -126,6 +133,9 @@ class LeagueState:
     fetched_at: datetime
     fixture_minutes: dict[tuple[int, int], int] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    fixture_stats: dict[tuple[int, int], dict[str, int]] = field(default_factory=dict)
+    team_goal_rates: dict[int, tuple[float, float]] = field(default_factory=dict)
+    event_final: bool = False
 
     def fixtures_for_team(self, team_id: int) -> tuple[Fixture, ...]:
         return tuple(fixture for fixture in self.fixtures if fixture.involves(team_id))

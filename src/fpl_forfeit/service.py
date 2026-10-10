@@ -10,6 +10,7 @@ from .api import FPLClient, FPLGameweekUnavailable, FPLNotFoundError, state_from
 from .cache import TTLCache
 from .comparison import compare_managers
 from .demo import DemoMode, demo_state
+from .forecast import DEFAULT_SAMPLES, DEFAULT_SEED, Condition, ScenarioConflict, outlook
 from .settings import AnalysisSettings
 from .state import current_standings
 
@@ -36,6 +37,10 @@ class AnalysisService:
         self._analyses: TTLCache[tuple, dict[str, Any]] = TTLCache(ttl, max_items=64)
         self._demos: TTLCache[tuple, dict[str, Any]] = TTLCache(ttl, max_items=16)
         self._fetch_locks = tuple(Lock() for _ in range(16))
+        self._outlooks: TTLCache[tuple, dict[str, Any]] = TTLCache(
+            max(ttl, SCENARIO_SOURCE_TTL_SECONDS), max_items=64
+        )
+        self._outlook_locks = tuple(Lock() for _ in range(8))
 
     def cached_snapshot(self, league_id: int) -> dict[str, Any] | None:
         """Share the current immutable source with descriptive analytics, without a refetch."""
@@ -163,6 +168,82 @@ class AnalysisService:
         return compare_managers(
             state, managers[a], managers[b], scores, allow_tied_last=allow_tied_last
         )
+
+    def forecast(
+        self,
+        league_id: int,
+        *,
+        source: str,
+        gameweek: int | None = None,
+        demo: DemoMode | None = None,
+        allow_tied_last: bool = True,
+        conditions: tuple[Condition, ...] = (),
+        samples: int = DEFAULT_SAMPLES,
+    ) -> dict[str, Any]:
+        """Coalesce and cache computation against an immutable scores generation.
+
+        A conditional outlook shares baseline seed/count, reducing comparison noise.
+        Source is mandatory: an expired generation must never silently fetch new scores.
+        """
+        if demo:
+            state = demo_state(demo)
+            if state.fetched_at.isoformat() != source:
+                raise FPLGameweekUnavailable("Demo generation changed; reload this Gameweek.")
+        else:
+            snapshot = self._generations.get((league_id, gameweek, source))
+            if snapshot is None:
+                raise FPLGameweekUnavailable(
+                    "This scores update expired. Refresh before exploring outcomes."
+                )
+            state = state_from_snapshot(snapshot)
+        if len(conditions) > 12:
+            raise ScenarioConflict("Use at most twelve conditions in one scenario.")
+        key = (league_id, gameweek, demo, source, allow_tied_last, conditions, samples)
+        baseline = (
+            self.forecast(
+                league_id,
+                source=source,
+                gameweek=gameweek,
+                demo=demo,
+                allow_tied_last=allow_tied_last,
+                samples=samples,
+            )
+            if conditions
+            else None
+        )
+        with self._outlook_locks[hash(key) % len(self._outlook_locks)]:
+            cached = self._outlooks.get(key)
+            if cached is None:
+                # Baseline is computed first so all displayed deltas use the same sample count.
+                cached = outlook(
+                    state,
+                    samples=samples,
+                    seed=DEFAULT_SEED,
+                    allow_tied_last=allow_tied_last,
+                    conditions=conditions,
+                )
+                if baseline:
+                    base_rows = {r["entry_id"]: r for r in baseline["managers"]}
+                    for row in cached["managers"]:
+                        base = base_rows[row["entry_id"]]
+                        row["baseline_projected_score"] = base["projected_score"]
+                        row["score_change"] = round(
+                            row["projected_score"] - base["projected_score"], 2
+                        )
+                        row["baseline_last_probability"] = base["last_probability"]
+                        row["risk_change"] = round(
+                            row["last_probability"] - base["last_probability"], 4
+                        )
+                    cached["comparison_note"] = (
+                        "Conditional model estimate versus unmodified simulation. "
+                        "Other events remain sampled; changes include model and sampling uncertainty."
+                    )
+                cached["cache"] = {"hit": False}
+                self._outlooks.set(key, cached)
+            else:
+                cached = copy.deepcopy(cached)
+                cached["cache"] = {"hit": True}
+        return copy.deepcopy(cached)
 
 
 def _cache_ttl_from_environment() -> float:

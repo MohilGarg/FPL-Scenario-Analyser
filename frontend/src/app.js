@@ -146,6 +146,7 @@ async function loadAnalysis(options = {}) {
   }
 
   clearTimeout(appState.refreshTimer);
+  window.ForfeitOutlook.cancel();
   appState.requestController?.abort();
   appState.comparisonController?.abort();
   const controller = new AbortController();
@@ -175,6 +176,7 @@ async function loadAnalysis(options = {}) {
     if (!appState.demoMode) rememberLeague(appState.leagueId, payload.league.name);
     renderApplication();
     setPageState("analysis");
+    window.ForfeitOutlook.start(payload, generation);
     updateUrl();
     scheduleRefresh();
     if (options.background) showToast("Analysis refreshed");
@@ -204,7 +206,7 @@ function detailEndpoint(suffix) {
   const params = new URLSearchParams({ ties: appState.tieRule });
   if (appState.demoMode) params.set("demo", appState.demoMode);
   else if (appState.gameweek) params.set("gameweek", appState.gameweek);
-  if (!appState.demoMode && suffix.endsWith("/scenarios")) params.set("source", appState.data.league.fetched_at);
+  params.set("source", appState.data.league.fetched_at);
   return `${apiBaseUrl}/api/league/${id}/${suffix}?${params}`;
 }
 
@@ -289,6 +291,7 @@ function renderApplication() {
   renderPhaseNote(data);
   renderOverview(data);
   renderScenarioView(data);
+  document.querySelector("#explorer-content").innerHTML = window.ForfeitOutlook.explorer(data);
   renderDifferentials(data);
   renderManagers(data);
   renderModelNote(data);
@@ -299,7 +302,7 @@ function renderApplication() {
 
 function renderPhaseNote(data) {
   const messages = {
-    early: "This is a broad early-Gameweek state. Remaining effective differentials are more useful than exhaustive scenario examples right now.",
+    early: "Several fixtures remain. Use projected standings, estimated risk and decisive players to see the bottom contest; test outcomes in Scenarios.",
     late: "The remaining fixture set is narrow enough for focused last-place scenarios.",
     live: data.demo?.active ? "Demo Mode: a fixed live-match example, not live scores." : `A match is live. Updates every ${Math.max(90, data.cache?.ttl_seconds || 90)} seconds while this tab is visible.`,
     complete: "This Gameweek is complete. Final bottom standings are shown and remaining scenarios are suppressed.",
@@ -312,38 +315,11 @@ function renderOverview(data) {
     elements.overview.innerHTML = completedOverview(data);
     return;
   }
-  const managers = managerMap(data);
-  const bottom = data.summary.bottom_entry_ids.map((id) => managers.get(id)).filter(Boolean);
-  const primary = bottom[0];
-  const atRisk = data.managers.filter((manager) => manager.status === "can_finish_last");
-  const unchecked = data.managers.filter((manager) => ["unresolved", "no_modelled_path"].includes(manager.status));
-  const safe = data.managers.filter((manager) => manager.status === "safe");
-  const names = bottom.map((manager) => manager.manager_name).join(" & ");
-  const teams = bottom.map((manager) => manager.team_name).join(" · ");
-  const upcomingLevel = data.league.status === "upcoming" && bottom.length === data.managers.length;
-  elements.overview.innerHTML = `
-    <article class="last-card">
-      <span class="card-label">${upcomingLevel ? "Gameweek yet to start" : bottom.length > 1 ? "Currently tied at the bottom" : "Currently last"}</span>
-      <div class="last-card-main">
-        <div><h2>${upcomingLevel ? "All level before kick-off" : escapeHtml(names)}</h2><p class="team-name">${upcomingLevel ? "Use Differentials to see what can separate the bottom group." : escapeHtml(teams)}</p></div>
-        <div class="score-block"><strong>${primary?.effective_score ?? "—"}</strong><span>effective GW points</span></div>
-      </div>
-      <div class="last-stats">
-        ${upcomingLevel ? "" : bottom.map((manager) => `<span class="stat-chip">${bottom.length > 1 ? `${escapeHtml(manager.manager_name)}: ` : ""}${plural(manager.remaining_player_count, "relevant player")} remaining${manager.transfer_cost ? ` · −${manager.transfer_cost} hit` : ""}</span>`).join("")}
-        <span class="stat-chip">${data.model.ties_count_as_last ? "A bottom tie counts" : "Strictly lowest only"}</span>
-      </div>
-    </article>
-    <section class="section-block" aria-labelledby="risk-heading">
-      <div class="section-header"><div><h2 id="risk-heading">Can finish last</h2><p>Verified examples, checked against every manager in the league.</p></div><span class="count-badge">${atRisk.length}</span></div>
-      <div class="risk-grid">${atRisk.length ? atRisk.map((manager, index) => overviewRiskCard(manager, index, data)).join("") : emptyState("No verified routes yet", "Being outside the SAFE group does not by itself prove a route to last. See the checks below.")}</div>
-    </section>
-    ${safeOverview(safe)}
-    ${unchecked.length ? `<details class="safe-section" data-card="unverified" ${atRisk.length ? "" : "open"}>
-      <summary><span>Not ruled safe · routes unverified</span><span class="count-badge">${unchecked.length}</span></summary>
-      <p class="fine-print">These managers are not proven able to finish last. Unresolved means a search is pending or limited; No modelled path means the bounded outcome list found none. Neither means SAFE.</p>
-      <div class="risk-grid">${unchecked.map((manager, index) => overviewRiskCard(manager, atRisk.length ? -1 : index, data)).join("")}</div>
-    </details>` : ""}
-  `;
+  elements.overview.innerHTML = window.ForfeitOutlook.overview(data)
+    + safeOverview(data.managers.filter((manager) => manager.status === "safe"))
+    + `<details class="safe-section" data-card="exact-overview"><summary>Verified routes & search status</summary><p class="fine-print">Exact examples are sufficient under their listed assumptions. Search limits never prove safety.</p><div class="risk-grid">${data.managers.filter(m=>m.status!=="safe").map((m)=>overviewRiskCard(m,-1,data)).join("")}</div></details>`;
+  return;
+
 }
 
 function completedOverview(data) {
@@ -353,15 +329,18 @@ function completedOverview(data) {
   const names = bottom.map((manager) => manager.manager_name).join(" & ");
   const score = bottom[0]?.effective_score ?? "—";
   const headline = strictTie ? "No sole last-place manager" : `${names} ${bottom.length > 1 ? "finish" : "finishes"} last`;
+  const nextScore = data.managers.find(m=>m.effective_score > score)?.effective_score;
   return `
     <article class="completed-card">
       <span class="card-label">Gameweek ${data.league.gameweek} complete</span>
+      ${data.league.results_final ? "" : '<p class="fine-print">All matches have finished. Points remain provisional until FPL marks this Gameweek final.</p>'}
       <h2>${escapeHtml(headline)}</h2>
       <p class="team-name">${strictTie ? `${bottom.length} managers share the lowest score under the strict-last rule.` : `${score} effective points`}</p>
       <table class="bottom-table">
-        <thead><tr><th>Bottom standings</th><th>Team</th><th>Points</th></tr></thead>
-        <tbody>${data.managers.slice(0, 5).map((manager) => `<tr><td>${escapeHtml(manager.manager_name)}</td><td>${escapeHtml(manager.team_name)}</td><td>${manager.effective_score}</td></tr>`).join("")}</tbody>
+        <thead><tr><th>Final standings (lowest first)</th><th>Team</th><th>Points</th></tr></thead>
+        <tbody>${data.managers.map((manager) => `<tr><td>${escapeHtml(manager.manager_name)}</td><td>${escapeHtml(manager.team_name)}</td><td>${manager.effective_score}</td></tr>`).join("")}</tbody>
       </table>
+      ${nextScore != null ? `<p>The bottom score of ${score} finished ${nextScore-score} points behind the next distinct score (${nextScore}). Transfer deductions are already included.</p>` : ""}
       <p class="fine-print">Open Managers for squads, hits and chips, or choose another Gameweek above.</p>
     </article>`;
 }
@@ -471,6 +450,7 @@ function scenarioControls(manager) {
   const label = search.expiredSource ? "Refresh scores" : search.error ? "Retry scenarios" : !search.loaded ? "Generate 3 scenarios" : "Show more scenarios";
   return `${search.shortfall_note ? `<p class="fine-print">${escapeHtml(search.shortfall_note)}</p>` : ""}
     ${search.assumptions_note ? `<p class="fine-print">${escapeHtml(search.assumptions_note)}</p>` : ""}
+    ${search.limitations_note ? `<p class="fine-print">${escapeHtml(search.limitations_note)}</p>` : ""}
     ${search.error || !search.loaded || more ? `<button class="show-more" type="button" data-manager="${manager.entry_id}" ${search.loading ? "disabled" : ""}>${search.loading ? "Finding scenarios…" : label}</button>` : ""}`;
 }
 
@@ -587,6 +567,7 @@ function renderManagers(data) {
         <span class="card-meta"><span class="status-badge ${statusClass(manager)}">${statusLabel(manager)}</span><span class="points">${manager.effective_score}<small>effective</small></span></span>
       </summary>
       <div class="manager-body">
+        ${window.ForfeitOutlook.managerFacts(manager)}
         <div class="manager-facts">
           <div class="manager-fact"><span>Counted points before hits</span><strong>${manager.raw_official_points}</strong></div>
           <div class="manager-fact"><span>Transfer deduction</span><strong>${manager.transfer_cost ? `−${manager.transfer_cost}` : "None"}</strong></div>
@@ -672,6 +653,7 @@ function activateView(view, update = true) {
 }
 
 async function loadAnalyticsLeague(options = {}) {
+  window.ForfeitOutlook.cancel();
   clearTimeout(appState.refreshTimer);
   appState.requestController?.abort();
   appState.comparisonController?.abort();
@@ -839,6 +821,7 @@ elements.retry.addEventListener("click", () => {
 });
 elements.refresh.addEventListener("click", () => loadAnalysis({ background: true }));
 function changeLeague() {
+  window.ForfeitOutlook.cancel();
   clearTimeout(appState.refreshTimer);
   appState.requestController?.abort();
   ++appState.generation;

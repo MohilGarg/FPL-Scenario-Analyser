@@ -11,3 +11,4 @@ build/
 *.egg-info/
 snapshots/*.json
 !snapshots/.gitkeep
+.browser-artifacts/

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -46,11 +49,25 @@ class FPLClient:
     def __init__(self, base_url: str = BASE_URL, timeout: float = 20.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        transport = os.getenv("FPL_HTTP_TRANSPORT", "auto")
+        if transport not in {"auto", "urllib", "curl"}:
+            raise ValueError("FPL_HTTP_TRANSPORT must be auto, urllib or curl")
+        # Native Windows curl uses Schannel, avoiding a process-level OpenSSL
+        # failure seen with some Windows Python builds. Linux hosting keeps urllib.
+        self._curl = (
+            shutil.which("curl.exe" if os.name == "nt" else "curl")
+            if (transport == "curl" or (transport == "auto" and os.name == "nt"))
+            else None
+        )
+        if transport == "curl" and not self._curl:
+            raise FPLAPIError("curl is unavailable; install it or select FPL_HTTP_TRANSPORT=urllib")
         self._season_fixture_cache: TTLCache[int, list[dict[str, Any]]] = TTLCache(
             3600, max_items=1
         )
 
     def _get(self, path: str) -> Any:
+        if self._curl:
+            return self._get_with_curl(path)
         request = Request(
             f"{self.base_url}/{path.lstrip('/')}",
             headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
@@ -71,6 +88,61 @@ class FPLClient:
             raise FPLAPIError(f"FPL returned HTTP {exc.code} for {path}") from exc
         except (URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise FPLAPIError(f"Could not read FPL endpoint {path}: {exc}") from exc
+
+    def _get_with_curl(self, path: str) -> Any:
+        """Argument-list invocation, normal TLS verification and bounded timeouts."""
+        try:
+            response = subprocess.run(
+                [
+                    self._curl,
+                    "--silent",
+                    "--show-error",
+                    "--location",
+                    "--max-redirs",
+                    "3",
+                    "--connect-timeout",
+                    str(self.timeout),
+                    "--max-time",
+                    str(self.timeout),
+                    "--user-agent",
+                    USER_AGENT,
+                    "--header",
+                    "Accept: application/json",
+                    "--write-out",
+                    "\n%{http_code}",
+                    "--url",
+                    f"{self.base_url}/{path.lstrip('/')}",
+                ],
+                capture_output=True,
+                timeout=self.timeout + 3,
+                check=False,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise FPLAPIError(f"Could not read FPL endpoint {path}: {exc}") from exc
+        if response.returncode:
+            raise FPLAPIError(
+                f"FPL request failed for {path}: " + response.stderr.decode(errors="replace")[:300]
+            )
+        try:
+            body, code = response.stdout.rsplit(b"\n", 1)
+            status = int(code)
+        except (ValueError, TypeError) as exc:
+            raise FPLAPIError("FPL HTTP transport returned an invalid response") from exc
+        if status == 404:
+            raise FPLNotFoundError(
+                "FPL could not find that league or Gameweek. Check the classic league ID."
+            )
+        if status in (401, 403):
+            raise FPLAccessError(
+                "FPL refused this request. Only publicly accessible leagues are supported."
+            )
+        if not 200 <= status < 300:
+            raise FPLAPIError(f"FPL returned HTTP {status} for {path}")
+        try:
+            return json.loads(body)
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise FPLAPIError(f"Could not parse FPL endpoint {path}") from exc
 
     def fetch_snapshot(
         self,
@@ -217,6 +289,11 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
             season_team_matches=team_matches[int(element["team"])]
             if "season_fixtures" in snapshot
             else None,
+            season_goals=_optional_int(element.get("goals_scored")),
+            season_assists=_optional_int(element.get("assists")),
+            season_saves=_optional_int(element.get("saves")),
+            season_defensive_contribution=_optional_int(element.get("defensive_contribution")),
+            season_yellow_cards=_optional_int(element.get("yellow_cards")),
         )
         for element in bootstrap["elements"]
     }
@@ -235,6 +312,7 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
             kickoff_time=_parse_datetime(item.get("kickoff_time")),
             home_score=_optional_int(item.get("team_h_score")),
             away_score=_optional_int(item.get("team_a_score")),
+            elapsed_minutes=_optional_int(item.get("minutes")) or None,
         )
         for item in snapshot["fixtures"]
     )
@@ -243,12 +321,17 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
         int(item["id"]): ElementScore(
             points=int(item.get("stats", {}).get("total_points", 0)),
             minutes=int(item.get("stats", {}).get("minutes", 0)),
+            carded=bool(
+                item.get("stats", {}).get("yellow_cards", 0)
+                or item.get("stats", {}).get("red_cards", 0)
+            ),
         )
         for item in snapshot["live"].get("elements", [])
     }
     for player_id in players:
         live_scores.setdefault(player_id, ElementScore(points=0, minutes=0))
     fixture_minutes: dict[tuple[int, int], int] = {}
+    fixture_stats: dict[tuple[int, int], dict[str, int]] = {}
     for item in snapshot["live"].get("elements", []):
         player_id = int(item["id"])
         for explanation in item.get("explain", []):
@@ -262,6 +345,69 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
                 0,
             )
             fixture_minutes[(player_id, fixture_id)] = minutes
+            fixture_stats[(player_id, fixture_id)] = {
+                str(stat["identifier"]): int(stat.get("value", 0))
+                for stat in explanation.get("stats", [])
+            }
+
+    # For a single fixture, the aggregate live categories provide sub-threshold
+    # saves/DC/concessions too, even when a scoring explanation omits a zero-point
+    # category. Do not distribute those aggregate counts across a DGW by guessing.
+    event_categories = (
+        "minutes",
+        "goals_scored",
+        "assists",
+        "clean_sheets",
+        "goals_conceded",
+        "saves",
+        "penalties_saved",
+        "penalties_missed",
+        "yellow_cards",
+        "red_cards",
+        "own_goals",
+        "bonus",
+        "defensive_contribution",
+    )
+    for item in snapshot["live"].get("elements", []):
+        pid = int(item["id"])
+        if pid not in players:
+            continue
+        schedule = tuple(f for f in fixtures if f.involves(players[pid].team_id))
+        if len(schedule) != 1 or not schedule[0].started:
+            continue
+        key = (pid, schedule[0].id)
+        aggregate = item.get("stats", {})
+        observed = {
+            category: int(aggregate[category])
+            for category in event_categories
+            if aggregate.get(category) is not None
+        }
+        fixture_stats[key] = fixture_stats.get(key, {}) | observed
+        fixture_minutes[key] = observed.get("minutes", fixture_minutes.get(key, 0))
+
+    # Zero-minute players often have no explain entry for a live fixture. Confirm a
+    # zero contribution only when all official aggregated minutes AND points are
+    # accounted for by the other per-fixture explanations (important in a DGW).
+    explained_points = {
+        int(item["id"]): sum(
+            int(s.get("points", 0)) for x in item.get("explain", []) for s in x.get("stats", [])
+        )
+        for item in snapshot["live"].get("elements", [])
+    }
+    for fixture in fixtures:
+        if not fixture.started or fixture.finished:
+            continue
+        for player in players.values():
+            key = (player.id, fixture.id)
+            if not fixture.involves(player.team_id) or key in fixture_stats:
+                continue
+            score = live_scores[player.id]
+            other_minutes = sum(
+                value for (pid, _), value in fixture_minutes.items() if pid == player.id
+            )
+            if score.minutes == other_minutes and score.points == explained_points.get(player.id):
+                fixture_minutes[key] = 0
+                fixture_stats[key] = {"minutes": 0}
 
     managers: list[Manager] = []
     pick_payloads = snapshot["picks"]
@@ -302,6 +448,18 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
         live_scores=live_scores,
         fetched_at=fetched_at,
         fixture_minutes=fixture_minutes,
+        fixture_stats=fixture_stats,
+        team_goal_rates=_team_goal_rates(snapshot.get("season_fixtures", [])),
+        event_final=bool(
+            next(
+                (
+                    e.get("finished")
+                    for e in bootstrap.get("events", [])
+                    if int(e["id"]) == gameweek
+                ),
+                False,
+            )
+        ),
         raw=snapshot,
     )
 
@@ -314,3 +472,31 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 def _optional_int(value: Any) -> int | None:
     return None if value is None else int(value)
+
+
+def _team_goal_rates(fixtures: list[dict[str, Any]]) -> dict[int, tuple[float, float]]:
+    """Shrink observed team scoring/conceding towards a league-wide per-team rate."""
+    played = [
+        f
+        for f in fixtures
+        if f.get("finished")
+        and f.get("team_h_score") is not None
+        and f.get("team_a_score") is not None
+    ]
+    if not played:
+        return {}
+    rate = sum(f["team_h_score"] + f["team_a_score"] for f in played) / (2 * len(played))
+    totals: dict[int, list[int]] = {}
+    for f in played:
+        for team, own, against in (
+            (f["team_h"], f["team_h_score"], f["team_a_score"]),
+            (f["team_a"], f["team_a_score"], f["team_h_score"]),
+        ):
+            row = totals.setdefault(int(team), [0, 0, 0])
+            row[0] += 1
+            row[1] += own
+            row[2] += against
+    return {
+        team: ((own + 8 * rate) / (n + 8), (against + 8 * rate) / (n + 8))
+        for team, (n, own, against) in totals.items()
+    }

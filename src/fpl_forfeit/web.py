@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ConfigDict, Field
 
 from .analytics.service import AnalyticsService
 from .api import (
@@ -16,12 +17,40 @@ from .api import (
     FPLNotFoundError,
 )
 from .demo import DEMO_MODES, DemoMode
+from .forecast import Condition, ScenarioConflict
 from .service import AnalysisService
 from .settings import (
     DEFAULT_MAX_RELEVANT_PLAYERS,
     DEFAULT_MAX_SEARCH_NODES,
     AnalysisSettings,
 )
+
+
+class FootballCondition(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    fixture_id: int = Field(gt=0)
+    kind: Literal[
+        "goal",
+        "assist",
+        "blank",
+        "dnp",
+        "minutes",
+        "substitute",
+        "clean_sheet",
+        "lose_clean_sheet",
+        "score",
+    ]
+    player_id: int | None = Field(default=None, gt=0)
+    team_id: int | None = Field(default=None, gt=0)
+    value: int = Field(default=1, ge=1, le=90)
+    home_goals: int | None = Field(default=None, ge=0, le=15)
+    away_goals: int | None = Field(default=None, ge=0, le=15)
+
+
+class WhatIfRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: str = Field(min_length=1, max_length=80)
+    conditions: list[FootballCondition] = Field(default_factory=list, max_length=12)
 
 
 def create_app(
@@ -40,7 +69,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=_allowed_origins(),
         allow_credentials=False,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
@@ -135,6 +164,47 @@ def create_app(
             )
         )
 
+    @application.get("/api/league/{league_id}/outlook", tags=["analysis"])
+    def simulation_outlook(
+        league_id: int,
+        source: str = Query(min_length=1, max_length=80),
+        ties: Literal["include", "strict"] = "include",
+        gameweek: int | None = Query(default=None, ge=1, le=38),
+        demo: DemoMode | None = None,
+    ) -> dict[str, Any]:
+        if league_id <= 0:
+            raise HTTPException(400, "League ID must be positive")
+        return _forecast_response(
+            lambda: analysis_service.forecast(
+                league_id,
+                source=source,
+                gameweek=gameweek,
+                demo=demo,
+                allow_tied_last=ties == "include",
+            )
+        )
+
+    @application.post("/api/league/{league_id}/what-if", tags=["analysis"])
+    def what_if(
+        league_id: int,
+        request: WhatIfRequest,
+        ties: Literal["include", "strict"] = "include",
+        gameweek: int | None = Query(default=None, ge=1, le=38),
+        demo: DemoMode | None = None,
+    ) -> dict[str, Any]:
+        if league_id <= 0:
+            raise HTTPException(400, "League ID must be positive")
+        return _forecast_response(
+            lambda: analysis_service.forecast(
+                league_id,
+                source=request.source,
+                gameweek=gameweek,
+                demo=demo,
+                allow_tied_last=ties == "include",
+                conditions=tuple(Condition(**c.model_dump()) for c in request.conditions),
+            )
+        )
+
     @application.get("/api/league/{league_id}/analytics/details", tags=["analytics"])
     def analytics_detail_progress(league_id: int) -> dict[str, Any]:
         if league_id <= 0:
@@ -179,6 +249,8 @@ def create_app(
 def _api_response(call: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     try:
         return call()
+    except ScenarioConflict as exc:
+        raise HTTPException(422, str(exc)) from exc
     except FPLGameweekUnavailable as exc:
         raise HTTPException(409, str(exc)) from exc
     except FPLNotFoundError as exc:
@@ -193,6 +265,10 @@ def _api_response(call: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         ) from exc
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(502, "FPL returned data the analyser could not process.") from exc
+
+
+def _forecast_response(call: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    return _api_response(call)
 
 
 def _allowed_origins() -> list[str]:

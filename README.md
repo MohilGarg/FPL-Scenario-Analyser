@@ -1,7 +1,8 @@
 # FPL Scenario Analyser
 
 FPL Scenario Analyser combines live last-place scenario analysis with private mini-league analytics.
-It describes your own league, without transfer advice or predictions.
+It combines confirmed scores with clearly labelled experimental forfeit forecasts, without
+transfer or captain recommendations.
 
 **Live site:** <https://mohilgarg.github.io/FPL-Scenario-Analyser/>
 
@@ -20,9 +21,10 @@ the live tie rule and secondary demos remain in Settings.
 
 The original four views remain:
 
-- **Overview** — the current loser, at-risk managers, core conditions and a collapsed safe group;
-- **Scenarios** — focused ranked examples, final bottom scores, copy-to-chat text and an optional
-  two-manager comparison;
+- **Overview** — current/projected bottom managers, estimated last-place risks, projected scores
+  and ranges, decisive players/fixtures and a separate bounded safe group;
+- **Scenarios** — an interactive football-event explorer with combined conditions, score/risk
+  changes and reset/removal, followed by separate exact examples and manager comparisons;
 - **Differentials** — meaningful remaining effective multipliers after captaincy, chips and current
   substitution state;
 - **Managers** — all effective scores and expandable 15-player Gameweek squads for transparency.
@@ -117,12 +119,19 @@ and vice-captain takeover are explicitly conditional. A comparison against one m
 not prove last place against the whole league. **Why safe?** explains the score bound and the opponent
 who guarantees safety; already-scored bench/captaincy points are included when they may move.
 
-Broad early-Gameweek states defer automatic scenario enumeration and point users to Differentials;
-an explicit per-manager request can still generate focused examples with disclosed baselines.
+Broad early-Gameweek states provide mean projected standings immediately, then load a separate
+1,600-sample shared-fixture risk model. The explorer works with any number of remaining fixtures.
+Automatic exact enumeration is still reserved for narrower states; an explicit per-manager request
+can generate focused examples with disclosed baselines.
 This keeps requests bounded and avoids pretending a handful of examples explains a huge state space.
 The league summary loads before scenarios. At-risk managers are searched individually afterwards;
 **Show more scenarios** only extends that manager's search, up to twelve examples. `NO MODELLED PATH`
 means the bounded vocabulary was exhausted; `UNRESOLVED` means it was deferred or search-limited.
+
+See [FORECASTING.md](FORECASTING.md) for the projection/simulation assumptions, tie convention,
+API contract, caching, known limitations and real-snapshot evaluation commands. These are initial
+uncalibrated estimates: a sampled zero chance is never a safety proof. Official awarded points,
+chips, captaincy, legal autosubs and hits remain the scoring foundation for every layer.
 
 ## Architecture
 
@@ -138,6 +147,7 @@ FastAPI service on Render
                 +-- bounded historical enrichment with progress
                 +-- public FPL API retrieval
                 +-- existing Python domain and scenario engine
+                +-- shared-fixture projections, risk and forced-event what-ifs
                 +-- separate Python descriptive analytics
 ```
 

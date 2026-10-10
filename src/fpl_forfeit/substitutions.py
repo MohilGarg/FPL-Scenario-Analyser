@@ -22,7 +22,7 @@ def _confirmed_absent(
     team_complete: Mapping[int, bool],
 ) -> bool:
     player = players[pick.player_id]
-    return scores[pick.player_id].minutes == 0 and team_complete.get(player.team_id, False)
+    return not scores[pick.player_id].appeared and team_complete.get(player.team_id, False)
 
 
 def _outfield_substitution_plan(
@@ -78,8 +78,9 @@ def effective_multipliers(
 ) -> dict[int, int]:
     """Resolve provisional/final FPL multipliers from the original 15 picks.
 
-    A zero-minute player is absent only after all of their team's Gameweek fixtures are
-    complete. This prevents an early autosub or vice-captain handover while they can still play.
+    A zero-minute player without a disciplinary appearance is absent only after all
+    of their team's Gameweek fixtures are complete. Captain handover uses minutes
+    separately. This prevents early substitutions while a player can still play.
     """
 
     picks = sorted(manager.picks, key=lambda pick: pick.squad_position)
@@ -113,14 +114,15 @@ def effective_multipliers(
     captain = next((pick for pick in picks if pick.is_captain), None)
     vice = next((pick for pick in picks if pick.is_vice_captain), None)
     captain_multiplier = 3 if manager.active_chip == "3xc" else 2
-    if captain and scores[captain.player_id].appeared:
+    if captain and scores[captain.player_id].minutes > 0:
         if multipliers[captain.player_id] > 0:
             multipliers[captain.player_id] = captain_multiplier
     elif (
         captain
-        and _confirmed_absent(captain, players, scores, team_complete)
+        and scores[captain.player_id].minutes == 0
+        and team_complete.get(players[captain.player_id].team_id, False)
         and vice
-        and scores[vice.player_id].appeared
+        and scores[vice.player_id].minutes > 0
         and multipliers[vice.player_id] > 0
     ):
         multipliers[vice.player_id] = captain_multiplier

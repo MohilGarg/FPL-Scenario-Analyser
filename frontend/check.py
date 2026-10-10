@@ -81,11 +81,10 @@ def main() -> None:
         }
         for value, expected in cases.items():
             assert page.evaluate("value => FPLInput.parseLeagueId(value)", value) == expected, value
-        page.locator("#overview-content .show-more").first.click()
+        page.locator("#tab-scenarios").click()
+        page.locator("#scenario-detail .show-more").first.click()
         page.wait_for_function("appState.data.managers[0].search.requested_count === 6")
-        assert (
-            page.locator("#overview-content .risk-card").first.locator(".scenario-card").count() > 3
-        )
+        assert page.locator("#scenario-detail .scenario-card").count() > 3
         for width in (320, 390, 1440):
             page.set_viewport_size({"width": width, "height": 900})
             for view in ("overview", "scenarios", "differentials", "managers", "analytics"):
@@ -135,7 +134,42 @@ def main() -> None:
         assert page.locator("#retry-button").is_hidden()
         page.goto(args.url + "/?demo=early")
         page.locator("#analysis:not(.hidden)").wait_for()
+        page.wait_for_function(
+            "document.querySelector('.outlook-headlines').textContent.includes('shared-fixture samples')"
+        )
+        assert "Projected bottom" in page.locator(".outlook-headlines").inner_text()
+        assert page.locator(".decisive-card").count() > 0
         page.locator("#tab-scenarios").click()
+        page.locator("#what-if-player").select_option("9001")
+        page.locator("#what-if-form button[type=submit]").click()
+        page.wait_for_function(
+            "document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')"
+        )
+        assert "Haaland scores" in page.locator(".condition-list").inner_text()
+        assert "Projected bottom:" in page.locator("#explorer-content .condition-box").inner_text()
+        assert page.locator("#explorer-content .outlook-table tbody tr").count() == 12
+        page.locator("#what-if-kind").select_option("clean_sheet")
+        page.locator("#what-if-form button[type=submit]").click()
+        page.wait_for_function(
+            "document.querySelector('.condition-list').children.length === 2 && document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')"
+        )
+        page.locator("#what-if-kind").select_option("blank")
+        page.locator("#what-if-form button[type=submit]").click()
+        page.locator("#explorer-content [role=alert]").wait_for()
+        assert "cannot blank" in page.locator("#explorer-content [role=alert]").inner_text()
+        page.locator("[data-remove-condition='2']").click()
+        page.wait_for_function(
+            "document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')"
+        )
+        page.locator("[data-reset-conditions]").click()
+        assert page.locator(".condition-list li").count() == 0
+        for width in (320, 390, 1440):
+            page.set_viewport_size({"width": width, "height": 900})
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (
+                "explorer",
+                width,
+            )
+        page.screenshot(path=str(output / "early-explorer-desktop.png"), full_page=True)
         start = len(requests)
         page.locator("#scenario-detail .show-more").click()
         page.wait_for_function("appState.data.managers.some(m => m.search.loaded)")
@@ -147,6 +181,28 @@ def main() -> None:
         if args.scenario_league:
             page.goto(args.url + f"/?league={args.scenario_league}&view=scenarios")
             page.locator("#analysis:not(.hidden)").wait_for(timeout=120_000)
+            if page.evaluate("appState.data.league.status !== 'complete'"):
+                page.wait_for_function(
+                    "document.querySelector('.outlook-headlines').textContent.includes('shared-fixture samples')",
+                    timeout=60000,
+                )
+                page.locator("#tab-overview").click()
+                assert page.locator(".battle-card").count() > 0
+                assert page.locator(".decisive-card").count() > 0
+                page.screenshot(path=str(output / "official-snapshot-overview.png"), full_page=True)
+                page.locator("#tab-scenarios").click()
+                page.locator("#what-if-kind").select_option("goal")
+                page.locator("#what-if-form button[type=submit]").click()
+                page.wait_for_function(
+                    "document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')",
+                    timeout=60000,
+                )
+                assert page.locator(
+                    "#explorer-content .outlook-table tbody tr"
+                ).count() == page.evaluate("appState.data.managers.length")
+                assert page.evaluate("""() => [...document.querySelectorAll('#explorer-content .outlook-table tbody tr')]
+                    .some(row => Math.abs(Number(row.cells[3].textContent)) > 0)""")
+                page.locator("[data-reset-conditions]").click()
             if page.evaluate(
                 "appState.data.league.status !== 'complete' && appState.data.summary.scenario_search_state !== 'broad'"
             ):
@@ -234,7 +290,7 @@ def main() -> None:
             assert "league=" not in page.url
         assert not errors, errors
         print(
-            f"Browser checks passed: neutral home (new/recent visitor), input parsing, five views at 320/390/1440px, themes, comparison, manager-only show more, completed UX. Analytics league: {args.league}. Screenshots: {output}"
+            f"Browser checks passed: neutral home (new/recent visitor), input parsing, five views at 320/390/1440px, themes, outlook, combined what-ifs/conflicts/reset, comparison, manager-only show more, completed UX. Analytics league: {args.league}. Scenario league: {args.scenario_league}. Screenshots: {output}"
         )
         browser.close()
 

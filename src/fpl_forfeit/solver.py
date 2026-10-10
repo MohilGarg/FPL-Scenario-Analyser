@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import heapq
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import combinations
 
 from .comparison import compare_managers
@@ -11,6 +11,7 @@ from .models import ElementScore, Fixture, LeagueState, Manager
 from .ranking import individual_cost, scenario_cost
 from .scenarios import Outcome, ScenarioVariable, football_consistent, outcome_catalog, route_key
 from .settings import MAX_COMPLETION_NODES, MAX_SCENARIO_LINEUPS
+from .state import current_standings
 from .substitutions import effective_multipliers, score_manager
 
 
@@ -42,6 +43,7 @@ def build_variables(
     exposures = effective_exposures(state.managers, state.players, state.live_scores, complete)
     owned = {pick.player_id for manager in state.managers for pick in manager.picks}
     manager_ids = [manager.entry_id for manager in state.managers]
+    current = {r.manager.entry_id: r.effective_score for r in current_standings(state)}
 
     ranked: list[tuple[float, int, Fixture]] = []
     for player_id in owned:
@@ -56,7 +58,13 @@ def build_variables(
         if candidate is not None:
             # Focus the free search dimensions on this candidate's differential exposure.
             own = exposures.get(player_id, {}).get(candidate.entry_id, 0)
-            potential = max((abs(own - value) for value in values), default=0)
+            potential = max(
+                (
+                    abs(own - value) / (1 + abs(current[candidate.entry_id] - current[entry]) / 12)
+                    for entry, value in zip(manager_ids, values)
+                ),
+                default=0,
+            )
             if any(p.player_id == player_id for p in candidate.picks):
                 potential += 0.5
         for fixture in state.unfinished_fixtures_for_team(player.team_id):
@@ -66,6 +74,21 @@ def build_variables(
     selected = ranked if include_baselines else ranked[:max_relevant]
     variables = []
     for index, (_, player_id, fixture) in enumerate(selected):
+        clock = (
+            max(
+                fixture.elapsed_minutes or 0,
+                max(
+                    (
+                        minutes
+                        for (pid, fid), minutes in state.fixture_minutes.items()
+                        if fid == fixture.id
+                    ),
+                    default=0,
+                ),
+            )
+            if fixture.started
+            else 0
+        )
         catalog = outcome_catalog(
             state.players[player_id],
             fixture,
@@ -75,7 +98,30 @@ def build_variables(
                     (player_id, fixture.id), state.live_scores[player_id].minutes
                 ),
             ),
+            stats=state.fixture_stats.get((player_id, fixture.id)) if fixture.started else None,
+            remaining_minutes=max(0, 90 - clock) if fixture.started else None,
         )
+        if fixture.started:
+            clock = max(
+                fixture.elapsed_minutes or 0,
+                max(
+                    (
+                        minutes
+                        for (pid, fid), minutes in state.fixture_minutes.items()
+                        if fid == fixture.id
+                    ),
+                    default=0,
+                ),
+            )
+            available = max(0, 90 - clock)
+            catalog = tuple(o for o in catalog if o.minutes_delta <= available)
+            if not any(o.baseline for o in catalog):
+                # A late entrant cannot reach 60; retain an explicit ordinary baseline.
+                fallback = next((o for o in catalog if o.label == "leaves before 60 minutes"), None)
+                if fallback:
+                    catalog = (replace(fallback, baseline=True, plausibility_cost=0),) + tuple(
+                        o for o in catalog if o is not fallback
+                    )
         # An omitted search dimension still has an explicit baseline. It is NOT a DNP.
         outcomes = (
             (next(item for item in catalog if item.baseline),)
@@ -95,7 +141,9 @@ def projected_player_scores(
         points[outcome.player_id] += outcome.points_delta
         minutes[outcome.player_id] += outcome.minutes_delta
     return {
-        player_id: ElementScore(points=value, minutes=minutes[player_id])
+        player_id: ElementScore(
+            points=value, minutes=minutes[player_id], carded=state.live_scores[player_id].carded
+        )
         for player_id, value in points.items()
     }
 
@@ -332,6 +380,11 @@ def solve_candidate(
         include_baselines=True,
         candidate=candidate,
     )
+    owned = {p.player_id for m in state.managers for p in m.picks}
+    if any(state.live_scores[pid].carded and state.live_scores[pid].minutes == 0 for pid in owned):
+        # Presence patterns for zero-minute disciplinary appearances need distinct
+        # autosub and captain-minute states. Do not claim completeness of this search.
+        return SearchResult(candidate.entry_id, (), 0, truncated, False)
     if not variables:
         scores = projected_scores(state, ())
         scenarios = ()
