@@ -17,14 +17,18 @@ from .forecasting.models import TeamMatchResult
 from .forecasting.statistics import estimate_team_goal_rates
 from .models import (
     POSITION_BY_ELEMENT_TYPE,
+    ChipWindow,
     ConfirmedAppearance,
     ElementScore,
     Fixture,
+    FPLCatalogue,
+    GameweekInfo,
     LeagueState,
     Manager,
     MatchAppearance,
     Pick,
     Player,
+    PublicSquadSnapshot,
 )
 
 BASE_URL = "https://fantasy.premierleague.com/api"
@@ -80,6 +84,37 @@ class FPLClient:
                 cached = self._get(f"element-summary/{player_id}/")
                 self._player_histories.set(player_id, cached)
             return cached
+
+    def forecast_catalogue(self) -> FPLCatalogue:
+        """Two public requests; callers cache the whole observed generation."""
+        return parse_forecast_catalogue(self._get("bootstrap-static/"), self._get("fixtures/"))
+
+    def public_squad(self, entry_id: int, catalogue: FPLCatalogue) -> PublicSquadSnapshot:
+        if entry_id <= 0:
+            raise ValueError("Team ID must be positive.")
+        profile = self._get(f"entry/{entry_id}/")
+        now = datetime.now(UTC)
+        available = sorted(
+            (g.id for g in catalogue.gameweeks if g.deadline and g.deadline <= now), reverse=True
+        )
+        if profile.get("current_event") is not None:
+            available = [g for g in available if g <= int(profile["current_event"])]
+        payload = None
+        for gameweek in available[:3]:
+            try:
+                payload = self._get(f"entry/{entry_id}/event/{gameweek}/picks/")
+                break
+            except FPLNotFoundError:
+                continue
+        if payload is None:
+            raise FPLGameweekUnavailable(
+                "No public deadline squad is available yet. Pre-deadline squads require FPL account access and are not guessed."
+            )
+        try:
+            history = self._get(f"entry/{entry_id}/history/")
+        except FPLAPIError:
+            history = None
+        return parse_public_squad(entry_id, gameweek, profile, payload, history)
 
     def _get(self, path: str) -> Any:
         if self._curl:
@@ -278,68 +313,168 @@ def load_snapshot(path: Path) -> dict[str, Any]:
     return value
 
 
+def parse_players(
+    bootstrap: dict[str, Any],
+    season_fixtures: list[dict[str, Any]] | None,
+    histories: dict[str, Any] | None = None,
+    *,
+    future: bool = False,
+) -> dict[int, Player]:
+    """One roster parser for public live analysis and private future projections."""
+    teams = {int(t["id"]): str(t["name"]) for t in bootstrap["teams"]}
+    completed = {int(f["id"]) for f in season_fixtures or [] if f.get("finished")}
+    matches = {
+        tid: sum(
+            bool(f.get("started"))
+            for f in season_fixtures or []
+            if tid in (f["team_h"], f["team_a"])
+        )
+        for tid in teams
+    }
+    return {
+        int(e["id"]): Player(
+            id=int(e["id"]),
+            name=str(e["web_name"]),
+            team_id=int(e["team"]),
+            team_name=teams[int(e["team"])],
+            position=POSITION_BY_ELEMENT_TYPE[int(e["element_type"])],
+            season_starts=_optional_int(e.get("starts")),
+            season_minutes=_optional_int(e.get("minutes")),
+            price_tenths=_optional_int(e.get("now_cost")),
+            availability_status=e.get("status"),
+            availability_news=str(e.get("news") or ""),
+            chance_of_playing=_optional_int(
+                e.get("chance_of_playing_next_round")
+                if future
+                else e.get("chance_of_playing_this_round")
+            ),
+            season_team_matches=matches[int(e["team"])] if season_fixtures is not None else None,
+            season_goals=_optional_int(e.get("goals_scored")),
+            season_assists=_optional_int(e.get("assists")),
+            season_saves=_optional_int(e.get("saves")),
+            season_defensive_contribution=_optional_int(e.get("defensive_contribution")),
+            season_yellow_cards=_optional_int(e.get("yellow_cards")),
+            expected_goals=_optional_float(e.get("expected_goals")),
+            expected_assists=_optional_float(e.get("expected_assists")),
+            expected_goal_involvements=_optional_float(e.get("expected_goal_involvements")),
+            appearance_history=parse_appearance_history(
+                (histories or {}).get(str(e["id"]), {}), completed
+            ),
+        )
+        for e in bootstrap["elements"]
+    }
+
+
+def parse_fixture(
+    item: dict[str, Any], teams: dict[int, str], *, gameweek: int | None = None
+) -> Fixture:
+    return Fixture(
+        id=int(item["id"]),
+        gameweek=gameweek if gameweek is not None else int(item["event"]),
+        home_team_id=int(item["team_h"]),
+        away_team_id=int(item["team_a"]),
+        home_team_name=teams[int(item["team_h"])],
+        away_team_name=teams[int(item["team_a"])],
+        started=bool(item.get("started")),
+        finished=bool(item.get("finished") or item.get("finished_provisional")),
+        kickoff_time=_parse_datetime(item.get("kickoff_time")),
+        home_score=_optional_int(item.get("team_h_score")),
+        away_score=_optional_int(item.get("team_a_score")),
+        elapsed_minutes=_optional_int(item.get("minutes")) or None,
+    )
+
+
+def parse_forecast_catalogue(
+    bootstrap: dict[str, Any], fixtures: list[dict[str, Any]]
+) -> FPLCatalogue:
+    teams = {int(t["id"]): str(t["name"]) for t in bootstrap["teams"]}
+    expected_pairs = {(h, a) for h in teams for a in teams if h != a}
+    pairs = {(int(f["team_h"]), int(f["team_a"])) for f in fixtures}
+    settings = bootstrap.get("game_settings", {})
+    return FPLCatalogue(
+        players=parse_players(bootstrap, fixtures, future=True),
+        fixtures=tuple(parse_fixture(f, teams) for f in fixtures if f.get("event") is not None),
+        gameweeks=tuple(
+            GameweekInfo(
+                int(e["id"]), _parse_datetime(e.get("deadline_time")), bool(e.get("finished"))
+            )
+            for e in bootstrap.get("events", [])
+        ),
+        team_goal_rates=_team_goal_rates(fixtures),
+        fetched_at=datetime.now(UTC),
+        schedule_complete=len(fixtures) == len(expected_pairs) and pairs == expected_pairs,
+        unassigned_team_ids=frozenset(
+            int(t) for f in fixtures if f.get("event") is None for t in (f["team_h"], f["team_a"])
+        ),
+        squad_counts={
+            POSITION_BY_ELEMENT_TYPE[int(p["id"])]: int(p["squad_select"])
+            for p in bootstrap.get("element_types", [])
+        },
+        formation_limits={
+            POSITION_BY_ELEMENT_TYPE[int(p["id"])]: (
+                int(p["squad_min_play"]),
+                int(p["squad_max_play"]),
+            )
+            for p in bootstrap.get("element_types", [])
+        },
+        club_limit=_optional_int(settings.get("squad_team_limit")),
+        maximum_free_transfers=1 + int(settings["max_extra_free_transfers"])
+        if settings.get("max_extra_free_transfers") is not None
+        else None,
+        chips=tuple(
+            ChipWindow(
+                str(c["name"]), int(c["start_event"]), int(c["stop_event"]), int(c["number"])
+            )
+            for c in bootstrap.get("chips", [])
+        ),
+        missing_schedule_team_ids=frozenset(t for pair in expected_pairs - pairs for t in pair),
+    )
+
+
+def parse_public_squad(
+    entry_id: int,
+    gameweek: int,
+    profile: dict[str, Any],
+    payload: dict[str, Any],
+    history: dict[str, Any] | None,
+) -> PublicSquadSnapshot:
+    rows = sorted(payload["picks"], key=lambda p: int(p["position"]))
+    picks = tuple(
+        Pick(
+            int(p["element"]),
+            int(p["position"]),
+            int(p.get("multiplier", 0)),
+            bool(p.get("is_captain")),
+            bool(p.get("is_vice_captain")),
+        )
+        for p in rows
+    )
+    entry = payload.get("entry_history", {})
+    return PublicSquadSnapshot(
+        entry_id=entry_id,
+        name=str(profile.get("name") or f"Team {entry_id}"),
+        gameweek=gameweek,
+        manager=Manager(entry_id, "My team", str(profile.get("name") or f"Team {entry_id}"), picks),
+        bank_tenths=_optional_int(entry.get("bank", profile.get("last_deadline_bank"))),
+        value_tenths=_optional_int(entry.get("value", profile.get("last_deadline_value"))),
+        purchase_prices={int(p["element"]): _optional_int(p.get("purchase_price")) for p in rows},
+        selling_prices={int(p["element"]): _optional_int(p.get("selling_price")) for p in rows},
+        chips_used=tuple((str(c["name"]), int(c["event"])) for c in history["chips"])
+        if history and "chips" in history
+        else None,
+        fetched_at=datetime.now(UTC),
+    )
+
+
 def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
     bootstrap = snapshot["bootstrap"]
     teams = {int(team["id"]): str(team["name"]) for team in bootstrap["teams"]}
-    completed_ids = {int(f["id"]) for f in snapshot.get("season_fixtures", []) if f.get("finished")}
-    team_matches = {
-        team_id: sum(
-            bool(item.get("started"))
-            for item in snapshot.get("season_fixtures", [])
-            if team_id in (item["team_h"], item["team_a"])
-        )
-        for team_id in teams
-    }
-    players = {
-        int(element["id"]): Player(
-            id=int(element["id"]),
-            name=str(element["web_name"]),
-            team_id=int(element["team"]),
-            team_name=teams[int(element["team"])],
-            position=POSITION_BY_ELEMENT_TYPE[int(element["element_type"])],
-            season_starts=_optional_int(element.get("starts")),
-            season_minutes=_optional_int(element.get("minutes")),
-            price_tenths=_optional_int(element.get("now_cost")),
-            availability_status=element.get("status"),
-            availability_news=str(element.get("news") or ""),
-            chance_of_playing=_optional_int(element.get("chance_of_playing_this_round")),
-            season_team_matches=team_matches[int(element["team"])]
-            if "season_fixtures" in snapshot
-            else None,
-            season_goals=_optional_int(element.get("goals_scored")),
-            season_assists=_optional_int(element.get("assists")),
-            season_saves=_optional_int(element.get("saves")),
-            season_defensive_contribution=_optional_int(element.get("defensive_contribution")),
-            season_yellow_cards=_optional_int(element.get("yellow_cards")),
-            expected_goals=_optional_float(element.get("expected_goals")),
-            expected_assists=_optional_float(element.get("expected_assists")),
-            expected_goal_involvements=_optional_float(element.get("expected_goal_involvements")),
-            appearance_history=parse_appearance_history(
-                snapshot.get("player_histories", {}).get(str(element["id"]), {}),
-                completed_ids,
-            ),
-        )
-        for element in bootstrap["elements"]
-    }
+    players = parse_players(
+        bootstrap, snapshot.get("season_fixtures"), snapshot.get("player_histories", {})
+    )
 
     gameweek = int(snapshot["gameweek"])
-    fixtures = tuple(
-        Fixture(
-            id=int(item["id"]),
-            gameweek=gameweek,
-            home_team_id=int(item["team_h"]),
-            away_team_id=int(item["team_a"]),
-            home_team_name=teams[int(item["team_h"])],
-            away_team_name=teams[int(item["team_a"])],
-            started=bool(item.get("started")),
-            finished=bool(item.get("finished") or item.get("finished_provisional")),
-            kickoff_time=_parse_datetime(item.get("kickoff_time")),
-            home_score=_optional_int(item.get("team_h_score")),
-            away_score=_optional_int(item.get("team_a_score")),
-            elapsed_minutes=_optional_int(item.get("minutes")) or None,
-        )
-        for item in snapshot["fixtures"]
-    )
+    fixtures = tuple(parse_fixture(item, teams, gameweek=gameweek) for item in snapshot["fixtures"])
 
     live_scores = {
         int(item["id"]): ElementScore(

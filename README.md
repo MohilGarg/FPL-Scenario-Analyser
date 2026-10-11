@@ -1,8 +1,8 @@
 # FPL Scenario Analyser
 
-FPL Scenario Analyser combines live last-place scenario analysis with private mini-league analytics.
-It combines confirmed scores with clearly labelled experimental forfeit forecasts, without
-transfer or captain recommendations.
+FPL Scenario Analyser combines public last-place analysis and descriptive mini-league analytics
+with a separate password-protected FPL Assistant. The public analyser combines confirmed scores
+with labelled experimental forfeit forecasts. Personal lineup and transfer planning stay private.
 
 **Live site:** <https://mohilgarg.github.io/FPL-Scenario-Analyser/>
 
@@ -11,6 +11,13 @@ finish there, who is practically safe, and realistic football routes to the fina
 login is required.
 
 ## Website
+
+The lock-marked **FPL Assistant** entry opens the Python-hosted private dashboard in the same tab.
+It offers cached all-player predictions for the next 1/3/5/6 Gameweeks, public deadline squad
+loading, exhaustive legal XI/bench/captain selection, manual transfer plans, a bounded
+single-transfer shortlist and conditional Bench Boost/Triple Captain comparisons. Private APIs
+use server-managed sessions and remain disabled until configured. See [ASSISTANT.md](ASSISTANT.md)
+for password setup, hosting, limitations and measured checks. No FPL account changes are submitted.
 
 The root URL is a neutral home page. Enter a classic league ID or paste its FPL standings URL.
 No league loads automatically, even if you have visited before. Recent leagues appear as explicit
@@ -163,8 +170,9 @@ duplicated in JavaScript.
 Player forecasts and joint fixture outcomes are reusable through `fpl_forfeit.forecasting`,
 independently of mini-leagues. The public analyser consumes the same shared model.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the typed multi-Gameweek projection interface and
-the documented server-side authentication boundary for a future private assistant.
-Optimisation and login functionality remain outside the current implementation.
+the implemented server-side authentication boundary for the private assistant.
+The private assistant's forecasting, optimisation and secure setup are documented in
+[ASSISTANT.md](ASSISTANT.md).
 
 ## Run locally
 
@@ -338,6 +346,7 @@ python frontend/check.py
 python frontend/check.py --simulations-only
 python frontend/check.py --league 188263
 python frontend/check.py --scenario-league 188263
+python -m frontend.check_assistant --browser-executable 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 ```
 
 On Windows this uses installed Microsoft Edge; otherwise install a Playwright Chromium browser

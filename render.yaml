@@ -11,6 +11,8 @@ services:
     envVars:
       - key: FPL_CACHE_TTL_SECONDS
         value: "90"
+      - key: FPL_ASSISTANT_ORIGIN
+        value: https://fpl-scenario-analyser-api.onrender.com
       - key: FPL_ALLOWED_ORIGINS
         value: https://mohilgarg.github.io,http://localhost:8080,http://127.0.0.1:8080
 

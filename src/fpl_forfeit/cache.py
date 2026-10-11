@@ -46,3 +46,7 @@ class TTLCache[Key: Hashable, Value]:
     def clear(self) -> None:
         with self._lock:
             self._items.clear()
+
+    def delete(self, key: Key) -> None:
+        with self._lock:
+            self._items.pop(key, None)

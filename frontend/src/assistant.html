@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Private FPL Assistant</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="stylesheet" href="./assets/assistant.css">
+  <script src="./assets/assistant.js" defer></script>
+</head>
+<body class="assistant-page">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="https://mohilgarg.github.io/FPL-Scenario-Analyser/"><span class="brand-mark" aria-hidden="true">FPL</span><span>FPL Scenario Analyser</span></a>
+    <div class="header-actions"><button id="assistant-theme" class="icon-button" type="button" aria-label="Switch colour theme">Theme</button><button id="assistant-logout" class="icon-button hidden" type="button">Log out</button></div>
+  </header>
+  <main id="main-content">
+    <div class="assistant-heading"><p class="kicker">&#128274; Private workspace</p><h1>FPL Assistant</h1><p>Explore expected points. Choose a legal XI. Compare your plans.</p></div>
+    <p id="assistant-message" class="assistant-message hidden" role="status" aria-live="polite"></p>
+    <section id="assistant-locked" class="assistant-login">
+      <span class="assistant-lock" aria-hidden="true">&#128274;</span><h2>Your private planning space</h2><p>Friends can use the public analyser. Your squad analysis and optimisation require private access.</p>
+      <p id="assistant-access-note" class="fine-print" role="status">Checking private access…</p>
+      <form id="assistant-login-form" class="hidden"><label for="assistant-password">Private password</label><input id="assistant-password" type="password" autocomplete="current-password" required maxlength="256"><button class="primary-button" type="submit">Unlock assistant</button></form>
+    </section>
+    <div id="assistant-workspace" class="hidden">
+      <div class="assistant-toolbar"><p id="assistant-source" class="fine-print"></p><button id="assistant-refresh" class="secondary-button" type="button">Refresh forecasts</button></div>
+      <nav class="assistant-tabs" role="tablist" aria-label="Private assistant sections">
+        <button id="assistant-tab-team" role="tab" aria-selected="true" aria-controls="assistant-team" data-assistant-view="team">My Team</button>
+        <button id="assistant-tab-predictions" role="tab" aria-selected="false" aria-controls="assistant-predictions" data-assistant-view="predictions">Predictions</button>
+        <button id="assistant-tab-transfers" role="tab" aria-selected="false" aria-controls="assistant-transfers" data-assistant-view="transfers">Transfers</button>
+        <button id="assistant-tab-chips" role="tab" aria-selected="false" aria-controls="assistant-chips" data-assistant-view="chips">Chips</button>
+      </nav>
+      <section id="assistant-team" class="assistant-panel" role="tabpanel" aria-labelledby="assistant-tab-team">
+        <div class="view-heading"><div><h2>My Team</h2><p>A public deadline snapshot, evaluated for the next deadline.</p></div></div>
+        <form id="assistant-squad-form" class="assistant-squad-form"><label for="assistant-team-id">FPL team ID<input id="assistant-team-id" inputmode="numeric" type="number" min="1" max="100000000" required placeholder="Your FPL entry ID"></label><button class="primary-button" type="submit">Load my squad</button></form>
+        <div id="assistant-squad-content"><p class="assistant-empty">Load your team to compare its last public lineup with a recommended XI. No FPL password is needed and no changes are submitted to FPL.</p></div>
+      </section>
+      <section id="assistant-predictions" class="assistant-panel hidden" role="tabpanel" aria-labelledby="assistant-tab-predictions">
+        <div class="view-heading"><div><h2>Player predictions</h2><p>Published fixtures, shared football outcomes and explicit uncertainty.</p></div></div>
+        <div class="assistant-filters">
+          <label>Horizon<select id="assistant-horizon"><option value="1">Next Gameweek</option><option value="3" selected>Next 3 Gameweeks</option><option value="5">Next 5 Gameweeks</option><option value="6">Next 6 Gameweeks</option></select></label>
+          <label>Find player<input id="assistant-search" type="search" placeholder="Player or club"></label>
+          <label>Position<select id="assistant-position"><option value="">All positions</option><option>GK</option><option>DEF</option><option>MID</option><option>FWD</option></select></label>
+          <label>Club<select id="assistant-club"><option value="">All clubs</option></select></label>
+          <label>Min price (£m)<input id="assistant-min-price" type="number" min="0" max="20" step="0.1" placeholder="Any"></label>
+          <label>Max price (£m)<input id="assistant-max-price" type="number" min="0" max="20" step="0.1" placeholder="Any"></label>
+        </div>
+        <div id="assistant-prediction-content"></div>
+      </section>
+      <section id="assistant-transfers" class="assistant-panel hidden" role="tabpanel" aria-labelledby="assistant-tab-transfers">
+        <div class="view-heading"><div><h2>Compare transfer plans</h2><p>Test up to five transfers against keeping your squad, with a legal XI and captain re-optimised each Gameweek.</p></div></div>
+        <div id="assistant-transfer-content"><p class="assistant-empty">Load your squad in My Team first. Selling prices and live account balances must be confirmed manually when public FPL data does not expose them.</p></div>
+        <div id="assistant-transfer-result"></div>
+      </section>
+      <section id="assistant-chips" class="assistant-panel hidden" role="tabpanel" aria-labelledby="assistant-tab-chips">
+        <div class="view-heading"><div><h2>Conditional chip values</h2><p>Compare Bench Boost and Triple Captain in the published forecast window.</p></div></div>
+        <button id="assistant-evaluate-chips" class="secondary-button" type="button">Compare available chips</button><div id="assistant-chip-content"><p class="assistant-empty">Load your squad first. Chip availability is checked against public chip history and official season windows.</p></div>
+      </section>
+      <details id="assistant-model" class="assistant-model"><summary>Forecast assumptions &amp; data coverage</summary><div></div></details>
+    </div>
+  </main>
+  <dialog id="assistant-player-dialog"><button id="assistant-close-dialog" type="button" class="icon-button">Close</button><div id="assistant-player-detail"></div></dialog>
+  <footer><span>Private, read-only FPL planning. Experimental forecasts.</span><a href="https://mohilgarg.github.io/FPL-Scenario-Analyser/">Public analyser</a></footer>
+</body>
+</html>

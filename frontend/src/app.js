@@ -2,6 +2,9 @@ const config = window.APP_CONFIG || {};
 const apiBaseUrl = String(config.apiBaseUrl || "").replace(/\/$/, "");
 const VALID_VIEWS = new Set(["overview", "scenarios", "differentials", "simulations", "managers", "analytics"]);
 const REFRESH_INTERVAL_MS = 90_000;
+const assistantLink = document.querySelector("#assistant-link");
+if (apiBaseUrl) assistantLink.href = `${apiBaseUrl}/assistant/`;
+else assistantLink.addEventListener("click", event => { event.preventDefault(); showToast("The private backend is not configured."); });
 
 const elements = {
   landing: document.querySelector("#landing"),

@@ -1,10 +1,10 @@
-# Shared forecasting and the future private assistant
+# Shared forecasting and the private assistant
 
-The public Scenario Analyser and a future private FPL Assistant will consume one
-football forecasting implementation. This cycle implements reusable player
-projections and improves season-based starting-duration estimates. Personal squads,
-optimisation, recommendations and authentication are future work. No private routes
-or login placeholders are registered.
+The public Scenario Analyser and private FPL Assistant consume one football forecasting
+implementation. Public live risk/scenario analysis and private future predictions share
+football distributions and FPL scoring. The assistant adds authenticated squad planning
+and optimisation; its production access is disabled until credentials are configured.
+See [ASSISTANT.md](ASSISTANT.md) for setup, security, constraints and verification.
 
 ## Python boundaries
 
@@ -14,13 +14,14 @@ or login placeholders are registered.
 | Optional licensed data | Future server-side adapters supplying normalised `ForecastInputs` with named `DataSource` provenance; none installed |
 | Player and team statistical estimates | `forecasting/statistics.py` |
 | Shared fixture distributions, playing windows and football events | `forecasting/simulation.py` |
-| Structured player projections and uncertainty | `forecasting/models.py`, `forecasting/projections.py` |
+| Structured player projections and uncertainty | `forecasting/models.py`, `forecasting/projections.py`; future-GW joint aggregation in `forecasting/horizon.py` |
 | FPL fixture points | `points.py`, also re-exported by `scoring.py` for existing consumers |
 | Public official-score reconciliation, league risk and sensitivity | `forecast.py` |
 | Hits, captaincy, chips and legal autosubs | `scoring.py`, `substitutions.py` |
 | Public safety and exact scenarios | Existing `safety.py`, `solver.py`, `scenarios.py` |
 | Descriptive league analytics | Existing `analytics/service.py`, `analytics/calculations.py` |
-| Private optimisation and authentication | Future dedicated services and protected router; no implementation yet |
+| Private XI/transfer/chip planning | `assistant/optimisation.py`, `assistant/service.py` |
+| Private authentication and protected routing | `assistant/auth.py`, `assistant/web.py`; same-origin backend-hosted assets |
 
 The shared forecasting package uses standard-library Python and normalised `Player`
 and `Fixture` values. It has no league IDs, managers, picks, transfer costs, web
@@ -32,7 +33,7 @@ Each public simulation draws a fixture once for all managers. Player projections
 summarise those same draws; they do not run a separate model. The public adapter adds
 only unfinished-fixture scoring deltas to official aggregate event points, preserving
 completed Double Gameweek contributions, then resolves multipliers and hits. Private
-optimisation must consume the same joint outcomes when evaluating correlated squad
+optimisation consumes shared joint outcomes when evaluating correlated squad
 choices; independently sampling per-player marginal projections would lose shared
 goals, clean sheets, appearances and autosub dependencies. No predictive advice is
 added to the public application.
@@ -56,8 +57,10 @@ inputs = ForecastInputs(
     team_goal_rates=team_rates,
 )
 projections = project_players(
-    inputs, gameweeks=(current_gameweek, current_gameweek + 1),
-    samples=1600, seed=20261010,
+    inputs,
+    gameweeks=(current_gameweek, current_gameweek + 1),
+    samples=1600,
+    seed=20261010,
 )
 ```
 
@@ -106,20 +109,20 @@ forecasts for evaluation. Licensed adapters can later improve the same inputs/ra
 with server-held credentials and explicit source/licence restrictions, without
 introducing a second prediction model.
 
-## Future server-side authentication boundary
+## Server-side authentication boundary
 
 Public `/api/league/*`, `/api/demo/*` and descriptive analytics routes remain public.
-Personal squads, preferences, budgets and optimisation results must live in a
-separate private service exposed only through a dedicated router such as
-`/api/private/*`. When that router is built, attach a server-side authentication
-dependency to the entire router and enforce resource ownership/authorisation on
-every endpoint, including progress, cached results and background-job access.
+Personal squads, budgets and optimisation results live in a separate private service
+exposed through `/api/assistant/*`. Middleware authenticates every data/operation path
+before validation/computation; only login and session status are public. Cache keys carry
+the server-managed session subject. Every future private endpoint, including progress,
+cached results and background jobs, must retain this authentication/ownership boundary.
 Unauthenticated requests must fail before fetching personal data or computing a
 private result. A hidden tab, JavaScript password prompt, route naming or CORS
 policy is not authentication.
 
 The shared football model accepts no user identity and can be reused by both
-services. Private services will pass authenticated identity explicitly and store
+services. Private services pass authenticated identity explicitly and store
 personal inputs/results in caches partitioned by that identity. Public analysis
 caches must never receive private squads or optimisation output. Share only
 licence-permitted public football inputs/distributions through public caches.
@@ -127,12 +130,12 @@ Background private work must carry its owner's identity and check authorisation
 when results are read.
 
 Credentials and external provider keys belong in server environment/secret storage,
-never frontend configuration or Git. The eventual authentication choice must fit
-the deployment topology: either secure server sessions with appropriate cookie/CSRF
-handling or validated identity-provider tokens. Credentialed CORS and origins must
-be deliberately configured then. The current unauthenticated public CORS settings
+never frontend configuration or Git. The assistant navigates from Pages to the same-origin
+backend dashboard in the same tab, uses opaque Secure/HttpOnly/Strict cookies and CSRF/origin
+checks, and grants no credentialed cross-origin access. The unauthenticated public CORS settings
 provide no private access control. The optional public risk-history SQLite store must never contain
-personal optimisation data. No identity provider, login system or private API endpoint is introduced.
+personal optimisation data. In-process private sessions/caches require one worker; restarts
+revoke sessions. No additional database, paid service or identity provider is required.
 
 The public intelligence adapter consumes joint fixture draws and resolved manager multipliers;
 it does not implement a second football model. Official-history retrieval remains bounded in

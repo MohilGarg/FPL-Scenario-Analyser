@@ -127,3 +127,5 @@ class PlayerFixtureProjection:
     model_version: str
     data_timestamp: datetime
     provenance: tuple[DataSource, ...]
+    expected_defensive_contribution: float | None = None
+    expected_defensive_points: float | None = None

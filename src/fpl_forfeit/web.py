@@ -16,6 +16,9 @@ from .api import (
     FPLLeagueSizeError,
     FPLNotFoundError,
 )
+from .assistant.auth import SessionStore
+from .assistant.service import AssistantService
+from .assistant.web import register_assistant
 from .demo import DEMO_MODES, DemoMode
 from .forecast import Condition, ScenarioConflict
 from .forecasting.models import MODEL_VERSION
@@ -55,7 +58,10 @@ class WhatIfRequest(BaseModel):
 
 
 def create_app(
-    service: AnalysisService | None = None, analytics: AnalyticsService | None = None
+    service: AnalysisService | None = None,
+    analytics: AnalyticsService | None = None,
+    assistant: AssistantService | None = None,
+    auth: SessionStore | None = None,
 ) -> FastAPI:
     analysis_service = service or AnalysisService()
     analytics_service = analytics or AnalyticsService(
@@ -254,6 +260,7 @@ def create_app(
             lambda: analytics_service.section(league_id, section, gameweek=gameweek, a=a, b=b)
         )
 
+    register_assistant(application, assistant or AssistantService(), auth or SessionStore())
     return application
 
 

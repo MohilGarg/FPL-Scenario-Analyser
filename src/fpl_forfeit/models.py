@@ -178,3 +178,53 @@ class LeagueState:
             team_id: all(fixture.finished for fixture in self.fixtures_for_team(team_id))
             for team_id in team_ids
         }
+
+
+@dataclass(frozen=True, slots=True)
+class GameweekInfo:
+    id: int
+    deadline: datetime | None
+    finished: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ChipWindow:
+    name: str
+    start: int
+    stop: int
+    quantity: int
+
+
+@dataclass(frozen=True, slots=True)
+class FPLCatalogue:
+    """Official normalised roster, published schedule and current-season rules."""
+
+    players: dict[int, Player]
+    fixtures: tuple[Fixture, ...]
+    gameweeks: tuple[GameweekInfo, ...]
+    team_goal_rates: dict[int, tuple[float, float]]
+    fetched_at: datetime
+    schedule_complete: bool
+    unassigned_team_ids: frozenset[int]
+    squad_counts: dict[Position, int]
+    formation_limits: dict[Position, tuple[int, int]]
+    club_limit: int | None
+    maximum_free_transfers: int | None
+    chips: tuple[ChipWindow, ...]
+    missing_schedule_team_ids: frozenset[int] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class PublicSquadSnapshot:
+    """Last public deadline snapshot, never claimed to be a live authenticated account."""
+
+    entry_id: int
+    name: str
+    gameweek: int
+    manager: Manager
+    bank_tenths: int | None
+    value_tenths: int | None
+    purchase_prices: dict[int, int | None]
+    selling_prices: dict[int, int | None]
+    chips_used: tuple[tuple[str, int], ...] | None
+    fetched_at: datetime

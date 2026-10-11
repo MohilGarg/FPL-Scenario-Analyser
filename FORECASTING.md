@@ -214,3 +214,13 @@ many independent gameweeks is required before any calibration claim. Raw snapsho
 by Git. The existing `--snapshot` and `--save-snapshot` CLI paths remain available.
 
 See [VALIDATION.md](VALIDATION.md) for measured tests, timings, official-data coverage and data readiness.
+
+## Private future projections
+
+`forecasting/horizon.py` aggregates the same fixture draws over actual future Gameweeks for the
+authenticated assistant. It forecasts a stable full roster once, caches compact joint outcome
+matrices and supplies fixture/GW metrics for lineup, transfer and chip comparisons. It preserves
+the public live engine's official scored totals, owned-player comparison set and sample counts.
+`PlayerFixtureProjection` now also exposes expected defensive contribution and FPL defensive points.
+See [ASSISTANT.md](ASSISTANT.md) for caching, schedule coverage, finite-sample optimisation and
+future-rate limitations. No independent prediction model or new external data provider is added.

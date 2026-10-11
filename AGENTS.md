@@ -10,6 +10,14 @@ independent xG models, price predictions, optimisation or generic global-rank da
 Official FPL xG/xA and historical appearances may inform the shared experimental forecast;
 they must not become public transfer or captain recommendations.
 
+The explicitly authorised private FPL Assistant is the exception: predictions, legal XI,
+captaincy, transfer comparisons and conditional chip values belong only in `assistant/` behind
+server-side authentication. Reuse the shared football model and FPL scorer. Every
+`/api/assistant/*` data/operation route must be protected before validation or computation;
+only session status and login are public. Never put private squads/results in public caches,
+embed credentials in assets, or enable production access without a configured password hash
+and HTTPS origin. See `ASSISTANT.md` for its setup, limits and verification.
+
 ## Correctness priorities
 
 1. Official completed/live FPL element points and transfer costs.

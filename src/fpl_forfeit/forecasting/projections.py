@@ -29,6 +29,8 @@ class _Totals:
     goals: int = 0
     assists: int = 0
     clean_sheets: int = 0
+    defensive_contribution: int = 0
+    defensive_points: int = 0
 
 
 class ProjectionAccumulator:
@@ -64,6 +66,11 @@ class ProjectionAccumulator:
                 row.goals += stats.get("goals_scored", 0)
                 row.assists += stats.get("assists", 0)
                 row.clean_sheets += stats.get("clean_sheets", 0)
+                row.defensive_contribution += stats.get("defensive_contribution", 0)
+                row.defensive_points += event_points(
+                    self.inputs.players[pid].position,
+                    {"defensive_contribution": stats.get("defensive_contribution", 0)},
+                )
 
     def results(self) -> tuple[PlayerFixtureProjection, ...]:
         projections: list[PlayerFixtureProjection] = []
@@ -112,6 +119,8 @@ class ProjectionAccumulator:
                     model_version=self.inputs.model_version,
                     data_timestamp=self.inputs.fetched_at,
                     provenance=self.inputs.provenance,
+                    expected_defensive_contribution=row.defensive_contribution / n if n else None,
+                    expected_defensive_points=row.defensive_points / n if n else None,
                 )
             )
         return tuple(projections)

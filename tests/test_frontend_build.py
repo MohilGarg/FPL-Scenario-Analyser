@@ -26,9 +26,26 @@ class FrontendBuildTests(unittest.TestCase):
             javascript = (output / "app.js").read_text(encoding="utf-8")
             self.assertIn('data-theme="light"', html)
             self.assertIn('id="theme-toggle"', html)
+            self.assertIn('id="assistant-link"', html)
+            self.assertIn('href="./assistant.css"', html)
+            self.assertIn("/assistant/", javascript)
+            self.assertNotIn(
+                'target="_blank"',
+                html[html.index('id="assistant-link"') : html.index('id="assistant-link"') + 200],
+            )
+            private_js = (output / "assistant.js").read_text(encoding="utf-8")
+            self.assertIn('credentials:"same-origin"', private_js)
+            self.assertNotIn("FPL_ASSISTANT_PASSWORD_HASH", private_js)
             self.assertTrue((output / "simulations.js").exists())
             self.assertIn('src="./simulations.js"', html)
-            for view in ("overview", "scenarios", "differentials", "simulations", "managers", "analytics"):
+            for view in (
+                "overview",
+                "scenarios",
+                "differentials",
+                "simulations",
+                "managers",
+                "analytics",
+            ):
                 self.assertIn(f'data-view="{view}"', html)
             self.assertIn(':root[data-theme="dark"]', css)
             self.assertIn("fpl-theme", javascript)
