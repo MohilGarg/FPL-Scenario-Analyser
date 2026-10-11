@@ -15,6 +15,7 @@ window.ForfeitOutlook = (() => {
   let teamId = null;
   let kind = "goal";
   let resetDraft = false;
+  let recordedHistory = null;
   const pct = (value) => value == null ? "Pending" : `${(100 * value).toFixed(1)}%`;
   const signed = (value) => `${value > 0 ? "+" : ""}${Number(value).toFixed(1)}`;
   const shortNames = (names) => names.length > 2 ? `${names.slice(0,2).join(", ")} and ${names.length-2} others` : names.join(", ");
@@ -39,13 +40,23 @@ window.ForfeitOutlook = (() => {
 
   async function start(data, generation) {
     cancel();
-    baseline = data.outlook || null;
+    baseline = data.outlook || null; recordedHistory = null;
     modified = null; conditions = []; forecastError = ""; scenarioError = "";
     fixtureId = null; playerId = null; teamId = null; kind = "goal";
     scenarioLoading = false;
     loading = data.league.status !== "complete";
     refresh();
-    if (!loading) return;
+    if (!loading) {
+      if (!data.demo?.active) {
+        controller = new AbortController();
+        try {
+          const response = await fetch(detailEndpoint("risk-history") + `&gameweek=${data.league.gameweek}`, {signal:controller.signal});
+          const history = await response.json();
+          if (response.ok && generation === appState.generation) { recordedHistory = history; refresh(); }
+        } catch (_) { /* Final standings stay available when history cannot load. */ }
+      }
+      return;
+    }
     controller = new AbortController();
     try {
       const payload = await read(detailEndpoint("outlook"), {}, controller);
@@ -63,11 +74,67 @@ window.ForfeitOutlook = (() => {
     if (!baseline) return "";
     const coverage = baseline.coverage;
     return `<details class="forecast-assumptions"><summary>Model assumptions & uncertainty</summary>
-      <p>Experimental internal estimates · ${baseline.simulations.toLocaleString()} samples · reproducible seed ${baseline.seed}.</p>
+      <p>Experimental internal estimates · ${baseline.simulations.toLocaleString()} samples · reproducible seed ${baseline.seed} · ${h(baseline.model_version)}.</p>
       <p>${h(baseline.tie_convention)}</p>
       <p>${coverage.remaining_owned_players_using_priors} remaining owned players use fallback history. ${coverage.live_player_breakdowns_missing_and_frozen} live player breakdowns are missing and frozen. Team history ${coverage.team_history_available ? "available" : "unavailable: fallback scoring rates apply"}.</p>
+      <p>Official expected-stat coverage: ${coverage.players_with_expected_stats ?? 0} owned players. Completed appearance history: ${coverage.players_with_appearance_history ?? 0}. Verified external lineup records: ${coverage.confirmed_lineup_players ?? 0}.</p>
       <ul>${baseline.assumptions.map((a) => `<li>${h(a)}</li>`).join("")}</ul>
     </details>`;
+  }
+
+  function eventCards(lookup) {
+    const events = baseline?.dangerous_events || [];
+    return `<section class="section-block next-events"><div class="section-header"><div><h2>What could change the result?</h2><p>Events associated with a material risk swing in the shared forecast.</p></div></div>
+      <div class="decisive-grid">${events.map((event,index) => {
+        const lead = event.managers[0];
+        const names = (ids) => shortNames(ids.map(id=>lookup.get(id)?.manager_name || String(id)));
+        return `<article class="event-card"><span class="table-note">${pct(event.occurrence_probability)} modelled occurrence · ${event.matching_samples} matching draws</span><h3>${h(event.label)}</h3>
+          <p>${event.benefits_entry_ids.length ? `Helps ${h(names(event.benefits_entry_ids))}. ` : ""}${event.vulnerable_entry_ids.length ? `More vulnerable: ${h(names(event.vulnerable_entry_ids))}.` : ""}</p>
+          <strong>${h(lookup.get(lead.entry_id)?.manager_name)}: ${pct(lead.baseline_risk)} → ${pct(lead.event_risk)}</strong><span class="table-note">${signed(100*lead.risk_change)} percentage points · ${signed(lead.expected_points_swing)} expected points</span>
+          ${event.projected_loser_changes ? '<p class="event-change">Projected last-place manager changes.</p>' : ""}
+          <details><summary>Impact & uncertainty</summary><ul>${event.managers.map(r=>`<li>${h(lookup.get(r.entry_id)?.manager_name)}: ${signed(100*r.risk_change)} pp; sampling band ${r.sampling_band.map(v=>signed(100*v)).join(" to ")} pp; ${signed(r.expected_points_swing)} points.</li>`).join("")}</ul><p>${h(event.uncertainty_note)}</p></details>
+          <button type="button" class="text-button" data-next-event="${index}">Explore a forced version</button></article>`;
+      }).join("") || `<p class="fine-print">${loading ? "Screening events alongside risk estimates…" : "No screened event exceeds the sampling threshold. Football and model uncertainty remain."}</p>`}</div>
+      <p class="fine-print">Conditional associations from existing draws. Goals mean at least one further goal; a substitute event means any cameo. Explorer tests a chosen number of returns or minutes as a forced intervention. Sampling bands exclude model error.</p></section>`;
+  }
+
+  function fixtureTimeline(lookup) {
+    const forecasts = baseline?.fixture_forecasts || [];
+    const timeline = baseline?.fixture_timeline || [];
+    if (!timeline.length) return "";
+    const time = value => value ? new Date(value).toLocaleString([], {weekday:"short",hour:"2-digit",minute:"2-digit"}) : "Kickoff order unavailable";
+    return `<section class="section-block fixture-intelligence"><div class="section-header"><div><h2>The remaining fixture timeline</h2><p>Overlapping matches are grouped. Bottom at a checkpoint is separate from final forfeit risk.</p></div></div>
+      <ol class="fixture-timeline">${timeline.map((group,index)=>`<li><span class="table-note">${h(time(group.kickoff_time))} · ${group.samples} shared draws</span><h3>${h(group.label)}</h3>
+        <p>${group.remaining_uncertainty_sd.toFixed(1)} points of remaining uncertainty (SD)${group.expected_to_clarify ? " · Expected to clarify the contest" : ""}.</p>
+        <details data-card="fixture-group-${index}"><summary>Checkpoint risks & match exposure</summary>
+          <div class="table-wrap"><table><thead><tr><th>Manager</th><th>Mean checkpoint score</th><th>Bottom at checkpoint</th><th>Final forfeit chance</th><th>Remaining points: 80% range</th></tr></thead><tbody>${group.managers.map(r=>`<tr><th>${h(lookup.get(r.entry_id)?.manager_name)}</th><td>${r.projected_checkpoint_score.toFixed(1)}</td><td>${pct(r.checkpoint_bottom_probability)}</td><td>${pct(r.final_last_probability)}</td><td>${r.remaining_contribution_interval_80.join(" to ")}</td></tr>`).join("")}</tbody></table></div>
+          ${forecasts.filter(f=>group.fixture_ids.includes(f.fixture_id)).map(f=>`<article class="fixture-exposure"><h4>${h(f.label)} · importance #${f.importance_rank}</h4><p>Typical relative contribution spread: ${f.relative_influence.toFixed(1)} points (80% range ${f.relative_swing_interval_80.join(" to ")}). Importance follows association with final risk, then relative points spread.</p>
+            <p>${f.players.map(p=>`${h(p.name)}${p.captained_by_entry_ids.length ? ` (captain: ${h(shortNames(p.captained_by_entry_ids.map(id=>lookup.get(id)?.manager_name || id)))})` : ""}`).join(" · ")}</p>
+            <ul>${f.managers.map(r=>`<li>${h(lookup.get(r.entry_id)?.manager_name)}: ${signed(r.expected_effective_contribution)} effective points; 80% range ${r.contribution_interval_80.join(" to ")}.</li>`).join("")}</ul>
+            <button type="button" class="text-button" data-timeline-fixture="${f.fixture_id}">Explore this match</button><p class="fine-print">${h(f.note)}</p></article>`).join("")}
+          <p class="fine-print">${h(group.note)} Remaining uncertainty measures sampled final-minus-checkpoint score dispersion, including captaincy and autosub changes; it is not a calibrated forecast error.</p></details></li>`).join("")}</ol></section>`;
+  }
+
+  function historyView(data) {
+    const history = recordedHistory || baseline?.risk_history;
+    if (!history && loading) return "";
+    const lookup = managerMap(data);
+    const players = new Map(data.managers.flatMap(m=>m.squad.map(p=>[p.player_id,p.name || p.player_name])));
+    const stamp = value => new Date(value).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    return `<section class="section-block risk-history"><div class="section-header"><div><h2>Recorded risk movement</h2><p>Only forecasts saved at the time appear here.</p></div></div>
+      ${baseline?.history_recording_warning ? `<p class="fine-print">${h(baseline.history_recording_warning)}</p>` : ""}
+      ${(history?.series || []).map((group,index)=>{
+        const series = group.contender_entry_ids.map(id=>({key:String(id),name:lookup.get(id)?.manager_name || String(id)}));
+        const observations = group.observations.map(o=>({time:stamp(o.source),...Object.fromEntries(o.managers.map(r=>[String(r.entry_id),100*r.last_probability]))}));
+        const latest = group.observations.at(-1);
+        return `<details data-card="risk-series-${group.series_id}" ${index===0 ? "open" : ""}><summary>${h(group.configuration.model_version)} · ${group.observations.length} observations · ${group.configuration.tie_rule === "include" ? "ties included" : "outright last"}</summary>
+          <p class="fine-print">${group.configuration.simulations} draws · seed ${group.configuration.seed}. Series with different settings, models or members are kept separate. Times use your timezone; checkpoints are spaced by observation, not elapsed time.</p>
+          ${window.FPLCharts.line("Estimated last-place probability (%)",observations,series,"time",{prefix:"",unit:"%",axis:"Source time"})}
+          <ul>${latest.managers.filter(r=>group.contender_entry_ids.includes(r.entry_id)).map(r=>`<li>${h(lookup.get(r.entry_id)?.manager_name)}: ${pct(r.last_probability)}${r.risk_change == null ? " · first observation" : ` · ${signed(100*r.risk_change)} pp since the preceding compatible observation`}.</li>`).join("")}</ul>
+          <p class="fine-print">Latest source: ${h(new Date(latest.source).toLocaleString())}. Recorded: ${h(new Date(latest.recorded_at).toLocaleString())}.</p>
+          ${latest.player_changes.length || latest.annotations.length ? `<p>Between the latest two observations: ${latest.player_changes.slice(0,8).map(p=>`${h(players.get(p.player_id) || `Player ${p.player_id}`)} ${signed(p.points_change)} official points, ${signed(p.minutes_change)} minutes`).join("; ")}${latest.annotations.length ? `${latest.player_changes.length ? "; " : ""}${latest.annotations.length} fixture/coverage updates` : ""}. These changes provide context; they do not allocate the risk movement to one player or event.</p>` : ""}</details>`;
+      }).join("") || `<p class="fine-print">${h(history?.note || "Recorded risk history is unavailable for this observation.")}</p>`}
+      ${history?.series?.length ? `<p class="fine-print">${h(history.note)}</p>` : ""}</section>`;
   }
 
   function overview(data) {
@@ -111,7 +178,8 @@ window.ForfeitOutlook = (() => {
       <p class="fine-print">All projections include hits, chips, captaincy and legal autosubs. A sampled 0% does not prove safety. SAFE uses the separate practical ${h(envelope)} total remaining contribution envelope.</p>
       </details>
     </section>
-    <section class="section-block"><div class="section-header"><div><h2>What can decide last place?</h2><p>Effective exposure across the bottom contest, including captaincy and pending substitutions.</p></div><button type="button" class="secondary-button" data-explore>Explore an outcome</button></div>
+    ${eventCards(lookup)}${fixtureTimeline(lookup)}${historyView(data)}
+    <section class="section-block"><div class="section-header"><div><h2>Players to watch</h2><p>Effective exposure across the bottom contest, including captaincy and pending substitutions.</p></div><button type="button" class="secondary-button" data-explore>Explore an outcome</button></div>
       <div class="decisive-grid">${decisive.slice(0,5).map((p) => `<article class="decisive-card"><span class="table-note">${h(p.team_name)} · ${p.status === "live" ? "Fixture live" : "Yet to play"}</span><h3>${h(p.player_name)}</h3><strong>~${p.swing_points} point swing</strong><p>A strong return helps ${h(shortNames(p.strong_performance_helps))}. A smaller return favours ${h(shortNames(p.blank_helps))}.</p><details><summary>Why this matters</summary><p>${h(p.explanation)}</p><p>Higher exposure: ${h(p.strong_performance_helps.join(", "))}. Lower exposure: ${h(p.blank_helps.join(", "))}.</p><p>${h(p.association_note)}</p></details><div class="decisive-actions">${[["goal","Goal"],["blank","Blank"],...(["GK","DEF","MID"].includes(p.position) ? [["clean_sheet","Clean sheet"]] : [])].map(([event,label])=>`<button type="button" class="text-button" data-explore-player="${p.player_id}" data-explore-fixture="${p.fixture_ids[0]}" data-explore-kind="${event}" data-explore-team="${p.team_id}">Test ${label.toLowerCase()}</button>`).join("")}</div></article>`).join("") || '<p class="fine-print">No substantial remaining differential appears in these samples. Pending absences can still affect effective exposures; inspect Managers.</p>'}</div>
       <div class="fixture-strip">${(baseline?.important_fixtures || []).map((f) => `<span>${h(f.label)} · ${h(f.status)}</span>`).join("")}</div>
     </section>${assumptions()}`;
@@ -165,11 +233,11 @@ window.ForfeitOutlook = (() => {
       </form>
       <p class="fine-print">${unavailable ? "This player has already featured or has no time left for the selected appearance. Choose another player or event. " : ""}A blank still earns appearance and other points. Selected goals/assists are additional from now; the fixture score and team clean sheets update together. Advanced minutes apply to this fixture only, including Double Gameweeks.</p>
       <ul class="condition-list">${conditions.map((c,i) => `<li>${h(c.label || conditionLabel(c,fixture,catalog))}<button type="button" class="text-button" data-remove-condition="${i}" aria-label="Remove condition ${i+1}">Remove</button></li>`).join("")}</ul>
-      <div class="inline-actions">${conditions.length ? '<button type="button" class="secondary-button" data-reset-conditions>Reset scenario</button>' : ""}<span role="status" aria-live="polite">${scenarioLoading ? "Recalculating shared outcomes…" : conditions.length && modified ? "Conditional estimate ready" : "Unmodified baseline"}</span></div>
+      <div class="inline-actions">${conditions.length ? '<button type="button" class="secondary-button" data-reset-conditions>Reset scenario</button>' : ""}<span role="status" aria-live="polite">${scenarioLoading ? "Recalculating shared outcomes…" : conditions.length && modified ? "Forced-event estimate ready" : "Unmodified baseline"}</span></div>
       ${scenarioError ? `<p class="outlook-message" role="alert">${h(scenarioError)}</p>` : ""}
       ${modified ? `<p class="condition-box">Projected bottom: ${h(modified.projected_bottom_entry_ids.map(id=>lookup.get(id)?.manager_name).join(" & "))}. ${modified.projected_last_entry_ids.length ? "" : "No sole projected last under the strict tie rule. "}${h(modified.comparison_note || "")}</p>` : ""}
       ${result ? `<div class="table-wrap"><table class="outlook-table"><thead><tr><th>Manager</th><th>Live</th><th>${modified ? "Scenario" : "Baseline"} mean final</th><th>Point change</th><th>Last-place estimate</th><th>Risk change</th></tr></thead><tbody>${result.managers.map((r) => `<tr><th>${h(lookup.get(r.entry_id)?.manager_name)}</th><td>${r.current_score}</td><td>${r.projected_score.toFixed(1)}</td><td>${r.score_change == null ? "—" : signed(r.score_change)}</td><td>${pct(r.last_probability)}</td><td>${r.risk_change == null ? "—" : `${signed(100*r.risk_change)} pp`}</td></tr>`).join("")}</tbody></table></div>` : ""}
-      <p class="fine-print">Conditional estimates sample the other players and fixtures; they are not a fixed final result or a necessary route to last place. Invalid conditions show an explanation and leave the baseline visible.</p>
+      <p class="fine-print">Forced-event interventions sample the other players and fixtures. They are not Bayesian conditional probabilities, a fixed final result or a necessary route to last place. Invalid conditions show an explanation and leave the baseline visible.</p>
     </section>`;
   }
 
@@ -223,6 +291,13 @@ window.ForfeitOutlook = (() => {
     if (!button) return;
     if (button.hasAttribute("data-remove-condition")) { conditions.splice(Number(button.dataset.removeCondition),1); recalculate(); }
     if (button.hasAttribute("data-reset-conditions")) { conditions=[]; recalculate(); }
+    if (button.hasAttribute("data-next-event") || button.hasAttribute("data-timeline-fixture")) {
+      const selected = baseline?.dangerous_events?.[Number(button.dataset.nextEvent)]?.condition;
+      fixtureId = selected?.fixture_id || Number(button.dataset.timelineFixture);
+      playerId = selected?.player_id || null; teamId = selected?.team_id || null;
+      kind = selected?.kind || "goal"; resetDraft = true;
+      activateView("scenarios"); refresh(); document.querySelector("#explorer-content").scrollIntoView({block:"start"});
+    }
     if (button.hasAttribute("data-explore") || button.hasAttribute("data-explore-player")) {
       if (button.dataset.explorePlayer) { playerId=Number(button.dataset.explorePlayer); fixtureId=Number(button.dataset.exploreFixture); kind=button.dataset.exploreKind || "goal"; teamId=Number(button.dataset.exploreTeam) || null; resetDraft=true; }
       activateView("scenarios"); refresh(); document.querySelector("#explorer-content").scrollIntoView({block:"start"});
@@ -237,5 +312,5 @@ window.ForfeitOutlook = (() => {
       document.querySelector("#exact-heading").scrollIntoView({block:"start"});
     }
   });
-  return { start, cancel, overview, explorer, managerFacts };
+  return { start, cancel, overview, explorer, managerFacts, historyView };
 })();

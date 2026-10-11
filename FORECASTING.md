@@ -8,7 +8,10 @@ exact solver remains a separate, candidate-specific late-Gameweek tool.
 
 The statistical outputs are experimental **uncalibrated internal model estimates**. They are
 useful comparisons under stated assumptions, not verified probabilities or player advice.
-No xG model, external projection feed, paid API, transfer or captain recommendation is involved.
+The v4 model incorporates official expected statistics and bounded completed appearance histories.
+An optional licensed lineup adapter is disabled by default; no transfer or captain advice is involved.
+See [LIVE_INTELLIGENCE.md](LIVE_INTELLIGENCE.md) for event cards, fixture checkpoints, recording,
+benchmarks and the experimental v3/v4 comparison.
 
 Football statistics and simulation now live in the reusable `forecasting/` package.
 The public league adapter consumes its joint outcomes and adds official-score reconciliation
@@ -37,20 +40,26 @@ The rules were checked against the official [2026/27 scoring table](https://www.
 [defensive contributions](https://www.premierleague.com/en/news/4361991/whats-happening-with-defensive-contribution-points-in-202627-fantasy)
 and [bonus changes](https://www.premierleague.com/en/news/4679946/).
 
-## Initial model, with explicit fallback inputs
+## Current model, with explicit fallback inputs
 
 * Team goals: independent home/away Poisson counts. Observed completed season scoring/conceding
   rates are shrunk towards the season league mean by eight matches. A fixture uses the average of
   its team's scoring and its opponent's conceding rates, with multipliers 1.1 home / 0.9 away.
   Without team history the fallback is 1.4 goals per team before that adjustment. Rates are capped
   to 0.25–4.0 for this model, not for the mathematical safety envelope.
-* Player shares: observed season goals and assists per 90, shrunk by 450 minutes towards position
-  priors. Goal priors are GK .003, DEF .06, MID .20, FWD .35 per 90; assist priors are .005, .07,
+* Player shares: one blended count, 65% official xG/xA and 35% observed season returns per 90,
+  shrunk by 450 minutes towards position
+  priors. xGI is retained for coverage, never added to xG+xA. Missing expected statistics retain
+  the observed-return model. Goal priors are GK .003, DEF .06, MID .20, FWD .35 per 90; assist priors are .005, .07,
   .15, .10. These are transparent starter priors, not evidence of calibration. Goal times are
   shared; a scorer must be on the pitch, and an assist cannot go to that same player. Unowned
   roster members contribute an anonymous allocation weight scaled to the remaining on-field
   slots. A fully owned eleven cannot acquire an additional anonymous scorer.
-* Appearances: starts divided by observed team matches, shrunk by four matches towards .8,
+* Appearances: the last eight completed match histories replace the season start fraction when
+  at least three have known starting status; four prior matches towards .8 prevent overreaction.
+  Observed starter durations receive four prior starts, and regular substitute appearances have
+  their own conditional cameo probability and duration distribution. Otherwise use season starts
+  divided by observed team matches, shrunk by four matches towards .8,
   with official availability percentages applied. Without history, .8 is used. Starting owned
   outfield players use season minutes per start, subtracting a three-minute cameo proxy per
   non-starting team match, shrunk by four prior starts towards the existing
@@ -58,7 +67,8 @@ and [bonus changes](https://www.premierleague.com/en/news/4679946/).
   This is a duration proxy rather than observed starter/substitution timestamps. Starting goalkeepers receive
   90 minutes unless minutes are explicitly selected. Non-starters can make short late cameos.
   Windows allow at most eleven simultaneous owned players and one goalkeeper per team.
-  Anonymous teammates fill the remaining positions; this is not a verified starting-lineup model.
+  Anonymous teammates fill remaining positions. Validated licensed starter/bench records can
+  override starting status, without making uncertain bench appearances certain.
 * Clean sheets and conceded deductions: shared goals affect players present at that goal's time.
   A defender ordinarily substituted after 60 can retain a clean sheet; a red-carded defender
   continues to count later conceded goals. New entrants cannot accumulate more minutes than the

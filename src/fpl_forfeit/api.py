@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -15,10 +17,12 @@ from .forecasting.models import TeamMatchResult
 from .forecasting.statistics import estimate_team_goal_rates
 from .models import (
     POSITION_BY_ELEMENT_TYPE,
+    ConfirmedAppearance,
     ElementScore,
     Fixture,
     LeagueState,
     Manager,
+    MatchAppearance,
     Pick,
     Player,
 )
@@ -66,6 +70,16 @@ class FPLClient:
         self._season_fixture_cache: TTLCache[int, list[dict[str, Any]]] = TTLCache(
             3600, max_items=1
         )
+        self._player_histories: TTLCache[int, dict[str, Any]] = TTLCache(21600, max_items=1500)
+        self._history_locks = tuple(Lock() for _ in range(32))
+
+    def player_history(self, player_id: int) -> dict[str, Any]:
+        with self._history_locks[player_id % len(self._history_locks)]:
+            cached = self._player_histories.get(player_id)
+            if cached is None:
+                cached = self._get(f"element-summary/{player_id}/")
+                self._player_histories.set(player_id, cached)
+            return cached
 
     def _get(self, path: str) -> Any:
         if self._curl:
@@ -267,6 +281,7 @@ def load_snapshot(path: Path) -> dict[str, Any]:
 def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
     bootstrap = snapshot["bootstrap"]
     teams = {int(team["id"]): str(team["name"]) for team in bootstrap["teams"]}
+    completed_ids = {int(f["id"]) for f in snapshot.get("season_fixtures", []) if f.get("finished")}
     team_matches = {
         team_id: sum(
             bool(item.get("started"))
@@ -296,6 +311,13 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
             season_saves=_optional_int(element.get("saves")),
             season_defensive_contribution=_optional_int(element.get("defensive_contribution")),
             season_yellow_cards=_optional_int(element.get("yellow_cards")),
+            expected_goals=_optional_float(element.get("expected_goals")),
+            expected_assists=_optional_float(element.get("expected_assists")),
+            expected_goal_involvements=_optional_float(element.get("expected_goal_involvements")),
+            appearance_history=parse_appearance_history(
+                snapshot.get("player_histories", {}).get(str(element["id"]), {}),
+                completed_ids,
+            ),
         )
         for element in bootstrap["elements"]
     }
@@ -440,6 +462,22 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
         )
 
     fetched_at = _parse_datetime(snapshot.get("fetched_at")) or datetime.now(UTC)
+    confirmed = {}
+    for row in snapshot.get("confirmed_appearances", []):
+        observed = _parse_datetime(row["confirmed_at"])
+        if (
+            observed is None
+            or observed.tzinfo is None
+            or row["status"] not in {"starter", "bench", "absent"}
+        ):
+            raise ValueError("Invalid saved confirmed appearance.")
+        appearance = ConfirmedAppearance(**{**row, "confirmed_at": observed})
+        if appearance.player_id not in players or not any(
+            f.id == appearance.fixture_id and f.involves(players[appearance.player_id].team_id)
+            for f in fixtures
+        ):
+            raise ValueError("Saved lineup mapping does not match the fixture roster.")
+        confirmed[(appearance.player_id, appearance.fixture_id)] = appearance
     return LeagueState(
         league_id=int(snapshot["league_id"]),
         league_name=str(snapshot.get("league_name") or snapshot["league_id"]),
@@ -464,6 +502,8 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
         ),
         raw=snapshot,
         provenance="official_fpl",
+        confirmed_appearances=confirmed,
+        forecast_context=snapshot.get("forecast_context", {}),
     )
 
 
@@ -481,11 +521,44 @@ def _team_goal_rates(fixtures: list[dict[str, Any]]) -> dict[int, tuple[float, f
     """Normalise official season scorelines before shared statistical estimation."""
     return estimate_team_goal_rates(
         TeamMatchResult(
-            home_team_id=int(f["team_h"]), away_team_id=int(f["team_a"]),
-            home_goals=int(f["team_h_score"]), away_goals=int(f["team_a_score"]),
+            home_team_id=int(f["team_h"]),
+            away_team_id=int(f["team_a"]),
+            home_goals=int(f["team_h_score"]),
+            away_goals=int(f["team_a_score"]),
         )
         for f in fixtures
         if f.get("finished")
         and f.get("team_h_score") is not None
         and f.get("team_a_score") is not None
     )
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        parsed = float(value)
+    except (ValueError, TypeError):
+        return None
+    return parsed if math.isfinite(parsed) and parsed >= 0 else None
+
+
+def parse_appearance_history(
+    payload: dict[str, Any], completed_ids: set[int]
+) -> tuple[MatchAppearance, ...]:
+    """Only fixtures completed in the original generation; no hindsight enrichment."""
+    rows = []
+    for item in payload.get("history", []):
+        fid = int(item["fixture"])
+        if fid not in completed_ids:
+            continue
+        minutes = int(item.get("minutes", 0))
+        if not 0 <= minutes <= 120:
+            continue
+        start = item.get("starts")
+        rows.append(
+            MatchAppearance(
+                fid, int(item["round"]), min(90, minutes), bool(start) if start in (0, 1) else None
+            )
+        )
+    return tuple(sorted(rows, key=lambda r: (r.gameweek, r.fixture_id)))

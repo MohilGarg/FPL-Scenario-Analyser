@@ -50,7 +50,8 @@ class WebAPITests(unittest.IsolatedAsyncioTestCase):
     async def test_health_endpoint(self) -> None:
         response = await self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok"})
+        self.assertEqual(response.json()["status"], "ok")
+        self.assertIn("forecast_model", response.json())
 
     async def test_serialises_processed_league_result(self) -> None:
         response = await self.client.get("/api/league/188263?scenarios=6")

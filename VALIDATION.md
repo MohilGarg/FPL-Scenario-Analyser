@@ -1,5 +1,10 @@
 # Validation and refinement — 10 October 2026
 
+For the subsequent 11 October v4 live-intelligence implementation, measured benchmarks, provider
+readiness, recorded observation and accuracy limits, see [LIVE_INTELLIGENCE.md](LIVE_INTELLIGENCE.md).
+The dated report below describes the earlier development cycle; its future-work/provider statements
+are superseded by that implementation.
+
 The existing shared-fixture architecture, five-view SPA, Analytics and Pages/Render hosting were
 preserved. Synthetic inputs below are tests, not historical live snapshots or accuracy evidence.
 

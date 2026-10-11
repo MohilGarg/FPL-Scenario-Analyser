@@ -22,6 +22,27 @@ POSITION_BY_ELEMENT_TYPE = {
 
 
 @dataclass(frozen=True, slots=True)
+class MatchAppearance:
+    fixture_id: int
+    gameweek: int
+    minutes: int
+    started: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmedAppearance:
+    player_id: int
+    fixture_id: int
+    provider_player_id: int
+    provider_fixture_id: int
+    status: str  # starter / bench / absent
+    confirmed_at: datetime
+    source: str
+    on_minute: int | None = None
+    off_minute: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Player:
     id: int
     name: str
@@ -40,6 +61,10 @@ class Player:
     season_saves: int | None = None
     season_defensive_contribution: int | None = None
     season_yellow_cards: int | None = None
+    expected_goals: float | None = None
+    expected_assists: float | None = None
+    expected_goal_involvements: float | None = None
+    appearance_history: tuple[MatchAppearance, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +162,8 @@ class LeagueState:
     team_goal_rates: dict[int, tuple[float, float]] = field(default_factory=dict)
     event_final: bool = False
     provenance: str = "caller_supplied"
+    confirmed_appearances: dict[tuple[int, int], ConfirmedAppearance] = field(default_factory=dict)
+    forecast_context: dict[str, Any] = field(default_factory=dict)
 
     def fixtures_for_team(self, team_id: int) -> tuple[Fixture, ...]:
         return tuple(fixture for fixture in self.fixtures if fixture.involves(team_id))

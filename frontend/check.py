@@ -167,7 +167,7 @@ def main() -> None:
         page.locator("#what-if-player").select_option("9001")
         page.locator("#what-if-form button[type=submit]").click()
         page.wait_for_function(
-            "document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')"
+            "document.querySelector('#explorer-content').textContent.includes('Forced-event estimate ready')"
         )
         assert "Haaland scores" in page.locator(".condition-list").inner_text()
         assert "Projected bottom:" in page.locator("#explorer-content .condition-box").inner_text()
@@ -175,7 +175,7 @@ def main() -> None:
         page.locator("#what-if-kind").select_option("clean_sheet")
         page.locator("#what-if-form button[type=submit]").click()
         page.wait_for_function(
-            "document.querySelector('.condition-list').children.length === 2 && document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')"
+            "document.querySelector('.condition-list').children.length === 2 && document.querySelector('#explorer-content').textContent.includes('Forced-event estimate ready')"
         )
         page.locator("#what-if-kind").select_option("blank")
         page.locator("#what-if-form button[type=submit]").click()
@@ -186,7 +186,7 @@ def main() -> None:
         page.locator("#tab-scenarios").click()
         page.locator("[data-remove-condition='2']").click()
         page.wait_for_function(
-            "document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')"
+            "document.querySelector('#explorer-content').textContent.includes('Forced-event estimate ready')"
         )
         page.locator("[data-reset-conditions]").click()
         assert page.locator(".condition-list li").count() == 0
@@ -235,6 +235,24 @@ def main() -> None:
             )
             assert page.locator(".battle-card").count() > 0
             assert page.locator(".decisive-card").count() > 0
+            assert page.locator(".next-events h2").inner_text() == "What could change the result?"
+            assert page.locator(".fixture-timeline > li").count() > 0
+            assert "Bottom at a checkpoint" in page.locator(".fixture-intelligence").inner_text()
+            assert "Only forecasts saved at the time" in page.locator(".risk-history").inner_text()
+            assert page.locator(".event-card").count() <= 5
+            if page.locator("[data-next-event]").count():
+                page.locator("[data-next-event]").first.click()
+                assert page.locator("#tab-scenarios").get_attribute("aria-selected") == "true"
+                assert page.locator("#what-if-fixture").input_value()
+                page.locator("#tab-overview").click()
+            page.locator(".fixture-timeline details").first.locator("summary").first.click()
+            assert (
+                "Final forfeit chance"
+                in page.locator(".fixture-timeline details").first.inner_text()
+            )
+            page.locator("[data-timeline-fixture]").first.click()
+            assert page.locator("#tab-scenarios").get_attribute("aria-selected") == "true"
+            page.locator("#tab-overview").click()
             for width in (320, 390, 1440):
                 page.set_viewport_size({"width": width, "height": 900})
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (
@@ -245,7 +263,7 @@ def main() -> None:
             page.locator(".decisive-card [data-explore-kind=goal]").first.click()
             page.locator("#what-if-form button[type=submit]").click()
             page.wait_for_function(
-                "document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')"
+                "document.querySelector('#explorer-content').textContent.includes('Forced-event estimate ready')"
             )
             assert page.locator("#explorer-content .outlook-table tbody tr").count() == 12
         if args.scenario_league:
@@ -259,12 +277,18 @@ def main() -> None:
                 page.locator("#tab-overview").click()
                 assert page.locator(".battle-card").count() > 0
                 assert page.locator(".decisive-card").count() > 0
+                if page.locator(".risk-history .chart-dot").count():
+                    page.locator(".risk-history .chart-dot").first.focus()
+                    assert "%" in page.locator(".risk-history .chart-readout").first.inner_text()
+                    assert (
+                        "GW " not in page.locator(".risk-history .chart-readout").first.inner_text()
+                    )
                 page.screenshot(path=str(output / "official-snapshot-overview.png"), full_page=True)
                 page.locator("#tab-scenarios").click()
                 page.locator("#what-if-kind").select_option("goal")
                 page.locator("#what-if-form button[type=submit]").click()
                 page.wait_for_function(
-                    "document.querySelector('#explorer-content').textContent.includes('Conditional estimate ready')",
+                    "document.querySelector('#explorer-content').textContent.includes('Forced-event estimate ready')",
                     timeout=60000,
                 )
                 assert page.locator(

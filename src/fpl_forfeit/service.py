@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import os
+import sqlite3
 from threading import Lock
 from typing import Any
 
@@ -19,6 +20,8 @@ from .forecast import (
     canonical_conditions,
     outlook,
 )
+from .forecasting.service import ForecastEnricher
+from .history import RiskHistoryStore, configured_history
 from .models import LeagueState
 from .settings import AnalysisSettings
 from .state import current_standings
@@ -35,9 +38,12 @@ class AnalysisService:
         *,
         cache_ttl_seconds: float | None = None,
         max_league_entries: int = DEFAULT_MAX_LEAGUE_ENTRIES,
+        history: RiskHistoryStore | None = None,
     ) -> None:
         ttl = _cache_ttl_from_environment() if cache_ttl_seconds is None else cache_ttl_seconds
         self.client = client or FPLClient()
+        self.enricher = ForecastEnricher(self.client)
+        self.history = history or configured_history()
         self.max_league_entries = max_league_entries
         self._snapshots: TTLCache[tuple, dict[str, Any]] = TTLCache(ttl, max_items=16)
         self._generations: TTLCache[tuple, dict[str, Any]] = TTLCache(
@@ -118,6 +124,7 @@ class AnalysisService:
                 response["cache"] = {"hit": True, "ttl_seconds": self._snapshots.ttl_seconds}
                 return response
             state = self._state(snapshot, gameweek)
+            self.enricher.prime(state)
             if candidate_id is not None and not any(
                 m.entry_id == candidate_id for m in state.managers
             ):
@@ -234,7 +241,7 @@ class AnalysisService:
             response["cache"] = {"hit": True}
             return response
         if not demo:
-            state = self._state(snapshot, gameweek)
+            state = self.enricher.prepare(self._state(snapshot, gameweek))
         # Reject contradictory input before spending time on a missing baseline.
         if conditions:
             FixtureModel(state, conditions)
@@ -274,10 +281,27 @@ class AnalysisService:
                             row["last_probability"] - base["last_probability"], 4
                         )
                     cached["comparison_note"] = (
-                        "Conditional model estimate versus unmodified simulation. "
+                        "Forced-event intervention versus unmodified simulation, not a Bayesian conditional probability. "
                         "Other events remain sampled; changes include model and sampling uncertainty."
                     )
                 cached["cache"] = {"hit": False}
+                if not demo and not conditions:
+                    try:
+                        self.history.record(state, cached)
+                    except (OSError, ValueError, sqlite3.Error):
+                        cached["history_recording_warning"] = (
+                            "This forecast could not be durably recorded; risk estimates remain available."
+                        )
+                    cached["risk_history"] = self.history.read(
+                        state.league_id, state.gameweek, source=source
+                    )
+                elif demo:
+                    cached["risk_history"] = {
+                        "status": "demo",
+                        "recording_enabled": False,
+                        "series": [],
+                        "note": "Demo forecasts are not recorded as live probability history.",
+                    }
                 self._outlooks.set(key, cached)
             else:
                 cached = copy.deepcopy(cached)

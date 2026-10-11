@@ -10,9 +10,9 @@ from statistics import fmean, pvariance
 from ..models import Player, Position
 from ..points import event_points
 from .models import (
+    BENCHMARK_MODEL_VERSION,
     DEFAULT_SAMPLES,
     DEFAULT_SEED,
-    MODEL_VERSION,
     FixtureSample,
     ForecastInputs,
     PlayerFixtureProjection,
@@ -84,7 +84,14 @@ class ProjectionAccumulator:
                     else None,
                     expected_minutes=row.minutes / n if n else None,
                     appearance_probability=row.appearances / n if n else None,
-                    starting_probability=row.starts / n if n and not fixture.started else None,
+                    starting_probability=(
+                        float(self.inputs.confirmed_appearances[(pid, fid)].status == "starter")
+                        if self.inputs.model_version != BENCHMARK_MODEL_VERSION
+                        and (pid, fid) in self.inputs.confirmed_appearances
+                        else row.starts / n
+                        if n and not fixture.started
+                        else None
+                    ),
                     expected_goals=row.goals / n if n else None,
                     expected_assists=row.assists / n if n else None,
                     clean_sheet_probability=row.clean_sheets / n if n else None,
@@ -102,7 +109,7 @@ class ProjectionAccumulator:
                             fixture.away_team_id,
                         )
                     ),
-                    model_version=MODEL_VERSION,
+                    model_version=self.inputs.model_version,
                     data_timestamp=self.inputs.fetched_at,
                     provenance=self.inputs.provenance,
                 )

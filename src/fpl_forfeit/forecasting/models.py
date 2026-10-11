@@ -7,9 +7,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
-from ..models import Fixture, Player
+from ..models import ConfirmedAppearance, Fixture, Player
 
-MODEL_VERSION = "shared-fixtures-v3"
+MODEL_VERSION = "shared-fixtures-v4"
+BENCHMARK_MODEL_VERSION = "shared-fixtures-v3"
 DEFAULT_SEED = 20261010
 DEFAULT_SAMPLES = 1600
 OVERVIEW_SAMPLES = 96
@@ -45,6 +46,10 @@ class ForecastInputs:
     fixture_stats: Mapping[tuple[int, int], Mapping[str, int]] = field(default_factory=dict)
     team_goal_rates: Mapping[int, tuple[float, float]] = field(default_factory=dict)
     provenance: tuple[DataSource, ...] = (DataSource("caller_supplied"),)
+    confirmed_appearances: Mapping[tuple[int, int], ConfirmedAppearance] = field(
+        default_factory=dict
+    )
+    model_version: str = MODEL_VERSION
 
 
 class ScenarioConflict(ValueError):

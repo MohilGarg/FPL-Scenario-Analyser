@@ -752,3 +752,16 @@ footer a { color: var(--muted); }
   .condition-list li { align-items: start; }
   .outlook-table { min-width: 700px; }
 }
+/* Shared live intelligence: compact cards and grouped fixture checkpoints. */
+.event-card { border: 1px solid var(--line); border-radius: 14px; padding: 1.15rem; background: var(--surface); min-width: 0; }
+.event-card h3 { margin: .6rem 0; }
+.event-card strong { display: block; }
+.event-card details, .event-card button { margin-top: .7rem; }
+.event-change { font-weight: 600; }
+.fixture-timeline { padding-left: 1.3rem; }
+.fixture-timeline > li { padding: .7rem .3rem 1rem .6rem; border-bottom: 1px solid var(--line); }
+.fixture-timeline h3 { margin: .35rem 0; }
+.fixture-exposure { padding: .5rem 0; }
+.fixture-exposure p, .risk-history p { overflow-wrap: anywhere; }
+.risk-history details > summary { cursor: pointer; padding: .7rem 0; }
+.next-events .decisive-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }

@@ -265,9 +265,7 @@ class BroaderFixtureProperties(unittest.TestCase):
             for entry, score in final.items():
                 reference[entry].append(score)
         for row in outlook(state, seed=seed, samples=n)["managers"]:
-            self.assertAlmostEqual(
-                row["projected_score"], sum(reference[row["entry_id"]]) / n, places=2
-            )
+            self.assertEqual(row["projected_score"], round(sum(reference[row["entry_id"]]) / n, 2))
 
     def test_final_scores_do_not_change_with_seeds_or_sample_count(self):
         state = validation_state(0)

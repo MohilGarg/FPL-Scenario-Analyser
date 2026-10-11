@@ -5,10 +5,10 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ..models import Player, Position
-from .models import TeamMatchResult
+from .models import BENCHMARK_MODEL_VERSION, MODEL_VERSION, TeamMatchResult
 
 
 def estimate_team_goal_rates(
@@ -76,6 +76,8 @@ class PlayerRates:
     saves: float
     yellow: float
     starting_minutes: tuple[int, ...]
+    cameo_probability: float | None = None
+    cameo_minutes: tuple[int, ...] = ()
 
 
 def poisson(rng: random.Random, rate: float) -> int:
@@ -87,7 +89,7 @@ def poisson(rng: random.Random, rate: float) -> int:
     return max(0, count - 1)
 
 
-def player_rates(player: Player) -> PlayerRates:
+def benchmark_player_rates(player: Player) -> PlayerRates:
     # Shrink observed rates towards explicit priors; use priors alone for missing totals.
     goal = {
         Position.GOALKEEPER: 0.003,
@@ -123,4 +125,77 @@ def player_rates(player: Player) -> PlayerRates:
         rate(player.season_saves, 3),
         rate(player.season_yellow_cards, 0.14),
         starting_minutes(player),
+    )
+
+
+def player_rates(player: Player, *, model_version: str = MODEL_VERSION) -> PlayerRates:
+    """Blend correlated returns/xG as one count, not independent observations.
+
+    xGI is retained as coverage only: adding it to xG+xA would double-count.
+    Appearance history replaces the season start estimate when sufficiently covered;
+    it is not added again to season counts. Duration history gets four prior matches.
+    """
+    old = benchmark_player_rates(player)
+    if model_version == BENCHMARK_MODEL_VERSION:
+        return old
+    if model_version != MODEL_VERSION:
+        raise ValueError("Unsupported projection model version.")
+    minutes = player.season_minutes or 0
+
+    def blended(
+        observed: int | None, expected: float | None, prior: float, fallback: float
+    ) -> float:
+        if expected is None or not minutes:
+            return fallback
+        count = expected if observed is None else 0.65 * expected + 0.35 * observed
+        return (count + 5 * prior) / (minutes / 90 + 5)
+
+    goal_prior = {
+        Position.GOALKEEPER: 0.003,
+        Position.DEFENDER: 0.06,
+        Position.MIDFIELDER: 0.20,
+        Position.FORWARD: 0.35,
+    }[player.position]
+    assist_prior = {
+        Position.GOALKEEPER: 0.005,
+        Position.DEFENDER: 0.07,
+        Position.MIDFIELDER: 0.15,
+        Position.FORWARD: 0.10,
+    }[player.position]
+    history = player.appearance_history[-8:]
+    known = [h for h in history if h.started is not None]
+    start = old.start
+    availability = (
+        player.chance_of_playing / 100
+        if player.chance_of_playing is not None
+        else 0
+        if player.availability_status in {"i", "s", "u", "n"}
+        else 1
+    )
+    if len(known) >= 3:
+        start = (
+            min(0.98, (sum(h.started for h in known) + 4 * 0.8) / (len(known) + 4)) * availability
+        )
+    starts = [min(90, h.minutes) for h in known if h.started and h.minutes > 0]
+    nonstarts = [h for h in known if not h.started]
+    cameos = [min(90, h.minutes) for h in nonstarts if h.minutes > 0]
+    durations = old.starting_minutes
+    if starts:
+        prior = (90,) if player.position == Position.GOALKEEPER else (90, 90, 90, 80, 70, 60, 55)
+        durations = prior * 4 + tuple(m for m in starts for _ in range(len(prior)))
+    # Non-starters can be genuine regular substitutes, independent of a low start rate.
+    unadjusted_start = old.start / availability if availability else 0.8
+    cameo = (
+        (len(cameos) + 4 * 0.25 * unadjusted_start) / (len(nonstarts) + 4)
+        if nonstarts
+        else 0.25 * unadjusted_start
+    )
+    return replace(
+        old,
+        start=start,
+        goal=blended(player.season_goals, player.expected_goals, goal_prior, old.goal),
+        assist=blended(player.season_assists, player.expected_assists, assist_prior, old.assist),
+        starting_minutes=durations,
+        cameo_probability=min(1, max(0, cameo * availability)),
+        cameo_minutes=tuple(cameos) + (5, 10, 15, 20),
     )

@@ -18,6 +18,7 @@ from .api import (
 )
 from .demo import DEMO_MODES, DemoMode
 from .forecast import Condition, ScenarioConflict
+from .forecasting.models import MODEL_VERSION
 from .service import AnalysisService
 from .settings import (
     DEFAULT_MAX_RELEVANT_PLAYERS,
@@ -75,7 +76,17 @@ def create_app(
 
     @application.get("/api/health", tags=["system"])
     def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "forecast_model": MODEL_VERSION}
+
+    @application.get("/api/league/{league_id}/risk-history", tags=["analysis"])
+    def risk_history(
+        league_id: int,
+        gameweek: int = Query(ge=1, le=38),
+        source: str | None = Query(default=None, max_length=80),
+    ) -> dict[str, Any]:
+        if league_id <= 0:
+            raise HTTPException(400, "League ID must be positive")
+        return analysis_service.history.read(league_id, gameweek, source=source)
 
     @application.get("/api/league/{league_id}", tags=["analysis"])
     def league_analysis(

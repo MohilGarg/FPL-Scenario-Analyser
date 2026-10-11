@@ -28,9 +28,18 @@ def prediction_record(
     seed: int = DEFAULT_SEED,
     allow_tied_last: bool = True,
     provenance: str = "recorded",
+    result: dict[str, Any] | None = None,
+    model_version: str | None = None,
 ) -> dict[str, Any]:
     created = datetime.now(UTC)
-    result = outlook(state, samples=samples, seed=seed, allow_tied_last=allow_tied_last)
+    owned = {p.player_id for m in state.managers for p in m.picks}
+    result = result or outlook(
+        state,
+        samples=samples,
+        seed=seed,
+        allow_tied_last=allow_tied_last,
+        **({"model_version": model_version} if model_version else {}),
+    )
     return {
         "schema_version": 2,
         "recorded_at": created.isoformat(),
@@ -50,6 +59,32 @@ def prediction_record(
         "managers": result["managers"],
         "coverage": result["coverage"],
         "assumptions": result["assumptions"],
+        "data_provenance": state.provenance,
+        "lineup_provenance": [
+            {
+                "player_id": a.player_id,
+                "fixture_id": a.fixture_id,
+                "source": a.source,
+                "confirmed_at": a.confirmed_at.isoformat(),
+            }
+            for a in state.confirmed_appearances.values()
+        ],
+        "fixture_status": [
+            {
+                "fixture_id": f.id,
+                "started": f.started,
+                "finished": f.finished,
+                "home_score": f.home_score,
+                "away_score": f.away_score,
+                "minutes": f.elapsed_minutes,
+            }
+            for f in state.fixtures
+        ],
+        "player_observations": [
+            {"player_id": pid, "points": score.points, "minutes": score.minutes}
+            for pid, score in sorted(state.live_scores.items())
+            if pid in owned
+        ],
     }
 
 
@@ -194,6 +229,9 @@ def _main() -> None:
     record.add_argument("league_id", type=int)
     record.add_argument("--directory", type=Path, default=Path("snapshots"))
     record.add_argument("--gameweek", type=int)
+    record.add_argument(
+        "--history-db", type=Path, help="Also save the real observation to a durable SQLite history"
+    )
     replay = commands.add_parser(
         "replay", help="Forecast from saved inputs, never reconstruct old live states"
     )
@@ -203,6 +241,11 @@ def _main() -> None:
         command.add_argument("--samples", type=int, default=DEFAULT_SAMPLES)
         command.add_argument("--seed", type=int, default=DEFAULT_SEED)
         command.add_argument("--strict-last", action="store_true")
+        command.add_argument(
+            "--model",
+            choices=("shared-fixtures-v3", "shared-fixtures-v4"),
+            default="shared-fixtures-v4",
+        )
     score = commands.add_parser(
         "evaluate", help="Score saved forecasts against official final snapshot"
     )
@@ -247,12 +290,20 @@ def _main() -> None:
     state = state_from_snapshot(snapshot)
     if args.command == "record" and state.event_final:
         parser.error("This Gameweek is already final. Use final to record its result.")
+    if args.command == "record":
+        from .forecasting.service import ForecastEnricher
+
+        enricher = ForecastEnricher(FPLClient())
+        state = enricher.prepare(state)
+        snapshot = state.raw or snapshot
+        enricher.executor.shutdown(wait=True)
     result = prediction_record(
         state,
         samples=args.samples,
         seed=args.seed,
         allow_tied_last=not args.strict_last,
         provenance="recorded" if args.command == "record" else "replay",
+        model_version=args.model,
     )
     if args.command == "record":
         stamp = state.fetched_at.strftime("%Y%m%dT%H%M%S%fZ")
@@ -260,6 +311,13 @@ def _main() -> None:
         save_snapshot(snapshot, args.directory / f"{stem}-input.json")
         output = args.directory / f"{stem}-forecast.json"
         output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        if args.history_db:
+            from .history import RiskHistoryStore
+
+            store = RiskHistoryStore(args.history_db)
+            if not store.path:
+                parser.error("Risk history database is unavailable; JSON observation was saved.")
+            store.append(result)
         print(f"Saved actual inputs and forecast: {output}")
     else:
         _output(result, args.output)

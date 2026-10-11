@@ -297,6 +297,7 @@ function renderApplication() {
   renderModelNote(data);
   activateView(appState.view, false);
   bindDynamicControls();
+  window.FPLCharts.bind(elements.overview);
   document.querySelectorAll("details[data-card]").forEach((card) => { if (expanded.has(card.dataset.card)) card.open = expanded.get(card.dataset.card); });
 }
 
@@ -342,7 +343,7 @@ function completedOverview(data) {
       </table>
       ${nextScore != null ? `<p>The bottom score of ${score} finished ${nextScore-score} points behind the next distinct score (${nextScore}). Transfer deductions are already included.</p>` : ""}
       <p class="fine-print">Open Managers for squads, hits and chips, or choose another Gameweek above.</p>
-    </article>`;
+    </article>${window.ForfeitOutlook.historyView(data)}`;
 }
 
 function overviewRiskCard(manager, index, data) {

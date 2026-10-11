@@ -12,3 +12,7 @@ build/
 snapshots/*.json
 !snapshots/.gitkeep
 .browser-artifacts/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+lineup-mappings.local.json

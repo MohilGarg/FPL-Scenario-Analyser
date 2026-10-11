@@ -14,6 +14,7 @@ from statistics import fmean, median
 from typing import Any
 
 from .forecasting.models import (
+    BENCHMARK_MODEL_VERSION,
     DEFAULT_SAMPLES,
     DEFAULT_SEED,
     MODEL_VERSION,
@@ -29,6 +30,7 @@ from .forecasting.models import (
 from .forecasting.projections import ProjectionAccumulator
 from .forecasting.simulation import FixtureSimulator
 from .forecasting.simulation import fixture_clock as _fixture_clock
+from .intelligence import LiveIntelligence
 from .models import ElementScore, Fixture, LeagueState
 from .points import event_points
 from .scoring import final_manager_scores, last_ids
@@ -54,19 +56,19 @@ __all__ = [
 
 ASSUMPTIONS = [
     "Experimental internal model; probabilities have not yet been calibrated against saved live Gameweeks.",
-    "Team goals use independent Poisson counts with observed season scoring/conceding rates shrunk by eight matches; no xG or paid data.",
-    "Player goal/assist shares use observed season totals shrunk by 450 minutes to position priors; unowned teammates can score and assist.",
-    "Starts and official availability inform appearances; starting minutes use season minutes/starts shrunk towards position defaults. Missing history uses explicit position/appearance priors, not verified lineups.",
+    "Team goals use Poisson counts with observed season scoring/conceding rates shrunk by eight matches and a home/away factor.",
+    "Player goal/assist shares blend official xG/xA (65%) and observed returns (35%), then shrink by 450 minutes to position priors. xGI is coverage only, never added again. Missing expected statistics fall back to observed rates. These weights are experimental.",
+    "Recent completed starts/minutes use four prior matches and official availability. History retrieval is bounded, so uncovered players use season estimates or explicit priors. Verified licensed lineups override starting status while bench appearances remain uncertain.",
     "Events share a scoreline and on-field windows. Goals conceded after an ordinary substitution do not remove earned clean sheets; red cards remain exposed.",
     "Bonus is a shared 3/2/1 performance approximation, not a reproduction of Opta BPS. Defensive actions and saves are Poisson approximations.",
     "Future penalties, own goals and red cards are omitted; already awarded events are preserved. Yellow cards use observed rates with a prior.",
-    "Live substitution times are absent from the public feed: players whose minutes trail the observed match clock are held at their current minutes. This can understate live substitute involvement.",
+    "Without verified substitution times, live players whose minutes trail the observed clock are held at current minutes. This can understate live substitute involvement. Missing live breakdowns remain frozen even with external lineups.",
     "Score intervals describe sampled football outcomes. Probability intervals describe sampling error only, and exclude model/calibration error.",
     "A zero sampled chance is never a safety proof. Safety uses the separate configured total remaining player-contribution envelope, not a theoretical football bound.",
 ]
 
 
-def football_inputs(state: LeagueState) -> ForecastInputs:
+def football_inputs(state: LeagueState, *, model_version: str = MODEL_VERSION) -> ForecastInputs:
     """Strip league identity, squads, multipliers, hits and official event totals."""
     return ForecastInputs(
         players=state.players,
@@ -75,7 +77,15 @@ def football_inputs(state: LeagueState) -> ForecastInputs:
         fixture_minutes=state.fixture_minutes,
         fixture_stats=state.fixture_stats,
         team_goal_rates=state.team_goal_rates,
-        provenance=(DataSource(state.provenance),),
+        provenance=(DataSource(state.provenance),)
+        + tuple(
+            DataSource(source)
+            for source in sorted({a.source for a in state.confirmed_appearances.values()})
+        ),
+        confirmed_appearances=state.confirmed_appearances
+        if model_version != BENCHMARK_MODEL_VERSION
+        else {},
+        model_version=model_version,
     )
 
 
@@ -86,10 +96,20 @@ def fixture_clock(state: LeagueState, fixture: Fixture) -> int:
 class FixtureModel(FixtureSimulator):
     """Public compatibility adapter over the shared, squad-independent simulator."""
 
-    def __init__(self, state: LeagueState, conditions: tuple[Condition, ...] = ()) -> None:
+    def __init__(
+        self,
+        state: LeagueState,
+        conditions: tuple[Condition, ...] = (),
+        *,
+        model_version: str = MODEL_VERSION,
+    ) -> None:
         self.state = state
         self.owned = {p.player_id for m in state.managers for p in m.picks}
-        super().__init__(football_inputs(state), conditions, player_ids=tuple(sorted(self.owned)))
+        super().__init__(
+            football_inputs(state, model_version=model_version),
+            conditions,
+            player_ids=tuple(sorted(self.owned)),
+        )
 
     def draw(self, rng: random.Random) -> tuple[dict[int, ElementScore], tuple[FixtureSample, ...]]:
         scores = dict(self.state.live_scores)
@@ -133,13 +153,19 @@ def outlook(
     allow_tied_last: bool = True,
     conditions: tuple[Condition, ...] = (),
     include_risk: bool = True,
+    model_version: str = MODEL_VERSION,
 ) -> dict[str, Any]:
     if samples < 1 or samples > 5000:
         raise ValueError("Simulation count must be between 1 and 5000.")
-    model = FixtureModel(state, conditions)
+    model = FixtureModel(state, conditions, model_version=model_version)
     rng = random.Random(seed)
     projections = ProjectionAccumulator(model.inputs, model.players)
     current = {s.manager.entry_id: s.effective_score for s in current_standings(state)}
+    intelligence = (
+        LiveIntelligence(state, model.fixtures, current, allow_tied_last)
+        if include_risk and not conditions and model.fixtures
+        else None
+    )
     totals: dict[int, list[int]] = {m.entry_id: [] for m in state.managers}
     counted = {m.entry_id: 0 for m in state.managers}
     outright, tied = counted.copy(), counted.copy()
@@ -172,6 +198,8 @@ def outlook(
                 multiplier_cache[m.entry_id][key] = cached
             resolved[m.entry_id] = cached
         final = final_manager_scores(state, scores, multipliers=resolved)
+        if intelligence:
+            intelligence.add(fixtures, final, resolved)
         bottom = last_ids(final)
         selected = last_ids(final, allow_tied_last)
         bottom_samples.append(selected)
@@ -254,9 +282,22 @@ def outlook(
         for p in model.players.values()
         if f.involves(p.team_id)
     )
+    derived = (
+        intelligence.results(totals, bottom_samples)
+        if intelligence
+        else {"dangerous_events": [], "fixture_forecasts": [], "fixture_timeline": []}
+    )
+    for event in derived["dangerous_events"]:
+        c = Condition(**event["condition"])
+        event["label"] = (
+            f"{state.players[c.player_id].name} makes a substitute appearance"
+            if c.kind == "substitute"
+            else condition_payload(state, c)["label"]
+        )
     return {
+        **derived,
         "source": state.fetched_at.isoformat(),
-        "model_version": MODEL_VERSION,
+        "model_version": model_version,
         "state": "complete" if not model.fixtures else "ready" if include_risk else "projection",
         "simulations": n,
         "seed": seed,
@@ -273,14 +314,30 @@ def outlook(
         else [],
         "decisive_players": _decisive(state, model, rows, player_points, exposures, bottom_samples),
         "important_fixtures": _important_fixtures(state, model, fixture_points, exposures, rows),
-        "assumptions": ASSUMPTIONS,
+        "assumptions": ASSUMPTIONS
+        if model_version != BENCHMARK_MODEL_VERSION
+        else [
+            *ASSUMPTIONS[:2],
+            "Benchmark v3 uses observed goal/assist counts with 450-minute priors; expected statistics, recent appearance histories and external lineups are not used.",
+            *ASSUMPTIONS[4:],
+        ],
         "coverage": {
             "remaining_owned_players_using_priors": missing,
             "live_player_breakdowns_missing_and_frozen": live_missing,
             "team_history_available": bool(state.team_goal_rates),
+            "players_with_expected_stats": sum(
+                p.expected_goals is not None and p.expected_assists is not None
+                for p in model.players.values()
+            ),
+            "players_with_appearance_history": sum(
+                bool(p.appearance_history) for p in model.players.values()
+            ),
+            "confirmed_lineup_players": len(state.confirmed_appearances),
+            **state.forecast_context,
         },
         "conditions": [condition_payload(state, c) for c in model.conditions],
         "catalog": catalog(state),
+        "interpretation": "forced_intervention" if conditions else "unmodified_simulation",
     }
 
 

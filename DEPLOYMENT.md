@@ -5,6 +5,19 @@ the GitHub Pages build.
 
 ## Updating an existing deployment
 
+Live intelligence v4 requires both deployments. `/api/health` now includes
+`forecast_model: shared-fixtures-v4`; the frontend includes event cards, fixture checkpoints and
+recorded risk charts. Optional recording and licensed lineups require explicit configuration;
+the ordinary FPL-only analyser continues without either. See
+[LIVE_INTELLIGENCE.md](LIVE_INTELLIGENCE.md#durable-recording-and-local-fallback).
+
+The existing `render.yaml` is a Free service. Its filesystem is ephemeral and Free services cannot
+attach persistent disks ([Render documentation](https://render.com/docs/free#local-files-lost-on-redeploy)).
+Consequently hosted durable recording stays disabled by default. Do not point
+`FPL_RISK_HISTORY_PATH` at an ephemeral Render directory and call it persistent. The working local
+SQLite recorder costs nothing; enabling hosted history requires a genuinely persistent volume
+on an existing suitable host, or a later external storage adapter. No paid resource was provisioned.
+
 No new secrets, database, environment variables or hosting services are needed for Analytics,
 historical Gameweeks, manager comparisons or lazy scenarios. Push the changes to `main`: the existing Render
 auto-deploy updates the API and the Pages workflow updates the static site. Deploy both sides;

@@ -131,5 +131,10 @@ never frontend configuration or Git. The eventual authentication choice must fit
 the deployment topology: either secure server sessions with appropriate cookie/CSRF
 handling or validated identity-provider tokens. Credentialed CORS and origins must
 be deliberately configured then. The current unauthenticated public CORS settings
-provide no private access control. No database, identity provider, secret, login
-system or private API endpoint is introduced in this cycle.
+provide no private access control. The optional public risk-history SQLite store must never contain
+personal optimisation data. No identity provider, login system or private API endpoint is introduced.
+
+The public intelligence adapter consumes joint fixture draws and resolved manager multipliers;
+it does not implement a second football model. Official-history retrieval remains bounded in
+`forecasting/service.py`, with parsing in `api.py`; optional licensed lineups are normalised by
+`lineups.py`. Both feed the existing `ForecastInputs` contract, including future fixture horizons.

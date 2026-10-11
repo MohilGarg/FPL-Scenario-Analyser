@@ -21,6 +21,9 @@ def main():
     raw = load_snapshot(args.snapshot) if args.snapshot else None
 
     class RecordedClient(FPLClient):
+        def player_history(self, player_id):
+            return (raw or {}).get("player_histories", {}).get(str(player_id), {})
+
         def fetch_snapshot(self, league_id, gameweek=None, **kwargs):
             if raw and league_id == raw["league_id"] and gameweek in (None, raw["gameweek"]):
                 return raw

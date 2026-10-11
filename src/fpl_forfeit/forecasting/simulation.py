@@ -4,9 +4,17 @@ from __future__ import annotations
 
 import random
 from collections import defaultdict
+from dataclasses import replace
 
 from ..models import Fixture, Player, Position
-from .models import Condition, FixtureSample, ForecastInputs, ScenarioConflict, canonical_conditions
+from .models import (
+    BENCHMARK_MODEL_VERSION,
+    Condition,
+    FixtureSample,
+    ForecastInputs,
+    ScenarioConflict,
+    canonical_conditions,
+)
 from .statistics import player_rates, poisson, team_goal_rate
 
 
@@ -39,6 +47,8 @@ class FixtureSimulator:
         *,
         player_ids: tuple[int, ...] | None = None,
     ) -> None:
+        if state.model_version == BENCHMARK_MODEL_VERSION and state.confirmed_appearances:
+            state = replace(state, confirmed_appearances={})
         self.inputs = state
         self.player_ids = set(state.players if player_ids is None else player_ids)
         if not self.player_ids <= state.players.keys():
@@ -46,7 +56,10 @@ class FixtureSimulator:
         if len({f.id for f in state.fixtures}) != len(state.fixtures):
             raise ValueError("Fixture IDs must be unique across the forecast horizon.")
         self.players = {pid: state.players[pid] for pid in sorted(self.player_ids)}
-        self.rates = {pid: player_rates(p) for pid, p in state.players.items()}
+        self.rates = {
+            pid: player_rates(p, model_version=state.model_version)
+            for pid, p in state.players.items()
+        }
         self.fixtures = tuple(
             sorted(
                 (f for f in state.fixtures if not f.finished),
@@ -164,13 +177,29 @@ class FixtureSimulator:
                     (kind, p.id) in rules for kind in ("goal", "assist", "minutes", "substitute")
                 ):
                     confirmed_future = forced and forced.value > minutes
-                    if old.get("red_cards") or (minutes and minutes < clock - 2 and not forced):
+                    confirmed = self.inputs.confirmed_appearances.get((p.id, f.id))
+                    if (
+                        confirmed
+                        and confirmed.off_minute is not None
+                        and confirmed.off_minute <= clock
+                    ):
+                        raise ScenarioConflict(
+                            "This player has already left the pitch in the verified substitution feed."
+                        )
+                    active = (
+                        confirmed
+                        and confirmed.on_minute is not None
+                        and confirmed.off_minute is None
+                    )
+                    if old.get("red_cards") or (
+                        minutes and minutes < clock - 2 and not forced and not active
+                    ):
                         raise ScenarioConflict(
                             f"{p.name} is sent off or has no confirmed future involvement in this feed. "
                             "For an active substitute, set final fixture minutes explicitly."
                         )
                     if any((kind, p.id) in rules for kind in ("goal", "assist")) and (
-                        minutes and minutes < clock - 2 and not confirmed_future
+                        minutes and minutes < clock - 2 and not confirmed_future and not active
                     ):
                         raise ScenarioConflict(
                             f"{p.name} needs some selected future minutes to add a return."
@@ -331,6 +360,12 @@ class FixtureSimulator:
                 continue
             forced = rules.get(("minutes", p.id))
             cameo = rules.get(("substitute", p.id))
+            confirmed = self.inputs.confirmed_appearances.get((p.id, f.id))
+            if confirmed and confirmed.status == "absent" and not minutes:
+                if p.id in required:
+                    raise ScenarioConflict("This player is absent from the verified match squad.")
+                windows[p.id] = (90, 90)
+                continue
             if f.started:
                 # Missing breakdown: freeze this player's awarded total, explicitly reported.
                 if (p.id, f.id) not in self.inputs.fixture_stats:
@@ -338,7 +373,16 @@ class FixtureSimulator:
                     continue
                 start = max(0, clock - minutes)
                 end = clock if old.get("red_cards") or (minutes and minutes < clock - 2) else 90
-                if minutes == 0 and not old.get("red_cards"):
+                if confirmed and not old.get("red_cards"):
+                    if confirmed.off_minute is not None and confirmed.off_minute <= clock:
+                        end = clock
+                    elif confirmed.on_minute is not None and confirmed.on_minute <= clock:
+                        start, end = confirmed.on_minute, 90
+                if (
+                    minutes == 0
+                    and not old.get("red_cards")
+                    and not (confirmed and confirmed.on_minute is not None)
+                ):
                     end = (
                         90
                         if p.id in required or rng.random() < 0.18 * self.rates[p.id].start
@@ -359,16 +403,45 @@ class FixtureSimulator:
                 windows[p.id] = (start, end)
             elif cameo:
                 windows[p.id] = (90 - cameo.value, 90)
-            elif p.id in required or rng.random() < self.rates[p.id].start:
+            elif confirmed and confirmed.status == "bench":
+                if p.id in required:
+                    duration = (
+                        forced.value
+                        if forced
+                        else rng.choice(self.rates[p.id].cameo_minutes or (5, 10, 15, 20))
+                    )
+                    windows[p.id] = (90 - duration, 90)
+                else:
+                    reserves.append(p)
+            elif (
+                confirmed
+                and confirmed.status == "starter"
+                or p.id in required
+                or rng.random() < self.rates[p.id].start
+            ):
                 starters.append(p)
             else:
                 reserves.append(p)
         if not f.started:
-            starters.sort(key=lambda p: (p.id not in required, -self.rates[p.id].start, p.id))
+            starters.sort(
+                key=lambda p: (
+                    p.id not in required,
+                    not bool(self.inputs.confirmed_appearances.get((p.id, f.id))),
+                    -self.rates[p.id].start,
+                    p.id,
+                )
+            )
             keepers = [p for p in starters if p.position == Position.GOALKEEPER]
             reserves.extend(keepers[1:])
             starters = [p for p in starters if p.position != Position.GOALKEEPER] + keepers[:1]
-            starters.sort(key=lambda p: (p.id not in required, -self.rates[p.id].start, p.id))
+            starters.sort(
+                key=lambda p: (
+                    p.id not in required,
+                    not bool(self.inputs.confirmed_appearances.get((p.id, f.id))),
+                    -self.rates[p.id].start,
+                    p.id,
+                )
+            )
             reserves.extend(starters[11:])
             starters = starters[:11]
             for p in starters:
@@ -391,8 +464,16 @@ class FixtureSimulator:
             # an anonymous teammate or an owned player whose window has already ended.
             substitutes = 0
             for p in reserves:
-                if substitutes < 5 and rng.random() < 0.25 * self.rates[p.id].start:
-                    start = rng.randint(65, 89)
+                rate = self.rates[p.id]
+                probability = (
+                    0.25 * rate.start if rate.cameo_probability is None else rate.cameo_probability
+                )
+                if substitutes < 5 and rng.random() < probability:
+                    start = (
+                        90 - rng.choice(rate.cameo_minutes)
+                        if rate.cameo_minutes
+                        else rng.randint(65, 89)
+                    )
                     active = [pid for pid, (a, b) in windows.items() if a <= start < b]
                     keeper_active = any(
                         self.players[pid].position == Position.GOALKEEPER for pid in active
@@ -412,7 +493,14 @@ class FixtureSimulator:
             if minute < clock or minute >= 90:
                 continue
             active = [pid for pid, (a, b) in windows.items() if a <= minute < b]
-            active.sort(key=lambda pid: (pid not in required, -self.rates[pid].start, pid))
+            active.sort(
+                key=lambda pid: (
+                    pid not in required,
+                    not bool(self.inputs.confirmed_appearances.get((pid, f.id))),
+                    -self.rates[pid].start,
+                    pid,
+                )
+            )
             retained: list[int] = []
             for pid in active:
                 duplicate_gk = self.players[pid].position == Position.GOALKEEPER and any(
@@ -539,7 +627,9 @@ class FixtureSimulator:
                 continue
             a, b = windows[p.id]
             old_minutes = old.get("minutes", self.inputs.fixture_minutes.get((p.id, f.id), 0))
-            minutes = max(old_minutes, b - a)
+            minutes = (
+                old_minutes + max(0, b - max(clock, a)) if f.started else max(old_minutes, b - a)
+            )
             value = dict(old)
             value["minutes"] = minutes
             value["goals_scored"] = old.get("goals_scored", 0) + sum(e[1] == p.id for e in events)

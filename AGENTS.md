@@ -6,7 +6,9 @@ FPL Scenario Analyser combines live last-place scenario analysis with descriptiv
 mini-league analytics. The live workflow answers who can still finish last this Gameweek and which
 realistic remaining-match scenarios cause it. Analytics describes completed Gameweeks and current
 squad ownership in a separate area. Do not add predictive advice, transfer/captain recommendations,
-xG models, price predictions, optimisation or generic global-rank dashboards.
+independent xG models, price predictions, optimisation or generic global-rank dashboards.
+Official FPL xG/xA and historical appearances may inform the shared experimental forecast;
+they must not become public transfer or captain recommendations.
 
 ## Correctness priorities
 
