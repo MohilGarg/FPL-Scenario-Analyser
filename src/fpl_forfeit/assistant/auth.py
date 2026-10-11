@@ -19,8 +19,9 @@ ITERATIONS = 600_000
 
 
 def password_hash(password: str) -> str:
-    if not 14 <= len(password) <= 256:
-        raise ValueError("Use a unique password or passphrase of 14–256 characters.")
+    passcode = len(password) == 8 and password.isascii() and password.isdigit()
+    if not passcode and not 14 <= len(password) <= 256:
+        raise ValueError("Use an 8-digit passcode or a unique passphrase of 14–256 characters.")
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, ITERATIONS)
     return f"pbkdf2_sha256${ITERATIONS}${salt.hex()}${digest.hex()}"
@@ -48,7 +49,9 @@ class AuthSettings:
     @classmethod
     def from_environment(cls) -> AuthSettings:
         return cls(
-            origin=os.getenv("FPL_ASSISTANT_ORIGIN", "").rstrip("/"),
+            origin=(
+                os.getenv("FPL_ASSISTANT_ORIGIN") or os.getenv("RENDER_EXTERNAL_URL", "")
+            ).rstrip("/"),
             encoded_password=os.getenv("FPL_ASSISTANT_PASSWORD_HASH", ""),
             development_http=os.getenv("FPL_ASSISTANT_DEV_HTTP", "") == "1",
         )
@@ -221,9 +224,9 @@ def main() -> None:
     )
     parser.add_argument("command", choices=["hash-password"])
     parser.parse_args()
-    password = getpass.getpass("Private assistant password: ")
-    if password != getpass.getpass("Confirm password: "):
-        raise SystemExit("Passwords did not match.")
+    password = getpass.getpass("Private assistant passcode (8 digits) or passphrase: ")
+    if password != getpass.getpass("Confirm passcode/passphrase: "):
+        raise SystemExit("Passcodes did not match.")
     print(password_hash(password))
 
 

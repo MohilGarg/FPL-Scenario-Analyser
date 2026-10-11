@@ -10,15 +10,15 @@ page and HTTP 503 on private operations; public league analysis continues to wor
 
 ## Enable your own access on Render
 
-1. Generate a unique password/passphrase of at least 14 characters locally. From an installed
+1. Generate a random **8-digit passcode**, or a unique passphrase of at least 14 characters locally. From an installed
    checkout, run `python -m fpl_forfeit.assistant.auth hash-password`. It prompts twice without
    echoing the password and prints a salted hash. Never put the password or hash in Git, a
    frontend configuration file, a URL or a command-line argument.
 2. In the existing Render service's **Environment** dashboard, set
-   `FPL_ASSISTANT_PASSWORD_HASH` to that complete hash (including its dollar signs), and
-   `FPL_ASSISTANT_ORIGIN` to `https://fpl-scenario-analyser-api.onrender.com` with no path or
-   trailing slash. Use your actual HTTPS backend origin if the host changes. The blueprint
-   supplies this non-secret origin; the password hash must be added manually as an environment
+   `FPL_ASSISTANT_PASSWORD_HASH` to that complete hash (including its dollar signs).
+   The HTTPS origin is automatically taken from Render's `RENDER_EXTERNAL_URL` unless
+   `FPL_ASSISTANT_ORIGIN` is explicitly configured (for example, for a custom backend domain).
+   The blueprint also supplies this non-secret origin; the password hash must be added manually as an environment
    secret. Do not enable `FPL_ASSISTANT_DEV_HTTP` in production.
 3. Save/redeploy. Keep the existing single-process `uvicorn fpl_forfeit.web:app` command.
    No paid database, identity provider, signing key or new runtime dependency is needed.
@@ -29,6 +29,15 @@ page and HTTP 503 on private operations; public league analysis continues to wor
 Change the password by replacing the hash and restarting the service; the restart revokes all
 existing sessions. Removing the hash disables private access. A cold Render instance may take
 time to wake up; the public analyser's hosting arrangements are unchanged.
+
+For the prepared one-time setup, copy the entire contents of the ignored local
+`assistant-password-hash.local.txt` file into `FPL_ASSISTANT_PASSWORD_HASH` in Render's
+Environment dashboard, then choose **Save, rebuild, and deploy**. The local file contains only
+the generated salted hash, never the plaintext passcode. It is excluded from Git and the frontend
+build. Once deployed, unlocking only requires the 8-digit passcode provided privately.
+Short numeric passcodes have less entropy than long passphrases; keep the code private and use
+the existing rate limiting. A long passphrase remains supported.
+Automatic origin configuration uses Render's [documented service environment](https://render.com/docs/environment-variables).
 
 Render's source checkout includes `frontend/src`, which the installed backend serves directly.
 An installation outside that checkout must set `FPL_ASSISTANT_ASSETS` to a directory containing
@@ -164,7 +173,7 @@ missing schedules, exact shared-projection consistency, selling vs buying, budge
 chip windows and private cache isolation. Auth tests cover all private routes, malformed requests,
 disabled settings, cookies/CSP, CORS/CSRF/origin, rate limiting, passive/active expiry and revoked sessions.
 
-Implementation validation on 2026-10-11: **256 Python tests passed**, the production frontend
+Implementation validation on 2026-10-11: **258 Python tests passed**, the production frontend
 build passed, repository lint passed and all changed Python files passed formatting checks.
 Private browser checks and the full existing public browser check passed; the public check
 covered the neutral homepage, all six views, desktop/mobile themes, scenarios/combined what-ifs,

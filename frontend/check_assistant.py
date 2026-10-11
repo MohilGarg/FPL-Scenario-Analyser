@@ -181,7 +181,7 @@ def main():
     parser.add_argument("--output", type=Path, default=Path(".browser-artifacts/assistant"))
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    password = secrets.token_urlsafe(24)
+    password = f"{secrets.randbelow(100_000_000):08d}"
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     origin = f"http://127.0.0.1:{listener.getsockname()[1]}"

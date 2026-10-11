@@ -22,7 +22,7 @@
     <section id="assistant-locked" class="assistant-login">
       <span class="assistant-lock" aria-hidden="true">&#128274;</span><h2>Your private planning space</h2><p>Friends can use the public analyser. Your squad analysis and optimisation require private access.</p>
       <p id="assistant-access-note" class="fine-print" role="status">Checking private access…</p>
-      <form id="assistant-login-form" class="hidden"><label for="assistant-password">Private password</label><input id="assistant-password" type="password" autocomplete="current-password" required maxlength="256"><button class="primary-button" type="submit">Unlock assistant</button></form>
+      <form id="assistant-login-form" class="hidden"><label for="assistant-password">Private passcode</label><input id="assistant-password" type="password" inputmode="numeric" autocomplete="current-password" required minlength="8" maxlength="256" placeholder="Your 8-digit passcode"><button class="primary-button" type="submit">Unlock assistant</button></form>
     </section>
     <div id="assistant-workspace" class="hidden">
       <div class="assistant-toolbar"><p id="assistant-source" class="fine-print"></p><button id="assistant-refresh" class="secondary-button" type="button">Refresh forecasts</button></div>

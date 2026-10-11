@@ -243,7 +243,7 @@
   },60000);
   async function checkAccess() {
     const session=await api('session');
-    $("#assistant-access-note").textContent=session.enabled ? 'Sign in with your private assistant password.' : session.note;
+    $("#assistant-access-note").textContent=session.enabled ? 'Enter your private passcode to unlock the assistant.' : session.note;
     $("#assistant-login-form").classList.toggle('hidden',!session.enabled);
     if(session.authenticated)await unlock(session);
   }

@@ -16,3 +16,4 @@ snapshots/*.json
 *.sqlite3-wal
 *.sqlite3-shm
 lineup-mappings.local.json
+assistant-password-hash.local.txt

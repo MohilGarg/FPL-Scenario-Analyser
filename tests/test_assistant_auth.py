@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 import unittest
+from unittest.mock import patch
 
 import httpx
 
@@ -67,6 +68,48 @@ class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(self.fpl.catalogue_calls, 0)
         self.assertEqual(self.fpl.squad_calls, 0)
+
+    async def test_eight_digit_passcode_unlocks_with_same_secure_session(self):
+        passcode = f"{secrets.randbelow(100_000_000):08d}"
+        self.store.settings = AuthSettings("https://assistant.example", password_hash(passcode))
+        response = await self.client.post(
+            "/api/assistant/login",
+            json={"password": passcode},
+            headers={"Origin": "https://assistant.example"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(passcode, response.text)
+        self.assertIn("HttpOnly", response.headers["set-cookie"])
+        self.assertEqual(
+            (await self.client.get("/api/assistant/predictions?horizon=1")).status_code, 200
+        )
+        for invalid in ("", "1" * 7, "a" * 8, "１" * 8):
+            with self.assertRaises(ValueError):
+                password_hash(invalid)
+
+    def test_render_origin_is_automatic_but_explicit_origin_takes_precedence(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "RENDER_EXTERNAL_URL": "https://assistant.example/",
+                "FPL_ASSISTANT_PASSWORD_HASH": self.encoded,
+            },
+            clear=True,
+        ):
+            settings = AuthSettings.from_environment()
+            self.assertEqual(settings.origin, "https://assistant.example")
+            self.assertTrue(settings.enabled)
+            with patch.dict("os.environ", {"FPL_ASSISTANT_ORIGIN": "https://custom.example"}):
+                self.assertEqual(AuthSettings.from_environment().origin, "https://custom.example")
+        with patch.dict(
+            "os.environ",
+            {
+                "RENDER_EXTERNAL_URL": "http://unsafe.example",
+                "FPL_ASSISTANT_PASSWORD_HASH": self.encoded,
+            },
+            clear=True,
+        ):
+            self.assertFalse(AuthSettings.from_environment().enabled)
 
     async def test_cookie_is_opaque_secure_httponly_host_only_and_not_in_json(self):
         response = await self.client.post(
