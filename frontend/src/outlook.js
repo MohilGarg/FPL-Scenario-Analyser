@@ -16,6 +16,7 @@ window.ForfeitOutlook = (() => {
   let kind = "goal";
   let resetDraft = false;
   let recordedHistory = null;
+  let baselineSource = null;
   const pct = (value) => value == null ? "Pending" : `${(100 * value).toFixed(1)}%`;
   const signed = (value) => `${value > 0 ? "+" : ""}${Number(value).toFixed(1)}`;
   const shortNames = (names) => names.length > 2 ? `${names.slice(0,2).join(", ")} and ${names.length-2} others` : names.join(", ");
@@ -41,6 +42,7 @@ window.ForfeitOutlook = (() => {
   async function start(data, generation) {
     cancel();
     baseline = data.outlook || null; recordedHistory = null;
+    baselineSource = data.league.fetched_at;
     modified = null; conditions = []; forecastError = ""; scenarioError = "";
     fixtureId = null; playerId = null; teamId = null; kind = "goal";
     scenarioLoading = false;
@@ -129,7 +131,7 @@ window.ForfeitOutlook = (() => {
         const latest = group.observations.at(-1);
         return `<details data-card="risk-series-${group.series_id}" ${index===0 ? "open" : ""}><summary>${h(group.configuration.model_version)} · ${group.observations.length} observations · ${group.configuration.tie_rule === "include" ? "ties included" : "outright last"}</summary>
           <p class="fine-print">${group.configuration.simulations} draws · seed ${group.configuration.seed}. Series with different settings, models or members are kept separate. Times use your timezone; checkpoints are spaced by observation, not elapsed time.</p>
-          ${window.FPLCharts.line("Estimated last-place probability (%)",observations,series,"time",{prefix:"",unit:"%",axis:"Source time"})}
+          ${observations.length > 1 ? window.FPLCharts.line("Estimated last-place probability (%)",observations,series,"time",{prefix:"",unit:"%",axis:"Source time"}) : '<p class="fine-print">Only one recorded observation is available. A risk trajectory needs at least two compatible observations.</p>'}
           <ul>${latest.managers.filter(r=>group.contender_entry_ids.includes(r.entry_id)).map(r=>`<li>${h(lookup.get(r.entry_id)?.manager_name)}: ${pct(r.last_probability)}${r.risk_change == null ? " · first observation" : ` · ${signed(100*r.risk_change)} pp since the preceding compatible observation`}.</li>`).join("")}</ul>
           <p class="fine-print">Latest source: ${h(new Date(latest.source).toLocaleString())}. Recorded: ${h(new Date(latest.recorded_at).toLocaleString())}.</p>
           ${latest.player_changes.length || latest.annotations.length ? `<p>Between the latest two observations: ${latest.player_changes.slice(0,8).map(p=>`${h(players.get(p.player_id) || `Player ${p.player_id}`)} ${signed(p.points_change)} official points, ${signed(p.minutes_change)} minutes`).join("; ")}${latest.annotations.length ? `${latest.player_changes.length ? "; " : ""}${latest.annotations.length} fixture/coverage updates` : ""}. These changes provide context; they do not allocate the risk movement to one player or event.</p>` : ""}</details>`;
@@ -312,5 +314,11 @@ window.ForfeitOutlook = (() => {
       document.querySelector("#exact-heading").scrollIntoView({block:"start"});
     }
   });
-  return { start, cancel, overview, explorer, managerFacts, historyView };
+  // Read the already-loaded baseline; this view never fetches or runs a forecast.
+  function simulationData(data) {
+    const current = baselineSource === data.league.fetched_at;
+    const forecast = current ? baseline : data.outlook;
+    return { forecast, history: (current && recordedHistory) || forecast?.risk_history, loading: current && loading, error: current ? forecastError : "" };
+  }
+  return { start, cancel, overview, explorer, managerFacts, historyView, simulationData };
 })();

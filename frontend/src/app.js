@@ -1,6 +1,6 @@
 const config = window.APP_CONFIG || {};
 const apiBaseUrl = String(config.apiBaseUrl || "").replace(/\/$/, "");
-const VALID_VIEWS = new Set(["overview", "scenarios", "differentials", "managers", "analytics"]);
+const VALID_VIEWS = new Set(["overview", "scenarios", "differentials", "simulations", "managers", "analytics"]);
 const REFRESH_INTERVAL_MS = 90_000;
 
 const elements = {
@@ -293,6 +293,7 @@ function renderApplication() {
   renderScenarioView(data);
   document.querySelector("#explorer-content").innerHTML = window.ForfeitOutlook.explorer(data);
   renderDifferentials(data);
+  window.FPLSimulations.render(data, window.ForfeitOutlook.simulationData(data));
   renderManagers(data);
   renderModelNote(data);
   activateView(appState.view, false);

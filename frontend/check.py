@@ -14,9 +14,87 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 
+def check_simulations(page, url: str, output: Path, requests: list[str]) -> None:
+    """Focused UI checks using an existing demo; history fixtures stay inside this browser."""
+    page.goto(url + "/?demo=early&view=simulations")
+    page.locator("#view-simulations:not(.hidden)").wait_for()
+    page.wait_for_function(
+        "document.querySelector('.simulation-meta').textContent.includes('existing shared draws')",
+        timeout=60_000,
+    )
+    tabs = page.locator(".view-tabs button").evaluate_all("tabs => tabs.map(t => t.dataset.view)")
+    assert tabs == ["overview", "scenarios", "differentials", "simulations", "managers", "analytics"]
+    count = page.evaluate("appState.data.managers.length")
+    assert page.locator(".simulation-probabilities .bar-row").count() == count
+    assert page.locator(".simulation-scores .interval-row").count() == count
+    values = page.locator(".simulation-probabilities .bar-row strong").all_inner_texts()
+    risks = [float(value.rstrip("%")) for value in values]
+    assert risks == sorted(risks, reverse=True), risks
+    assert "Sampled 0%" in page.locator(".simulation-probabilities").inner_text()
+    assert "no score bins" in page.locator(".simulation-distributions").inner_text()
+    assert page.locator(".simulation-history svg").count() == 0
+    assert page.locator(".simulation-checkpoints .chart-dot").count() > 0
+    page.locator(".simulation-probabilities .bar-row").first.focus()
+    assert "estimated last-place probability" in page.locator(".simulation-probabilities .chart-readout").inner_text()
+    page.locator(".simulation-scores .interval-row").first.click()
+    assert "10th–90th percentile" in page.locator(".simulation-scores .chart-readout").inner_text()
+    page.locator(".simulation-checkpoints .chart-dot").first.focus()
+    assert "Group 1:" in page.locator(".simulation-checkpoints .chart-readout").inner_text()
+    assert "%" in page.locator(".simulation-checkpoints .chart-readout").inner_text()
+    start = len(requests)
+    page.locator("#simulation-selected-scores").check()
+    assert page.locator(".simulation-scores .interval-row").count() == 3
+    page.locator("[data-sim-action='none']").click()
+    assert page.locator(".simulation-checkpoints .chart-dot").count() == 0
+    assert page.locator(".simulation-probabilities .bar-row").count() == count
+    page.locator("[data-sim-action='top']").click()
+    page.locator(".simulation-checkpoints .chart-legend button").first.click()
+    assert page.locator(".simulation-picker [aria-pressed='true']").count() == 2
+    assert page.locator(".simulation-scores .interval-row").count() == 2
+    assert not any("/outlook" in request for request in requests[start:]), "Selecting charts must not request a forecast"
+    page.locator("[data-sim-action='top']").click()
+    page.locator("#simulation-selected-scores").uncheck()
+    for width in (320, 390, 1440):
+        page.set_viewport_size({"width": width, "height": 900})
+        for theme in ("light", "dark"):
+            page.evaluate("theme => { document.documentElement.dataset.theme = theme; }", theme)
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (width, theme)
+            page.screenshot(path=str(output / f"simulations-{width}-{theme}.png"), full_page=True)
+        for view in ("overview", "scenarios", "differentials", "managers", "analytics", "simulations"):
+            page.locator(f"#tab-{view}").click()
+            assert page.locator(f"#view-{view}").is_visible(), view
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (width, view)
+    # Rendering fixtures only: no invented observations enter the API, saved history or product demos.
+    page.evaluate("""() => {
+        const results = ForfeitOutlook.simulationData(appState.data);
+        const managers = results.forecast.managers;
+        window.simulationHistoryFixture = {series_id:'browser-only',configuration:{model_version:'browser-only fixture',simulations:results.forecast.simulations,seed:1,tie_rule:'include'},observations:[{source:'2026-10-11T12:00:00Z',recorded_at:'2026-10-11T12:00:01Z',managers}]};
+        FPLSimulations.render(appState.data, {...results,history:{series:[simulationHistoryFixture]}});
+    }""")
+    assert page.locator(".simulation-history svg").count() == 0
+    assert "Only one recorded observation" in page.locator(".simulation-history").inner_text()
+    page.evaluate("""() => {
+        simulationHistoryFixture.observations.push({...simulationHistoryFixture.observations[0],source:'2026-10-11T12:02:00Z',recorded_at:'2026-10-11T12:02:01Z'});
+        FPLSimulations.render(appState.data, {...ForfeitOutlook.simulationData(appState.data),history:{series:[simulationHistoryFixture]}});
+    }""")
+    assert page.locator(".simulation-history .chart-dot").count() == 6
+    page.locator(".simulation-history .chart-dot").first.focus()
+    assert "%" in page.locator(".simulation-history .chart-readout").inner_text()
+    page.locator(".simulation-history .chart-legend button").first.click()
+    assert page.locator(".simulation-history .chart-dot").count() == 4
+    page.goto(url + "/?demo=late&view=simulations")
+    page.wait_for_function("document.querySelector('.simulation-meta')?.textContent.includes('existing shared draws')", timeout=60_000)
+    assert "SAFE in configured envelope" in page.locator(".simulation-probabilities").inner_text()
+    page.goto(url + "/?demo=complete&view=simulations")
+    page.locator("#view-simulations:not(.hidden)").wait_for()
+    assert "Gameweek complete" in page.locator(".simulation-meta").inner_text()
+    assert page.locator(".simulation-scores").count() == 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://127.0.0.1:8080")
+    parser.add_argument("--simulations-only", action="store_true", help="Quick demo checks for the Simulations tab, chart interactions, responsive layout and themes")
     parser.add_argument(
         "--league", type=int, help="Also check Analytics against this real public league"
     )
@@ -49,6 +127,12 @@ def main() -> None:
         requests: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on("request", lambda request: requests.append(request.url))
+        if args.simulations_only:
+            check_simulations(page, args.url, output, requests)
+            assert not errors, errors
+            browser.close()
+            print(f"Simulations browser checks passed: demo charts, manager selection, tooltips, zero/safe labels, unavailable/one/two-observation history, six views, 320/390/1440px, light/dark. Screenshots: {output}")
+            return
         page.goto(args.url + "/")
         page.locator("#league-form").wait_for()
         assert page.locator("#recent-leagues").is_hidden()
@@ -93,7 +177,7 @@ def main() -> None:
         assert page.locator("#scenario-detail .scenario-card").count() > 3
         for width in (320, 390, 1440):
             page.set_viewport_size({"width": width, "height": 900})
-            for view in ("overview", "scenarios", "differentials", "managers", "analytics"):
+            for view in ("overview", "scenarios", "differentials", "simulations", "managers", "analytics"):
                 page.locator(f"#tab-{view}").click()
                 if view == "managers":
                     page.locator(".manager-card > summary").first.click()
@@ -384,7 +468,7 @@ def main() -> None:
             assert "league=" not in page.url
         assert not errors, errors
         print(
-            f"Browser checks passed: neutral home (new/recent visitor), input parsing, five views at 320/390/1440px, themes, outlook, combined what-ifs/conflicts/reset, comparison, manager-only show more, completed UX, event shortcuts and error recovery. Phase leagues: {args.phase_leagues}. Analytics league: {args.league}. Scenario league: {args.scenario_league}. Screenshots: {output}"
+            f"Browser checks passed: neutral home (new/recent visitor), input parsing, six views at 320/390/1440px, themes, outlook, combined what-ifs/conflicts/reset, comparison, manager-only show more, completed UX, event shortcuts and error recovery. Phase leagues: {args.phase_leagues}. Analytics league: {args.league}. Scenario league: {args.scenario_league}. Screenshots: {output}"
         )
         browser.close()
 

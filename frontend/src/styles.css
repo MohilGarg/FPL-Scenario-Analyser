@@ -1,4 +1,18 @@
 :root {
+  --sim-colour-0: #295b9e;
+  --sim-colour-1: #9b3e3e;
+  --sim-colour-2: #227463;
+  --sim-colour-3: #8350a3;
+  --sim-colour-4: #956014;
+  --sim-colour-5: #287387;
+  --sim-colour-6: #a23b73;
+  --sim-colour-7: #526d24;
+  --sim-colour-8: #a0502c;
+  --sim-colour-9: #5c5cb0;
+  --sim-colour-10: #57667b;
+  --sim-colour-11: #187b87;
+  --sim-colour-12: #b03453;
+  --sim-colour-13: #775d27;
   color-scheme: light;
   --page: #f4f6f8;
   --surface: #ffffff;
@@ -25,6 +39,20 @@
 }
 
 :root[data-theme="dark"] {
+  --sim-colour-0: #87b8f5;
+  --sim-colour-1: #f09999;
+  --sim-colour-2: #78cfb9;
+  --sim-colour-3: #c7a0ed;
+  --sim-colour-4: #e5bd77;
+  --sim-colour-5: #79c9df;
+  --sim-colour-6: #ee9cc5;
+  --sim-colour-7: #b5cc83;
+  --sim-colour-8: #eda585;
+  --sim-colour-9: #b1b0f6;
+  --sim-colour-10: #abbdd8;
+  --sim-colour-11: #6fd4df;
+  --sim-colour-12: #f591ac;
+  --sim-colour-13: #cfb885;
   color-scheme: dark;
   --page: #11151c;
   --surface: #181e27;
@@ -649,7 +677,8 @@ footer a { color: var(--muted); }
 .chart svg text { fill: var(--muted); font-size: 12px; }
 .chart-grid { stroke: var(--line); stroke-dasharray: 3 4; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.75rem; color: var(--muted); }
-.chart-legend span { display: flex; align-items: center; gap: 6px; }
+.chart-legend span, .chart-legend button { display: flex; align-items: center; gap: 6px; }
+.chart-legend button { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 7px 9px; }
 .chart-legend i { display: inline-block; width: 12px; height: 3px; }
 .series-0 { stroke: var(--primary); fill: var(--primary); background: var(--primary); }
 .series-1 { stroke: var(--muted); fill: var(--muted); background: var(--muted); }
@@ -696,6 +725,54 @@ footer a { color: var(--muted); }
   .analytics-facts dd { font-size: 1.18rem; }
   .season-extremes { grid-template-columns: 1fr; }
   .chart-dot { r: 5.5px; }
+}
+/* Simulation dashboard: shared manager colours and responsive interactive charts. */
+.simulation-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: var(--muted); font-size: .8rem; padding: 12px 16px; border-left: 3px solid var(--primary); background: var(--primary-soft); border-radius: 6px; margin-bottom: 16px; }
+.simulation-picker { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; }
+.simulation-picker > summary { font-weight: 650; font-size: .9rem; }
+.simulation-actions { display: flex; flex-wrap: wrap; gap: 16px; margin: 10px 0 14px; }
+.simulation-managers { display: flex; flex-wrap: wrap; gap: 8px; max-height: 220px; overflow-y: auto; padding: 4px; }
+.simulation-manager { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 20px; padding: 9px 12px; background: var(--surface); color: var(--muted); font-size: .8rem; min-height: 38px; }
+.simulation-manager i { width: 10px; height: 10px; flex-shrink: 0; border: 2px solid var(--manager-colour); border-radius: 50%; }
+.simulation-manager[aria-pressed="true"] { border-color: var(--manager-colour); color: var(--ink); background: color-mix(in srgb, var(--manager-colour) 9%, var(--surface)); }
+.simulation-manager[aria-pressed="true"] i { background: var(--manager-colour); }
+.simulation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.simulation-card { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.simulation-card h3 { margin: 0 0 8px; font-size: 1rem; }
+.simulation-card > .fine-print { margin-top: 0; }
+.simulation-card .chart { margin: 14px 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.simulation-card .chart figcaption { font-size: .8rem; margin-bottom: 14px; }
+.simulation-card .chart-rows { max-height: 470px; overflow-y: auto; padding: 3px; }
+.simulation-card .bar-row, .interval-row { grid-template-columns: minmax(90px, 1fr) minmax(45px, 1.25fr) 56px; gap: 10px; min-height: 45px; }
+.simulation-card .bar-row:hover, .interval-row:hover { background: var(--surface-subtle); }
+.simulation-card .bar-track { height: 12px; border-radius: 4px; }
+.simulation-card .bar-row .table-note { font-size: .65rem; line-height: 1.4; }
+.zero-value { position: relative; }
+.zero-value::after { content: ""; position: absolute; width: 8px; height: 8px; top: 2px; left: 0; border: 2px solid currentColor; border-radius: 50%; background: var(--surface); }
+.simulation-filter { display: flex; align-items: center; gap: 7px; font-size: .78rem; color: var(--muted); }
+.simulation-filter input { accent-color: var(--primary); }
+.interval-axis { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(45px, 1.25fr) 56px; gap: 10px; font-size: .72rem; color: var(--muted); margin: 0 0 10px; padding: 0 3px; }
+.interval-axis > span:nth-child(2) { display: flex; justify-content: space-between; }
+.interval-axis > span:last-child { text-align: right; }
+.interval-axis b { font-weight: 400; }
+.interval-row { display: grid; align-items: center; width: 100%; border: 0; padding: 7px 0; background: transparent; color: var(--ink); text-align: left; font-size: .78rem; }
+.interval-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+.interval-track { position: relative; height: 24px; background: repeating-linear-gradient(to right, transparent, transparent calc(25% - 1px), var(--line) calc(25% - 1px), var(--line) 25%); }
+.interval-range { position: absolute; top: 10px; height: 4px; background: var(--manager-colour); border-radius: 2px; min-width: 2px; }
+.interval-dot { position: absolute; top: 7px; width: 10px; height: 10px; transform: translateX(-50%); border: 2px solid var(--surface); border-radius: 50%; background: var(--manager-colour); box-shadow: 0 0 0 1px var(--manager-colour); }
+.simulation-empty { color: var(--muted); background: var(--surface-subtle); border-radius: 8px; padding: 18px; line-height: 1.65; font-size: .85rem; }
+.simulation-history details { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+.simulation-history details > summary { font-size: .8rem; font-weight: 650; }
+.simulation-fixtures { list-style: none; padding: 0; margin: 16px 0; max-height: 240px; overflow-y: auto; }
+.simulation-fixtures li { display: grid; grid-template-columns: 65px 1fr; gap: 5px 10px; border-top: 1px solid var(--line); padding: 10px 0; font-size: .78rem; }
+.simulation-fixtures small { grid-column: 2; color: var(--muted); }
+.simulation-distributions { padding: 12px 2px; }
+@media (max-width: 760px) {
+  .simulation-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .simulation-card, .simulation-picker { padding: 16px; }
+  .simulation-card .chart svg text { font-size: 19px; }
+  .simulation-card .chart-dot { r: 7px; stroke-width: 16px; }
+  .simulation-manager { min-height: 42px; }
 }
 /* Shared-fixture outlook and scenario exploration. */
 .outlook-headlines { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 1rem 0 1.75rem; }

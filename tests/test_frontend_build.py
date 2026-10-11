@@ -26,7 +26,9 @@ class FrontendBuildTests(unittest.TestCase):
             javascript = (output / "app.js").read_text(encoding="utf-8")
             self.assertIn('data-theme="light"', html)
             self.assertIn('id="theme-toggle"', html)
-            for view in ("overview", "scenarios", "differentials", "managers", "analytics"):
+            self.assertTrue((output / "simulations.js").exists())
+            self.assertIn('src="./simulations.js"', html)
+            for view in ("overview", "scenarios", "differentials", "simulations", "managers", "analytics"):
                 self.assertIn(f'data-view="{view}"', html)
             self.assertIn(':root[data-theme="dark"]', css)
             self.assertIn("fpl-theme", javascript)

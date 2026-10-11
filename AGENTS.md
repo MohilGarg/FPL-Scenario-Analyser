@@ -45,8 +45,8 @@ is not a literal theoretical or historical limit. `UNRESOLVED` must never be pre
 - Scenario plausibility affects ranking only, never validity.
 - Keep demo states deterministic and route them through the same Python analysis pipeline as live
   data. Do not hard-code analysed demo results in JavaScript.
-- Preserve the four live views: Overview, Scenarios, Differentials and Managers, plus the visually
-  separate Analytics view. All five stay in the same SPA. The website is
+- Preserve the five live views: Overview, Scenarios, Differentials, Simulations and Managers, plus the visually
+  separate Analytics view. All six stay in the same SPA. The website is
   light-first with an accessible optional dark theme; keep both palettes high-contrast and restrained.
 - Broad early-Gameweek states should favour effective differentials over expensive, misleadingly
   narrow scenario enumeration.

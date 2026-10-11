@@ -19,7 +19,7 @@ the live tie rule and secondary demos remain in Settings.
 
 ### Live analysis
 
-The original four views remain:
+The five live views are:
 
 - **Overview** — current/projected bottom managers, estimated last-place risks, projected scores
   and ranges, decisive players/fixtures and a separate bounded safe group;
@@ -27,12 +27,17 @@ The original four views remain:
   changes and reset/removal, followed by separate exact examples and manager comparisons;
 - **Differentials** — meaningful remaining effective multipliers after captaincy, chips and current
   substitution state;
+- **Simulations** — interactive last-place probability bars, projected scores with existing
+  10th–90th percentile ranges, projected fixture checkpoints and recorded risk trajectories.
+  Select managers to compare, with consistent colours across charts. History needs at least two
+  compatible saved observations; unavailable history is explained. Score distributions are omitted
+  because the API exposes no bins or samples. This view requests no extra simulations;
 - **Managers** — all effective scores and expandable 15-player Gameweek squads for transparency.
   Captain/vice/Triple Captain badges are inline; there is no redundant multiplier column.
 
 ### Analytics
 
-The separate fifth tab stays inside the same website, with **Summary**, **Gameweeks**, **Managers**,
+The separately positioned Analytics tab stays inside the same website, with **Summary**, **Gameweeks**, **Managers**,
 **Players** and **Head-to-head** sections:
 
 - weekly forfeit leaderboard, completed Gameweek ordering, score coverage and league trends;
@@ -330,13 +335,14 @@ Optional browser checks (with the local API and frontend running):
 ```powershell
 python -m pip install playwright
 python frontend/check.py
+python frontend/check.py --simulations-only
 python frontend/check.py --league 188263
 python frontend/check.py --scenario-league 188263
 ```
 
 On Windows this uses installed Microsoft Edge; otherwise install a Playwright Chromium browser
 (`python -m playwright install chromium`) or supply `--browser-executable`. Checks include real JS
-league-ID/URL parsing, neutral home with and without recent leagues, five views at 320/390/1440px,
+league-ID/URL parsing, neutral home with and without recent leagues, six views at 320/390/1440px,
 theme persistence, comparison, manager-only Show more and completed-state UX. The optional `--league`
 checks real historical Analytics sections, shared URLs, charts, ownership search and overlap in
 both themes. It makes public FPL requests through the backend. Screenshots go to a temporary directory, never the Pages

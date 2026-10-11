@@ -137,6 +137,7 @@
           <button id="tab-overview" role="tab" aria-selected="true" aria-controls="view-overview" data-view="overview">Overview</button>
           <button id="tab-scenarios" role="tab" aria-selected="false" aria-controls="view-scenarios" data-view="scenarios">Scenarios</button>
           <button id="tab-differentials" role="tab" aria-selected="false" aria-controls="view-differentials" data-view="differentials">Differentials</button>
+          <button id="tab-simulations" role="tab" aria-selected="false" aria-controls="view-simulations" data-view="simulations">Simulations</button>
           <button id="tab-managers" role="tab" aria-selected="false" aria-controls="view-managers" data-view="managers">Managers</button>
           <button id="tab-analytics" class="analytics-tab" role="tab" aria-selected="false" aria-controls="view-analytics" data-view="analytics">Analytics</button>
         </nav>
@@ -185,6 +186,11 @@
           <div id="differential-content"></div>
         </section>
 
+        <section id="view-simulations" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-simulations">
+          <div class="view-heading"><div><p class="kicker">Explore the uncertainty</p><h2>Simulations</h2><p>The existing shared Monte Carlo forecast, viewed from different angles.</p></div></div>
+          <div id="simulations-content"></div>
+        </section>
+
         <section id="view-managers" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-managers">
           <div class="view-heading">
             <div>
@@ -230,6 +236,7 @@
     <script src="./charts.js"></script>
     <script src="./analytics.js"></script>
     <script src="./outlook.js"></script>
+    <script src="./simulations.js"></script>
     <script src="./app.js" defer></script>
   </body>
 </html>
