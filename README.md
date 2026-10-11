@@ -155,6 +155,12 @@ FastAPI service on Render
 FPL requests happen server-side to avoid browser CORS problems. Scoring and scenario logic is never
 duplicated in JavaScript.
 
+Player forecasts and joint fixture outcomes are reusable through `fpl_forfeit.forecasting`,
+independently of mini-leagues. The public analyser consumes the same shared model.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the typed multi-Gameweek projection interface and
+the documented server-side authentication boundary for a future private assistant.
+Optimisation and login functionality remain outside the current implementation.
+
 ## Run locally
 
 Requirements: Python 3.12+ and internet access for real FPL data.

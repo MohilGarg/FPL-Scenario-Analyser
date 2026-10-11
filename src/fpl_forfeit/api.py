@@ -11,6 +11,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .cache import TTLCache
+from .forecasting.models import TeamMatchResult
+from .forecasting.statistics import estimate_team_goal_rates
 from .models import (
     POSITION_BY_ELEMENT_TYPE,
     ElementScore,
@@ -461,6 +463,7 @@ def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
             )
         ),
         raw=snapshot,
+        provenance="official_fpl",
     )
 
 
@@ -475,28 +478,14 @@ def _optional_int(value: Any) -> int | None:
 
 
 def _team_goal_rates(fixtures: list[dict[str, Any]]) -> dict[int, tuple[float, float]]:
-    """Shrink observed team scoring/conceding towards a league-wide per-team rate."""
-    played = [
-        f
+    """Normalise official season scorelines before shared statistical estimation."""
+    return estimate_team_goal_rates(
+        TeamMatchResult(
+            home_team_id=int(f["team_h"]), away_team_id=int(f["team_a"]),
+            home_goals=int(f["team_h_score"]), away_goals=int(f["team_a_score"]),
+        )
         for f in fixtures
         if f.get("finished")
         and f.get("team_h_score") is not None
         and f.get("team_a_score") is not None
-    ]
-    if not played:
-        return {}
-    rate = sum(f["team_h_score"] + f["team_a_score"] for f in played) / (2 * len(played))
-    totals: dict[int, list[int]] = {}
-    for f in played:
-        for team, own, against in (
-            (f["team_h"], f["team_h_score"], f["team_a_score"]),
-            (f["team_a"], f["team_a_score"], f["team_h_score"]),
-        ):
-            row = totals.setdefault(int(team), [0, 0, 0])
-            row[0] += 1
-            row[1] += own
-            row[2] += against
-    return {
-        team: ((own + 8 * rate) / (n + 8), (against + 8 * rate) / (n + 8))
-        for team, (n, own, against) in totals.items()
-    }
+    )

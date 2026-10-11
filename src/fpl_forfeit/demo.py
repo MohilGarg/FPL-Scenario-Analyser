@@ -178,6 +178,7 @@ def demo_state(mode: DemoMode) -> LeagueState:
             (9003, 701): {"minutes": 68, "clean_sheets": 1},
         }
     return LeagueState(
+        provenance="deterministic_demo",
         league_id=900000 + DEMO_MODES.index(mode),
         league_name=f"Demo League — {mode.title()} Gameweek",
         gameweek=7,

@@ -32,6 +32,9 @@ is not a literal theoretical or historical limit. `UNRESOLVED` must never be pre
 
 ## Development
 
+- Commit completed task changes and push to the tracked remote branch. Fetch and reconcile
+  upstream changes when needed, then verify that the local branch and remote are synced before
+  reporting completion.
 - Target Python 3.12+ and use type hints.
 - Prefer the standard library unless a dependency creates clear value.
 - Run `python -m unittest discover -s tests -v` after domain changes.

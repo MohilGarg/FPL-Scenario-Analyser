@@ -10,11 +10,18 @@ The statistical outputs are experimental **uncalibrated internal model estimates
 useful comparisons under stated assumptions, not verified probabilities or player advice.
 No xG model, external projection feed, paid API, transfer or captain recommendation is involved.
 
+Football statistics and simulation now live in the reusable `forecasting/` package.
+The public league adapter consumes its joint outcomes and adds official-score reconciliation
+and forfeit calculations. Typed per-fixture player projections support a supplied horizon across
+multiple Gameweeks. See [ARCHITECTURE.md](ARCHITECTURE.md) for the interface, coverage semantics
+and future private authentication boundary. No assistant, optimiser or login is implemented.
+
 ## Shared scoring and official data
 
 `api.py` parses official bootstrap season statistics, season fixture results, current fixture
 scorelines, live per-fixture scoring explanations and picks. `models.py` contains typed domain
-inputs. `scoring.py` scores hypothetical fixture categories; `substitutions.py` resolves live and
+inputs. `points.py` scores hypothetical fixture categories (re-exported by `scoring.py`);
+`substitutions.py` resolves live and
 hypothetical manager multipliers, chips, bench order, formation constraints and hits.
 
 Every sample starts from official awarded **aggregated event points**. For each unfinished fixture,
@@ -45,7 +52,10 @@ and [bonus changes](https://www.premierleague.com/en/news/4679946/).
   slots. A fully owned eleven cannot acquire an additional anonymous scorer.
 * Appearances: starts divided by observed team matches, shrunk by four matches towards .8,
   with official availability percentages applied. Without history, .8 is used. Starting owned
-  outfield players receive sampled 55/60/70/80/90-minute windows. Starting goalkeepers receive
+  outfield players use season minutes per start, subtracting a three-minute cameo proxy per
+  non-starting team match, shrunk by four prior starts towards the existing
+  55/60/70/80/90-minute distribution. Missing minutes or starts retain that distribution.
+  This is a duration proxy rather than observed starter/substitution timestamps. Starting goalkeepers receive
   90 minutes unless minutes are explicitly selected. Non-starters can make short late cameos.
   Windows allow at most eleven simultaneous owned players and one goalkeeper per team.
   Anonymous teammates fill the remaining positions; this is not a verified starting-lineup model.

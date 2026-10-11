@@ -136,6 +136,7 @@ class LeagueState:
     fixture_stats: dict[tuple[int, int], dict[str, int]] = field(default_factory=dict)
     team_goal_rates: dict[int, tuple[float, float]] = field(default_factory=dict)
     event_final: bool = False
+    provenance: str = "caller_supplied"
 
     def fixtures_for_team(self, team_id: int) -> tuple[Fixture, ...]:
         return tuple(fixture for fixture in self.fixtures if fixture.involves(team_id))
