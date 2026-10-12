@@ -1,0 +1,6 @@
+{
+  "repository": "vaastav/Fantasy-Premier-League",
+  "revision": "9779cdbc0c07f6c900c2d0c181ddf6bb9c800f88",
+  "seasons": ["2023-24", "2024-25", "2025-26"],
+  "files": ["gws/merged_gw.csv", "players_raw.csv", "teams.csv", "fixtures.csv"]
+}

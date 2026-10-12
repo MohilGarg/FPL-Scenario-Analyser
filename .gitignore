@@ -17,3 +17,8 @@ snapshots/*.json
 *.sqlite3-shm
 lineup-mappings.local.json
 assistant-password-hash.local.txt
+# Isolated ML research: data, environments and generated audits stay local.
+ml/data/raw/
+ml/data/processed/
+ml/reports/generated/
+ml/.venv/

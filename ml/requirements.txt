@@ -1,0 +1,2 @@
+# The only research dependency: Parquet I/O. Use Python 3.12 or 3.13 for this pin.
+pyarrow==21.0.0
