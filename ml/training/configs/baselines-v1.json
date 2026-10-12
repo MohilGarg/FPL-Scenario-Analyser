@@ -1,0 +1,55 @@
+{
+  "experiment_id": "baselines-v1",
+  "protocol_version": 1,
+  "seed": 20261012,
+  "threads": 2,
+  "splits": {
+    "train": "2023-24",
+    "validation": "2024-25",
+    "test": "2025-26"
+  },
+  "expected_candidates": {
+    "2023-24": 27877,
+    "2024-25": 26098,
+    "2025-26": 28497
+  },
+  "features": "existing_approved_list_only",
+  "preprocessing": "training_median_imputation_then_training_standardisation_drop_training_empty_or_constant",
+  "recent_average": {
+    "feature": "pre_gw_points_mean_last3_observed_gws"
+  },
+  "ridge": {
+    "alpha": 100.0,
+    "solver": "cholesky"
+  },
+  "lightgbm": {
+    "num_boost_round": 200,
+    "params": {
+      "objective": "regression_l2",
+      "learning_rate": 0.03,
+      "num_leaves": 15,
+      "max_depth": 4,
+      "min_data_in_leaf": 200,
+      "max_bin": 127,
+      "feature_fraction": 0.8,
+      "bagging_fraction": 1.0,
+      "lambda_l1": 0.1,
+      "lambda_l2": 10.0,
+      "min_gain_to_split": 0.05,
+      "deterministic": true,
+      "force_col_wise": true,
+      "verbosity": -1
+    }
+  },
+  "selection": {
+    "primary_metric": "mae",
+    "tie_breaker": "rmse",
+    "refit_all_fixed_approaches_on_train_plus_validation": true,
+    "early_stopping": false,
+    "prediction_clipping": false
+  },
+  "uncertainty": {
+    "bootstrap_draws": 1000,
+    "gameweek_block_length": 4
+  }
+}

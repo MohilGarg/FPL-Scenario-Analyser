@@ -1,5 +1,8 @@
 # Training-feature readiness — Phase 2a
 
+This records readiness before training. Phase 2b's actual baseline experiments and their limits
+are documented separately in [BASELINE_EXPERIMENTS.md](BASELINE_EXPERIMENTS.md).
+
 Reviewed 12 October 2026, extending Phase 1 commit `0f08d1b`. No models, baselines,
 LightGBM experiments or production integrations have been implemented.
 

@@ -1,7 +1,7 @@
-# Historical FPL research — Phase 1 and Phase 2a
+# Historical FPL research — Phases 1, 2a and 2b
 
-This area discovers, audits and prepares historical player outcomes and deadline-gated features. It has no imports from
-`src/fpl_forfeit`, no application entry points and no training, tuning or deployment code.
+This area discovers, audits and prepares historical outcomes/features and runs small offline
+baseline experiments. It has no imports from `src/fpl_forfeit` or application entry points.
 The assistant, shared forecasting engine, API and frontend are untouched.
 
 ## Run from the repository root
@@ -44,10 +44,12 @@ ml/
   prepare.py                  # ingestion/preparation CLI
   validate.py                 # source fidelity and dataset checks
   tests/                      # small offline regression tests
-  training/README.md          # reserved; no models implemented
-  evaluation/README.md        # reserved; no engine adapters or comparisons implemented
+  training/                   # fixed Ridge/LightGBM/recent-average experiments and versioned config
+  evaluation/                 # metrics, grouped uncertainty, tables and charts; no production adapter
+  artifacts/                  # ignored: fitted models, preprocessing, predictions and charts
   reports/DATA_AUDIT.md        # reviewed audit, missing features and Phase 2 recommendations
   reports/TRAINING_READINESS.md # reviewed Phase 2a findings, provenance and limitations
+  reports/BASELINE_EXPERIMENTS.md # reviewed actual Phase 2b validation/holdout results
   reports/generated/          # ignored: audit.md/json and readiness.md/json
   data/raw/                   # ignored: original CSV bytes and manifest.json
   data/processed/             # ignored:
@@ -143,3 +145,11 @@ affected rows from its baseline-candidate count, without changing any historical
 
 Future training code must use `feature_columns.json` / `FEATURE_COLUMNS` rather than selecting
 every numeric column in `player_gameweeks.parquet`. See the audit for Phase 2 prerequisites.
+
+## Run the first baseline experiments
+
+See [training/README.md](training/README.md) for the isolated pinned dependency stack, two-stage
+training/holdout commands, prediction reproduction and artifact locations. Only the existing
+82,472 candidate observations enter experiments. The first run used validation-only model
+selection, then a frozen holdout evaluation; 2025/26 is now a reported, consumed test period.
+Subsequent experiment design must not use its outcomes to tune or select models/features.
