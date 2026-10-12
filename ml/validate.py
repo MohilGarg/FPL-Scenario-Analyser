@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections import defaultdict
 from pathlib import Path
 
-from .dataset import FEATURE_COLUMNS, read_csv, strict_sum
-from .sources import ROOT, verify_cache
+from .dataset import FEATURE_COLUMNS, feature_values, gameweek_dataset, load_deadlines, read_csv, strict_sum
+from .deadlines import reconstruct_deadlines
+from .readiness import quality_metadata
+from .sources import ROOT, digest, verify_cache
 
 
 def validate(raw_dir: Path, output_dir: Path) -> dict[str, int]:
@@ -15,9 +18,20 @@ def validate(raw_dir: Path, output_dir: Path) -> dict[str, int]:
 
     matches = pq.read_table(output_dir / "match_records.parquet").to_pylist()
     gameweeks = pq.read_table(output_dir / "player_gameweeks.parquet").to_pylist()
-    features = pq.read_table(output_dir / "features.parquet").to_pylist()
+    feature_file = pq.ParquetFile(output_dir / "features.parquet")
     seasons = sorted({r["season"] for r in gameweeks})
     verify_cache(raw_dir, seasons)
+    metadata = json.loads((output_dir / "preparation_metadata.json").read_text(encoding="utf-8"))
+    deadline_file = Path(metadata["deadline_file"])
+    if digest(deadline_file.read_bytes()) != metadata["deadline_sha256"]:
+        raise ValueError("Prepared deadline calendar checksum mismatch")
+    if metadata["verified_archive"]:
+        proven = reconstruct_deadlines(raw_dir, seasons)
+        if proven != metadata["deadline_records"] or read_csv(deadline_file).rows != [
+            {k: str(v) for k, v in row.items()} for row in proven
+        ]:
+            raise ValueError("Deadline calendar/provenance differs from archived API proof")
+    deadlines = load_deadlines(deadline_file)
     keys = [(m["season"], m["element"], m["fixture_id"]) for m in matches]
     if len(keys) != len(set(keys)):
         raise ValueError("Duplicate normalised player-fixture keys")
@@ -42,14 +56,48 @@ def validate(raw_dir: Path, output_dir: Path) -> dict[str, int]:
             raise ValueError("Incomplete target must be null")
         if row["feature_cutoff_utc"] is None and any(row[c] is not None for c in FEATURE_COLUMNS):
             raise ValueError("Ungated historical features")
-    if len(features) != len(gameweeks):
+    if feature_file.metadata.num_rows != len(gameweeks):
         raise ValueError("Feature table coverage differs")
+    features = (r for batch in feature_file.iter_batches(batch_size=512) for r in batch.to_pylist())
     for row, feature in zip(gameweeks, features):
         if feature != {k: row[k] for k in feature}:
             raise ValueError("Feature table values/identities differ from Gameweek rows")
         if set(feature) != {"season", "player_key", "gameweek", "feature_cutoff_utc",
                             "feature_status", *FEATURE_COLUMNS}:
             raise ValueError("Feature table contains unapproved source/outcome fields")
+    # Recompute per player to keep validation memory bounded. This checks the real
+    # archive against the cutoff filter/window code, beyond schema/count assertions.
+    by_player = defaultdict(list)
+    for m in matches:
+        by_player[m["player_key"]].append(m)
+    prepared = {(r["player_key"], r["gameweek"]): r for r in gameweeks}
+    for player_matches in by_player.values():
+        for expected in gameweek_dataset(player_matches, deadlines):
+            actual = prepared[expected["player_key"], expected["gameweek"]]
+            if (actual["feature_cutoff_utc"] != expected["feature_cutoff_utc"]
+                    or feature_values(actual) != feature_values(expected)):
+                raise ValueError(f"Historical features fail cutoff reconstruction: {expected['player_key']}")
+    profiles = []
+    for season in seasons:
+        totals = defaultdict(list)
+        for m in matches:
+            if m["season"] == season:
+                totals[m["element"]].append(m["total_points"])
+        players = read_csv(raw_dir / season / "players_raw.csv")
+        mismatches = []
+        for p in players.rows:
+            element = int(p["id"])
+            if element not in totals:
+                continue
+            recorded = strict_sum(totals[element])
+            snapshot = int(p["total_points"])
+            if recorded is not None and recorded != snapshot:
+                mismatches.append({"element": element, "history_points": recorded,
+                                   "snapshot_points": snapshot})
+        profiles.append({"season": season, "season_total_mismatches": mismatches})
+    quality = pq.read_table(output_dir / "quality.parquet").to_pylist()
+    if quality != quality_metadata(gameweeks, profiles):
+        raise ValueError("Evaluation quality metadata does not reconcile to source totals")
     source_rows = 0
     paths = {"history": "gws/merged_gw.csv", "players": "players_raw.csv",
              "fixtures": "fixtures.csv", "teams": "teams.csv"}
@@ -61,7 +109,10 @@ def validate(raw_dir: Path, output_dir: Path) -> dict[str, int]:
                 raise ValueError(f"Source token/column loss: {season}/{name}")
             source_rows += len(original.rows)
     return {"match_records": len(matches), "player_gameweeks": len(gameweeks),
-            "feature_rows": len(features), "preserved_source_rows": source_rows,
+            "feature_rows": len(gameweeks), "preserved_source_rows": source_rows,
+            "verified_deadlines": sum(bool(r.get("deadline_utc")) for r in metadata["deadline_records"])
+            if metadata["verified_archive"] else 0,
+            "evaluation_excluded_rows": sum(not q["evaluation_eligible"] for q in quality),
             "double_gameweeks": sum(r["fixture_records"] > 1 for r in gameweeks)}
 
 

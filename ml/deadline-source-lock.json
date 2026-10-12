@@ -1,0 +1,75 @@
+{
+  "repository": "beeradb/FPL-Armband",
+  "revision": "4cbbe8b206686a6def6751966c640fbc673333a7",
+  "official_endpoint": "https://fantasy.premierleague.com/api/bootstrap-static/",
+  "captures": [
+    {
+      "season": "2023-24",
+      "path": "data/captures/2023-24/GW38-2024-05-19T1100Z",
+      "files": {
+        "manifest.json": {
+          "sha256": "c95ef53e5a58c7aeec54a370a9247085a438c9a8bdef5a52fb6767bf315dbeae",
+          "bytes": 678
+        },
+        "bootstrap-static.json.gz": {
+          "sha256": "77f341571c869ff2a2280027b2f345fb48981f6ddfea69b79c9e9afd1f743070",
+          "bytes": 185427
+        }
+      }
+    },
+    {
+      "season": "2024-25",
+      "path": "data/captures/2024-25/GW38-2025-05-25T1049Z",
+      "files": {
+        "manifest.json": {
+          "sha256": "8fa1c08abd40316a060b930e2dc4af38206c8e0310cf1a4e997242cd2a13d241",
+          "bytes": 689
+        },
+        "bootstrap-static.json.gz": {
+          "sha256": "a1ba652035e2f1583404e624449193ea98bb049af5280d320169f255d6e32716",
+          "bytes": 194939
+        }
+      }
+    },
+    {
+      "season": "2025-26",
+      "path": "data/captures/2025-26/GW38-2026-05-24T1322Z",
+      "files": {
+        "manifest.json": {
+          "sha256": "718475d60fa64ea3b5d12c2f33adfa01e1f9fe78975f57b48567c97f8ed51397",
+          "bytes": 691
+        },
+        "bootstrap-static.json.gz": {
+          "sha256": "201f6e40bfbf719f849d50589e585e99befcbcfcde66710450a27d51fa76e156",
+          "bytes": 216122
+        }
+      }
+    }
+  ],
+  "official_cross_checks": [
+    {
+      "season": "2023-24",
+      "gameweek": 1,
+      "deadline_utc": "2023-08-11T17:30:00Z",
+      "source_url": "https://www.premierleague.com/en/news/3621421"
+    },
+    {
+      "season": "2024-25",
+      "gameweek": 1,
+      "deadline_utc": "2024-08-16T17:30:00Z",
+      "source_url": "https://www.premierleague.com/en/news/4070702"
+    },
+    {
+      "season": "2024-25",
+      "gameweek": 15,
+      "deadline_utc": "2024-12-07T11:00:00Z",
+      "source_url": "https://www.premierleague.com/en/news/4188928"
+    },
+    {
+      "season": "2025-26",
+      "gameweek": 1,
+      "deadline_utc": "2025-08-15T17:30:00Z",
+      "source_url": "https://www.premierleague.com/en/news/4373995"
+    }
+  ]
+}

@@ -1,5 +1,10 @@
 # Historical FPL data audit — Phase 1
 
+This retains the Phase 1 findings. Phase 2a separately reconstructs deadlines and produces
+rolling features and evaluation quarantine metadata; see [TRAINING_READINESS.md](TRAINING_READINESS.md)
+for the current coverage and readiness verdict. The four original outcome files below still
+do not themselves contain deadline snapshots.
+
 Reviewed 12 October 2026. Source: [Vaastav Anand's FPL archive](https://github.com/vaastav/Fantasy-Premier-League),
 locked to commit [`9779cdbc0c07f6c900c2d0c181ddf6bb9c800f88`](https://github.com/vaastav/Fantasy-Premier-League/tree/9779cdbc0c07f6c900c2d0c181ddf6bb9c800f88).
 Only `gws/merged_gw.csv`, `players_raw.csv`, `teams.csv` and `fixtures.csv` were downloaded per season:

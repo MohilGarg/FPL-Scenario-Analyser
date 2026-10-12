@@ -1,6 +1,6 @@
-# Historical FPL research — Phase 1
+# Historical FPL research — Phase 1 and Phase 2a
 
-This area discovers, audits and prepares historical player outcomes. It has no imports from
+This area discovers, audits and prepares historical player outcomes and deadline-gated features. It has no imports from
 `src/fpl_forfeit`, no application entry points and no training, tuning or deployment code.
 The assistant, shared forecasting engine, API and frontend are untouched.
 
@@ -21,7 +21,8 @@ On Linux/macOS use `python3.13 -m venv ml/.venv` and `ml/.venv/bin/python`.
 the standard library. Application dependencies are not changed. `fetch` only needs Python's
 standard library and can run separately from the Parquet environment.
 
-`python -m ml.prepare fetch` downloads four revision-pinned files per season (19.1 MB total).
+`python -m ml.prepare fetch` downloads four revision-pinned outcome files per season (19.1 MB total)
+and six pinned deadline archive/provenance files (0.6 MB total).
 It caches bytes and SHA-256 checksums, resumes completed files, bounds each file to 16 MiB and
 total input to 64 MiB. It never clones the source repository or fetches per-player directories.
 `python -m ml.prepare prepare` verifies the cache and works entirely offline. To process a
@@ -33,9 +34,12 @@ subset use `--seasons 2023-24 2024-25`. Source updates require a deliberate edit
 ```text
 ml/
   source-lock.json             # reviewed source repository, immutable commit and file list
+  deadline-source-lock.json    # three archived official API captures, hashes and official checks
   requirements.txt            # isolated Parquet dependency
   sources.py                  # bounded retrieval, provenance and cache verification
   dataset.py                  # pure parsing, match mapping, GW aggregation and feature gate
+  deadlines.py                # verify archived API proof and reconstruct actual deadline calendar
+  readiness.py                # separate evaluation QA and rolling/statistical coverage report
   audit.py                    # column/missingness, identity and score reconciliation audit
   prepare.py                  # ingestion/preparation CLI
   validate.py                 # source fidelity and dataset checks
@@ -43,13 +47,17 @@ ml/
   training/README.md          # reserved; no models implemented
   evaluation/README.md        # reserved; no engine adapters or comparisons implemented
   reports/DATA_AUDIT.md        # reviewed audit, missing features and Phase 2 recommendations
-  reports/generated/          # ignored: full audit.md and audit.json
+  reports/TRAINING_READINESS.md # reviewed Phase 2a findings, provenance and limitations
+  reports/generated/          # ignored: audit.md/json and readiness.md/json
   data/raw/                   # ignored: original CSV bytes and manifest.json
   data/processed/             # ignored:
     source/<season>/*.parquet  # every original field name/token, including duplicates/blanks
     match_records.parquet     # unique player-fixture records, typed outcomes and match identity
     player_gameweeks.parquet  # observed player-GW targets, fixture lists and gated history
     features.parquet          # identifiers/gate metadata plus explicit historical feature list
+    deadlines.csv             # verified dates, API evidence, capture time, hashes and source URLs
+    quality.parquet           # retrospective evaluation quarantine; never a predictive feature
+    preparation_metadata.json # hashed calendar and source evidence for validation
     feature_columns.json      # exact allowed model inputs; identifiers are not inputs
     sample.csv                # 18 real rows, including doubles and zero-minute outcomes
     sample.json               # the same sample with the full prepared schema
@@ -81,23 +89,29 @@ Gameweeks and pre-registration weeks are not synthesized using an end-of-season 
 
 ## Predictive features and timing
 
-The source files lack reliable historical deadlines and timestamped pre-deadline snapshots.
-By default **all `pre_gw_*` feature values are null**, with `feature_status=no_deadline`.
-The useful Phase 1 output is the historical target/match archive, not a claim of a complete
-point-in-time training set. Prices, availability, ownership, source `xP`, final team strength and
-end-of-season aggregates are never added to the feature list.
+Phase 2a's default pipeline reconstructs 114 historical deadlines from three pinned copies
+of timestamped official FPL API records. Finished events provide actual past deadlines; the
+imminent final event is verified from `is_next` and capture-before-deadline evidence. Future
+provisional events would remain gaps. Source bytes, original Internet Archive URLs, capture
+times and selected official calendar cross-checks are preserved. No kickoff-offset inference
+is used. See the readiness report for the mirror-verification limitation.
 
-A separately verified deadline calendar can enable the restricted historical feature builder:
+When calling `gameweek_dataset` directly without deadlines, **all `pre_gw_*` values remain null**.
+Prices, availability, ownership, source `xP`, final team strength and final season aggregates
+are never added to the feature list. The final API archives are read only for deadline records.
+
+The deadline CSV schema includes these core fields plus verification/provenance columns:
 
 ```csv
 season,gameweek,deadline_utc,source_url
 2024-25,1,2024-08-16T17:30:00Z,https://example.test/verified-calendar
 ```
 
-This illustrates the schema only; supply a verified calendar covering the intended evaluation
-period, with actual source URLs. Run `python -m ml.prepare prepare --deadlines path/to/deadlines.csv`.
-Missing deadlines keep affected rows null. Offset-aware deadlines must increase by numeric GW
-and precede any known target kickoff. The supplied calendar is hashed in the audit.
+This example illustrates the core fields only. The default calendar is generated automatically.
+`--deadlines path/to/deadlines.csv` remains an explicit caller-supplied override; it is reported
+as unverified and does not establish baseline readiness. Unverified provisional archive rows
+must have empty usable deadlines. Missing deadlines keep affected features null. Offset-aware
+dates must increase by numeric GW and precede any known target kickoff. The calendar is hashed.
 
 For a supplied cutoff, historical features use **only earlier GWs in the same season** with a
 finished fixture and a recorded kickoff **more than 24 hours before** the cutoff. Same-GW DGW
@@ -105,12 +119,27 @@ legs, later GWs and unknown kickoff times cannot enter. The 24-hour delay is a c
 readiness proxy, not a recorded result-publication timestamp. Retrospective source corrections
 remain unverified. `feature_status=deadline_supplied_results_lag_24h` states that limitation.
 
-The feature list contains prior fixture/GW counts, cumulative known outcome statistics and the
-mean points across the latest three *observed eligible* GWs, rather than three calendar GWs.
-It includes zero-minute observations and never averages only players who appeared. Missing
-history or any missing contributing statistic yields null for its aggregate. Eligible legs of
-a prior GW can form partial history if another leg is still too recent. The two history-count
-fields describe coverage. No season carryover or blanket zero imputation is performed.
+The feature list now includes **3/5/10-match and 3/5/10-observed-GW** sums/means for xG, xA,
+minutes, starts, goals, assists and points; appearance/start rates; and season-to-date sums and
+rates calculated from eligible matches. Match windows follow actual kickoff order, including
+rearranged fixtures. GW windows group only eligible fixtures, then follow numeric GW order.
+They are observed GWs, not padded calendar GWs. GW appearance/start rates measure the fraction
+of observed GWs with any appearance/start; mean starts/minutes/points are GW totals.
+Appearance means recorded minutes > 0; a start means recorded starts > 0.
+
+All windows include zero-minute records. A partial window uses its actual count as denominator,
+with `_count`, `_fixture_count` and `_short_history` indicators. Each rolling statistic exposes
+`_missing_count`; any missing contributing value makes its sum/mean null. No history gives null
+statistics plus `pre_gw_no_history=True` and zero coverage counts. A prior DGW's eligible leg can
+form partial history while its later leg is excluded; no future schedule is consulted to decide
+window completeness. `_short_history=False` means N observed eligible units, not proof of a full
+historic roster or all originally scheduled matches. No season carryover or zero imputation occurs.
+
+`quality.parquet` holds end-of-season discrepancy metadata outside the feature table. All 38
+Evan Ferguson 2024/25 GWs are excluded from evaluation because the erroneous fixture cannot
+be localized. Recorded points are retained; the source's 27-vs-28 discrepancy is not repaired.
+Future training/evaluation must join and apply this quality mask. The readiness report excludes
+affected rows from its baseline-candidate count, without changing any historical feature.
 
 Future training code must use `feature_columns.json` / `FEATURE_COLUMNS` rather than selecting
 every numeric column in `player_gameweeks.parquet`. See the audit for Phase 2 prerequisites.

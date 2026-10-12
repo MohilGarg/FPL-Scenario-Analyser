@@ -27,11 +27,23 @@ FLOAT_STATS = (
     "expected_goal_involvements", "influence", "creativity", "threat", "ict_index",
 )
 STATS = INT_STATS + FLOAT_STATS
+ROLLING_STATS = ("expected_goals", "expected_assists", "minutes", "starts", "goals_scored",
+                 "assists", "total_points")
+WINDOWS = (3, 5, 10)
+ROLLING_PREFIXES = tuple(f"pre_gw_last{n}_{unit}" for unit in ("matches", "gws") for n in WINDOWS)
+ROLLING_COLUMNS = tuple(c for prefix in ROLLING_PREFIXES for c in (
+    *(f"{prefix}_{stat}_{metric}" for stat in ROLLING_STATS for metric in ("sum", "mean", "missing_count")),
+    f"{prefix}_count", f"{prefix}_fixture_count", f"{prefix}_short_history",
+    f"{prefix}_appearance_rate", f"{prefix}_start_rate",
+))
 # Explicit whitelist: neither source columns nor current-GW outcomes are features.
 FEATURE_COLUMNS = (
     "pre_gw_history_fixtures", "pre_gw_history_gameweeks",
     "pre_gw_points_mean_last3_observed_gws",
 ) + tuple(f"pre_gw_{stat}_sum" for stat in STATS)
+FEATURE_COLUMNS += (
+    "pre_gw_no_history", "pre_gw_appearance_rate", "pre_gw_start_rate",
+) + tuple(f"pre_gw_{s}_missing_count" for s in STATS) + ROLLING_COLUMNS
 # A conservative readiness proxy, NOT a recorded publication/finalisation time.
 RESULT_LAG = timedelta(hours=24)
 
@@ -197,6 +209,10 @@ def load_deadlines(path: Path | None) -> dict[tuple[str, int], datetime]:
     deadlines: dict[tuple[str, int], datetime] = {}
     for row in data.rows:
         key = (row["season"], required_int(row["gameweek"], "deadline gameweek"))
+        if "verification_status" in row and row["verification_status"] != "verified_archived_official_api":
+            if not missing(row["deadline_utc"]):
+                raise ValueError("Unverified deadline must not contain a usable cutoff")
+            continue
         deadline = timestamp(row["deadline_utc"])
         if key in deadlines or deadline is None or not 1 <= key[1] <= 38:
             raise ValueError(f"Invalid/duplicate deadline: {key}")
@@ -208,6 +224,53 @@ def load_deadlines(path: Path | None) -> dict[tuple[str, int], datetime]:
         if any(b[1] <= a[1] for a, b in zip(ordered, ordered[1:])):
             raise ValueError(f"Deadlines must increase with numeric GW: {season}")
     return deadlines
+
+
+def appearance_rate(records: list[Row], stat: str) -> float | None:
+    if not records or any(r[stat] is None for r in records):
+        return None
+    return sum(r[stat] > 0 for r in records) / len(records)
+
+
+def historical_features(prior: list[Row]) -> Row:
+    """Rolling windows use only eligible records, never future schedule completeness.
+
+    Match windows are chronological by actual kickoff, not original fixture ID. GW
+    windows group eligible fixtures from the latest observed prior GWs; an unfinished
+    second leg cannot enter either window. Missing/short coverage stays explicit.
+    """
+    prior = sorted(prior, key=lambda r: (r["kickoff_utc"], r["fixture_id"]))
+    grouped: dict[int, list[Row]] = defaultdict(list)
+    for record in prior:
+        grouped[record["gameweek"]].append(record)
+    gws = [{"gameweek": g, "fixture_count": len(group),
+            **{s: strict_sum([r[s] for r in group]) for s in ROLLING_STATS}}
+           for g, group in sorted(grouped.items())]
+    values: Row = {
+        "pre_gw_history_fixtures": len(prior), "pre_gw_history_gameweeks": len(gws),
+        "pre_gw_no_history": not prior,
+        "pre_gw_appearance_rate": appearance_rate(prior, "minutes"),
+        "pre_gw_start_rate": appearance_rate(prior, "starts"),
+    }
+    for stat in STATS:
+        values[f"pre_gw_{stat}_sum"] = strict_sum([r[stat] for r in prior])
+        values[f"pre_gw_{stat}_missing_count"] = sum(r[stat] is None for r in prior)
+    for unit, history in (("matches", prior), ("gws", gws)):
+        for n in WINDOWS:
+            window = history[-n:]
+            prefix = f"pre_gw_last{n}_{unit}"
+            values[f"{prefix}_count"] = len(window)
+            values[f"{prefix}_fixture_count"] = sum(r.get("fixture_count", 1) for r in window)
+            values[f"{prefix}_short_history"] = len(window) < n
+            values[f"{prefix}_appearance_rate"] = appearance_rate(window, "minutes")
+            values[f"{prefix}_start_rate"] = appearance_rate(window, "starts")
+            for stat in ROLLING_STATS:
+                total = strict_sum([r[stat] for r in window])
+                values[f"{prefix}_{stat}_sum"] = total
+                values[f"{prefix}_{stat}_mean"] = total / len(window) if total is not None else None
+                values[f"{prefix}_{stat}_missing_count"] = sum(r[stat] is None for r in window)
+    values["pre_gw_points_mean_last3_observed_gws"] = values["pre_gw_last3_gws_total_points_mean"]
+    return values
 
 
 def gameweek_dataset(
@@ -259,19 +322,7 @@ def gameweek_dataset(
             prior = [m for m in players[player_key]
                      if m["gameweek"] < gw and m["finished"] and m["kickoff_utc"] is not None
                      and m["kickoff_utc"] + RESULT_LAG < cutoff]
-            prior_gws: dict[int, list[Row]] = defaultdict(list)
-            for match in prior:
-                prior_gws[match["gameweek"]].append(match)
-            row["pre_gw_history_fixtures"] = len(prior)
-            row["pre_gw_history_gameweeks"] = len(prior_gws)
-            for stat in STATS:
-                row[f"pre_gw_{stat}_sum"] = strict_sum([m[stat] for m in prior])
-            recent = [strict_sum([m["total_points"] for m in prior_gws[g]])
-                      for g in sorted(prior_gws)[-3:]]
-            recent_sum = strict_sum(recent)
-            row["pre_gw_points_mean_last3_observed_gws"] = (
-                recent_sum / len(recent) if recent_sum is not None else None
-            )
+            row.update(historical_features(prior))
         result.append(row)
     result.sort(key=lambda r: (r["season"], r["element"], r["gameweek"]))
     return result
