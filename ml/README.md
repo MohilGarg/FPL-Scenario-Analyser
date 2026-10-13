@@ -7,6 +7,11 @@ fitted model for that runtime. See [LIVE_INFERENCE.md](reports/LIVE_INFERENCE.md
 Assistant integration, deployment, recording commands and limitations. No new experiment was
 run for the integration.
 
+Durable recording for the remainder of 2026/27 uses `ml/recording/` and the GitHub Actions
+workflow, with immutable GitHub Release assets outside Git history. See
+[PROSPECTIVE_RECORDING.md](reports/PROSPECTIVE_RECORDING.md) for scheduling, provenance, recovery
+and `python -m ml.recording evaluate`. This runner never trains or changes the model.
+
 ## Run from the repository root
 
 Use an isolated **Python 3.12 or 3.13** environment for the pinned Parquet wheel:

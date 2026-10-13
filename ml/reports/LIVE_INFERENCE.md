@@ -1,5 +1,9 @@
 # Live Ridge inference and prospective recording
 
+For the durable GitHub Actions/immutable-release runner added after this integration, see
+[PROSPECTIVE_RECORDING.md](PROSPECTIVE_RECORDING.md). The Render process recorder below remains
+best effort; the GitHub archive operates independently and preserves the same prediction code.
+
 Implemented from `6267d67` on 13 October 2026. The Private Assistant now loads the existing
 Phase 2b Ridge and compares its eligible next-GW predictions with the statistical forecast.
 Statistical predictions remain the default. No model was fitted, tuned or selected during this

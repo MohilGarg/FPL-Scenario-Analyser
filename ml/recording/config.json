@@ -1,0 +1,18 @@
+{
+  "policy_version": "prospective-2026-27-v1",
+  "repository": "MohilGarg/FPL-Scenario-Analyser",
+  "season": "2026-27",
+  "first_gameweek": 7,
+  "stop_after_utc": "2027-07-15T00:00:00+00:00",
+  "stages": [
+    {"name": "advance", "opens_hours": 120, "closes_hours": 24},
+    {"name": "update", "opens_hours": 24, "closes_hours": 6},
+    {"name": "final", "opens_hours": 6, "closes_hours": 1.5}
+  ],
+  "evaluation_priority": ["final", "update", "advance"],
+  "minimum_publish_lead_seconds": 1200,
+  "max_bundle_bytes": 16777216,
+  "max_record_bytes": 134217728,
+  "max_archive_bytes": 536870912,
+  "heartbeat_branch": "ml-recording-status"
+}

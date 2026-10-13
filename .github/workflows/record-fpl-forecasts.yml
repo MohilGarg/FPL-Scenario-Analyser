@@ -1,0 +1,61 @@
+name: Record prospective FPL forecasts
+
+on:
+  schedule:
+    # UTC, off the busy top of the hour; code checks the current official deadlines.
+    - cron: "17 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/record-fpl-forecasts.yml"
+      - "ml/recording/**"
+      - "tests/test_prospective_recording.py"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "record publishes only currently eligible captures; check is read-only"
+        type: choice
+        options: [record, check]
+        default: record
+
+# No personal access token or Assistant password. This job publishes release assets only
+# and makes one tiny monthly keepalive commit on a separate operational branch.
+permissions:
+  contents: write
+
+concurrency:
+  group: prospective-fpl-2026-27
+  cancel-in-progress: false
+
+jobs:
+  record:
+    if: github.repository == 'MohilGarg/FPL-Scenario-Analyser' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: src
+      FPL_HTTP_TRANSPORT: curl
+      FPL_ACKNOWLEDGED_MISSING_GWS: ${{ vars.FPL_ACKNOWLEDGED_MISSING_GWS || '' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Test deadline gating, storage, evaluation and existing inference
+        run: python -m unittest tests.test_prospective_recording tests.test_live_ridge -v
+      - name: Record or check eligible captures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECORD_MODE: ${{ inputs.mode || 'record' }}
+        run: python -m ml.recording "$RECORD_MODE"
+      - name: Compare official-final Gameweeks
+        if: success() && inputs.mode != 'check'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m ml.recording evaluate --new-actuals-only
+      - name: Recovery notice
+        if: failure()
+        run: |
+          echo "::error::Recording failed. Inspect the run summary and reserved drafts; rerun before the capture window closes. See ml/reports/PROSPECTIVE_RECORDING.md. Never recreate forecasts after a deadline."
