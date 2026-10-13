@@ -167,17 +167,41 @@ python -m ml.recording extract --bundle /path/to/capture.zip --root ml/artifacts
 python -m fpl_forfeit.assistant.prospective --replay ml/artifacts/replay-gw07/forecast.json.gz
 ```
 
-Use the code commit recorded in its manifest/release tag. The existing replay checks both
-forecast methods without fetching data or fitting models. These commands never overwrite a
-different existing extraction.
+Use the generation code commit recorded in its manifest/release tag. The replay helper now
+sorts serialized GW identifiers numerically (canonical JSON puts `10` before `7`); this fixes
+schema-v2 replay and does not alter forecast generation. The first capture requires this small
+replay fix when using its original generation commit. Replay checks both forecast methods
+without fetching data or fitting models. These commands never overwrite a different extraction.
 
 ## Validation status
 
-Focused standard-library tests pass for delayed windows, season resets, immutable storage,
+All **39 focused standard-library tests** pass for delayed windows, season resets, immutable storage,
 source/asset hashes, provider timestamps, retries, original-draft recovery, final-only actuals,
 unknown/zero/negative points, paired selection, changed deadlines and permanent gap reporting.
 Existing live feature/model/fallback tests also pass. A current official-data planner check on
-13 October 2026 identified **GW7 advance** with no gaps. The first automatic GitHub upload and
-fresh-download replay are verified separately after pushing; see the completion summary for
-the actual run/release links. GW7 is not final yet, so real prospective error metrics and the
-first official-final actuals transition cannot yet be verified; those paths have focused tests.
+13 October 2026 identified **GW7 advance** with no gaps.
+
+**Actual unattended runner/storage verification succeeded:** the automatic
+[initial push run](https://github.com/MohilGarg/FPL-Scenario-Analyser/actions/runs/38415889769)
+retrieved all 667 histories and generated the existing forecasts, completing at
+**2026-10-13 14:44:39 UTC**. The first publication failed because GitHub's by-tag API omitted
+the draft. A tested draft-listing fix allowed the
+[next automatic push run](https://github.com/MohilGarg/FPL-Scenario-Analyser/actions/runs/38416397509)
+to recover the **same uploaded bytes**, publish them at **14:47:39 UTC**, and create the
+monthly operational branch. No new model inference replaced the original.
+
+The [GW7 advance release](https://github.com/MohilGarg/FPL-Scenario-Analyser/releases/tag/fpl-2026-27-gw07-advance-v1)
+reports `immutable=true`. Its 825,929-byte bundle has SHA-256
+`f253b5f4c5560dd5821b2f9ec901e69a7c134b1dc574147373d0e0b88ecbd270`.
+A fresh local download independently passed asset/source hashes, matched the approved model
+parameters exactly, and replayed **all 667 players across both methods without network or
+fitting**. GW7 has **470 direct Ridge predictions and 197 statistical fallbacks**. The stored
+deadline is **17 October 2026, 10:00 UTC**; no past GW was backfilled. Portable-model byte hashes
+can differ across platform newline formatting; canonical parameter data matched exactly.
+
+The workflow is active and its automatic push/recovery path is verified. **The first hourly
+cron firing and subsequent deadline transitions have not yet been observed** at this check.
+GW7 is not final, so real prospective error metrics and the first official-final actuals
+transition also remain unverified in production; those paths have focused tests. No extra
+repository secret or immediate manual setup remains. Failure-notification preferences,
+periodic archive backups and eventual season-end workflow disabling remain operator tasks.

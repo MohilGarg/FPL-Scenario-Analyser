@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import base64
 import gzip
+import io
 import json
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from copy import deepcopy
 from datetime import timedelta
 from pathlib import Path
@@ -223,6 +225,36 @@ class RecordingTests(unittest.TestCase):
             patch.object(store, "releases", return_value=[]),
         ):
             self.assertIsNone(store.release(draft["tag_name"]))
+
+    def test_original_replay_handles_canonical_json_order_across_gw10(self):
+        from fpl_forfeit.assistant.prospective import main as replay_main
+
+        full = forecast_horizon(catalogue(), (7, 8, 9, 10, 11, 12), samples=4)
+        predictions = {
+            pid: predict_player(
+                self.model,
+                full,
+                self.snapshot,
+                pid,
+                self.history if pid == 1 else None,
+                NOW,
+                None if pid == 1 else "official_history_fetch_failed",
+            )
+            for pid in full.catalogue.players
+        }
+        saved = ForecastArchive(self.root / "six-gw").record(
+            full, self.snapshot, {1: self.history}, predictions, NOW, self.model, feature_asof=NOW
+        )
+        encoded = json.loads(gzip.decompress(saved.read_bytes()))
+        self.assertEqual(list(encoded["deadlines"]), ["10", "11", "12", "7", "8", "9"])
+        output = io.StringIO()
+        with (
+            patch("fpl_forfeit.api.parse_forecast_catalogue", return_value=full.catalogue),
+            patch("sys.argv", ["prospective", "--replay", str(saved)]),
+            redirect_stdout(output),
+        ):
+            replay_main()
+        self.assertIn("Reproduced 15 players, both forecast methods", output.getvalue())
 
     def test_exact_candidate_recovery_rejects_reconstruction(self):
         store = GitHubStore("example/repo", now=lambda: NOW)

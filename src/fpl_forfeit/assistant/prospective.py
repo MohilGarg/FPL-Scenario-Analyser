@@ -202,7 +202,7 @@ def main() -> None:
         catalogue = parse_forecast_catalogue(snapshot["bootstrap"], snapshot["fixtures"])
         forecast = forecast_horizon(
             catalogue,
-            tuple(int(g) for g in data["deadlines"]),
+            tuple(sorted(int(g) for g in data["deadlines"])),
             samples=data["statistical_samples"],
             seed=data["statistical_seed"],
         )
