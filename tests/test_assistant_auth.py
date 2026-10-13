@@ -47,6 +47,7 @@ class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
     async def test_all_private_routes_guarded_before_validation_and_unknown_future_routes(self):
         for method, path in [
             ("GET", "predictions"),
+            ("GET", "ml/status"),
             ("GET", "squad"),
             ("GET", "lineup"),
             ("GET", "players/1"),

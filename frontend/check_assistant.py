@@ -41,6 +41,38 @@ class BrowserFixtureClient(FixtureClient):
         return replace(source, players=roster)
 
 
+class RidgeBrowserFixture:
+    """Presentation fixture only: never installed in a production service."""
+
+    def __init__(self):
+        self.stopped = threading.Event()
+
+    def invalidate(self):
+        pass
+
+    def request(self, forecast, snapshot):
+        self.forecast = forecast
+        return {
+            "state": "ready",
+            "completed": 18,
+            "total": 18,
+            "supported_next_gw_players": 18,
+            "model_version": "browser-fixture-ridge",
+            "source_timestamp": NOW.isoformat(),
+        }
+
+    def player(self, pid, gw, statistical, *, generation=None):
+        supported = gw == 7 and statistical["expected_points"] is not None
+        points = statistical["expected_points"] + 1 if supported else None
+        return {
+            "source": "ridge" if supported else "statistical_fallback",
+            "expected_points": points,
+            "comparison_points": points if supported else statistical["expected_points"],
+            "difference": 1.0 if supported else None,
+            "fallback_reasons": [] if supported else ["multi_step_history_not_observed"],
+        }
+
+
 def check(page, origin, password, client, output):
     failures = []
     page.on("pageerror", lambda error: failures.append(str(error)))
@@ -65,6 +97,21 @@ def check(page, origin, password, client, output):
             "count=>document.querySelectorAll('[data-assistant-sort^=\"gw-\"]').length===count",
             arg=horizon,
         )
+    assert page.locator("#assistant-prediction-model").input_value() == "statistical"
+    page.locator("#assistant-prediction-model").select_option("ml")
+    assert "1/6 ML" in page.locator("#assistant-prediction-content tbody tr").first.inner_text()
+    assert "Stat" in page.locator("#assistant-prediction-content tbody tr").first.inner_text()
+    assert "80% range" not in page.locator("#assistant-prediction-content thead").inner_text()
+    page.locator("#assistant-prediction-model").select_option("difference")
+    assert "80% range" not in page.locator("#assistant-prediction-content thead").inner_text()
+    assert (
+        page.locator("#assistant-prediction-content tbody tr")
+        .first.locator("td")
+        .nth(4)
+        .inner_text()
+        == "1"
+    )
+    page.locator("#assistant-prediction-model").select_option("statistical")
     page.locator("#assistant-search").fill("Candidate")
     assert page.locator("#assistant-prediction-content tbody tr").count() == 3
     page.locator("#assistant-position").select_option("DEF")
@@ -85,6 +132,12 @@ def check(page, origin, password, client, output):
     assert page.locator(".assistant-pitch").count() == 2
     assert page.locator(".assistant-bench .assistant-player").count() == 8
     assert "last" in page.locator("#assistant-squad-content").inner_text().lower()
+    page.get_by_text("Ridge starting XI comparison", exact=True).click()
+    assert (
+        "Unmultiplied starting XI marginals"
+        in page.locator("#assistant-squad-content").inner_text()
+    )
+    page.get_by_text("Ridge starting XI comparison", exact=True).click()
     # A DEF -> reserve DEF swap is legal; an outfield player replacing a GK is rejected.
     with page.expect_response(
         lambda r: r.url.endswith("/api/assistant/lineup") and r.request.method == "POST"
@@ -188,6 +241,7 @@ def main():
     auth = SessionStore(AuthSettings(origin, password_hash(password), development_http=True))
     client = BrowserFixtureClient()
     service = AssistantService(client, samples=24, now=lambda: NOW)
+    service.ml = RidgeBrowserFixture()
     application = create_app(_FakeService(), assistant=service, auth=auth)
     server = uvicorn.Server(uvicorn.Config(application, log_level="error", access_log=False))
     thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)

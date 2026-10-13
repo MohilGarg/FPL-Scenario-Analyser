@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -12,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from ..api import FPLAPIError, FPLGameweekUnavailable, FPLNotFoundError
+from ..api import FPLAPIError, FPLClient, FPLGameweekUnavailable, FPLNotFoundError
 from .auth import SessionStore
 from .service import AssistantService
 
@@ -59,6 +60,36 @@ class TransferSearchRequest(BaseModel):
 def register_assistant(application: FastAPI, service: AssistantService, auth: SessionStore) -> None:
     application.state.assistant_service = service
     application.state.assistant_auth = auth
+
+    def startup_recording() -> None:
+        import os
+
+        if (
+            auth.settings.enabled
+            and isinstance(service.client, FPLClient)
+            and os.getenv("FPL_ML_AUTORECORD", "1") == "1"
+        ):
+            from .prospective import start_recording
+
+            start_recording(service)
+
+    def stop_recording() -> None:
+        service.ml.stopped.set()
+        if stop := getattr(service, "ml_recording_stop", None):
+            stop.set()
+
+    previous_lifespan = application.router.lifespan_context
+
+    @asynccontextmanager
+    async def recording_lifespan(app):
+        async with previous_lifespan(app) as state:
+            startup_recording()
+            try:
+                yield state
+            finally:
+                stop_recording()
+
+    application.router.lifespan_context = recording_lifespan
     public_auth = {("GET", "/api/assistant/session"), ("POST", "/api/assistant/login")}
 
     @application.middleware("http")
@@ -193,6 +224,10 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
     @router.get("/predictions")
     def predictions(horizon: int = Query(default=3, ge=1, le=6)):
         return result(lambda: service.predictions(horizon))
+
+    @router.get("/ml/status")
+    def ml_status():
+        return result(service.ml_status)
 
     @router.get("/players/{player_id}")
     def player(player_id: int):

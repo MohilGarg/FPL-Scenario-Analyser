@@ -1,8 +1,11 @@
 # Historical FPL research — Phases 1, 2a, 2b, 2c and 3a
 
 This area discovers, audits and prepares historical outcomes/features and runs small offline
-baseline experiments. It has no imports from `src/fpl_forfeit` or application entry points.
-The assistant, shared forecasting engine, API and frontend are untouched.
+baseline experiments. Those experiments remain isolated from the application. The live Ridge
+integration now lives in `src/fpl_forfeit/assistant/`; `export_ridge.py` packages the existing
+fitted model for that runtime. See [LIVE_INFERENCE.md](reports/LIVE_INFERENCE.md) for the private
+Assistant integration, deployment, recording commands and limitations. No new experiment was
+run for the integration.
 
 ## Run from the repository root
 

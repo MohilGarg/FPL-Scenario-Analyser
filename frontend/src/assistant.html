@@ -40,6 +40,7 @@
       <section id="assistant-predictions" class="assistant-panel hidden" role="tabpanel" aria-labelledby="assistant-tab-predictions">
         <div class="view-heading"><div><h2>Player predictions</h2><p>Published fixtures, shared football outcomes and explicit uncertainty.</p></div></div>
         <div class="assistant-filters">
+          <label>Point estimates<select id="assistant-prediction-model"><option value="statistical" selected>Statistical forecast</option><option value="ml">Machine learning / fallbacks</option><option value="difference">ML minus statistical</option></select></label>
           <label>Horizon<select id="assistant-horizon"><option value="1">Next Gameweek</option><option value="3" selected>Next 3 Gameweeks</option><option value="5">Next 5 Gameweeks</option><option value="6">Next 6 Gameweeks</option></select></label>
           <label>Find player<input id="assistant-search" type="search" placeholder="Player or club"></label>
           <label>Position<select id="assistant-position"><option value="">All positions</option><option>GK</option><option>DEF</option><option>MID</option><option>FWD</option></select></label>
@@ -48,6 +49,7 @@
           <label>Max price (£m)<input id="assistant-max-price" type="number" min="0" max="20" step="0.1" placeholder="Any"></label>
         </div>
         <div id="assistant-prediction-content"></div>
+        <p id="assistant-ml-status" class="fine-print" role="status"></p>
       </section>
       <section id="assistant-transfers" class="assistant-panel hidden" role="tabpanel" aria-labelledby="assistant-tab-transfers">
         <div class="view-heading"><div><h2>Compare transfer plans</h2><p>Test up to five transfers against keeping your squad, with a legal XI and captain re-optimised each Gameweek.</p></div></div>

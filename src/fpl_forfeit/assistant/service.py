@@ -12,6 +12,7 @@ from ..api import FPLClient, FPLGameweekUnavailable
 from ..cache import TTLCache
 from ..forecasting.horizon import HorizonForecast, forecast_horizon
 from ..models import Position, PublicSquadSnapshot
+from .ml_inference import LiveML
 from .optimisation import COUNTS, LIMITS, LineupOptimiser, validate_squad
 
 ASSUMPTIONS = [
@@ -40,6 +41,9 @@ class AssistantService:
         self.squads: TTLCache[str, PublicSquadSnapshot] = TTLCache(3600, max_items=16)
         self.plans: TTLCache[str, dict[tuple, dict]] = TTLCache(1200, max_items=16)
         self.last_forecast_seconds = 0.0
+        self.official_snapshot: dict | None = None
+        self.snapshot_forecast: HorizonForecast | None = None
+        self.ml = LiveML(self.client, now=self.now)
 
     def forecast(self) -> HorizonForecast:
         with self.lock:
@@ -52,6 +56,7 @@ class AssistantService:
                     return cached
             started = perf_counter()
             catalogue = self.client.forecast_catalogue()
+            self.official_snapshot = getattr(self.client, "latest_forecast_snapshot", None)
             future = sorted(
                 g.id for g in catalogue.gameweeks if g.deadline and g.deadline > self.now()
             )
@@ -59,10 +64,10 @@ class AssistantService:
                 raise FPLGameweekUnavailable(
                     "No future Gameweek deadline is published for this season."
                 )
-            gameweeks = tuple(
-                range(future[0], min(future[0] + 6, max(g.id for g in catalogue.gameweeks) + 1))
-            )
+            # Never invent a planning deadline for an intervening unpublished event.
+            gameweeks = tuple(future[:6])
             forecast = forecast_horizon(catalogue, gameweeks, samples=self.samples)
+            self.snapshot_forecast = forecast
             self.forecasts.set(0, forecast)
             self.plans.clear()
             self.last_forecast_seconds = perf_counter() - started
@@ -72,7 +77,22 @@ class AssistantService:
         with self.lock:
             self.forecasts.clear()
             self.plans.clear()
+            self.ml.invalidate()
         return {"refreshed": True}
+
+    def ml_status(self, forecast: HorizonForecast | None = None) -> dict:
+        with self.lock:
+            forecast = forecast or self.forecast()
+            snapshot = self.official_snapshot if forecast is self.snapshot_forecast else None
+            return self.ml.request(forecast, snapshot)
+
+    def ml_prediction(self, forecast: HorizonForecast, pid: int, gw: int) -> dict:
+        return self.ml.player(
+            pid,
+            gw,
+            forecast.players[pid][gw],
+            generation=(forecast.catalogue.fetched_at.isoformat(), forecast.gameweeks),
+        )
 
     def clear_session(self, subject: str) -> None:
         self.squads.delete(subject)
@@ -113,10 +133,17 @@ class AssistantService:
         if horizon not in {1, 3, 5, 6}:
             raise ValueError("Choose a 1, 3, 5 or 6 Gameweek horizon.")
         forecast = self.forecast()
+        ml_status = self.ml_status(forecast)
         gameweeks = forecast.gameweeks[:horizon]
         rows = []
         for pid in forecast.catalogue.players:
-            projected = [forecast.players[pid][gw] for gw in gameweeks]
+            projected = [
+                {
+                    **forecast.players[pid][gw],
+                    "ml": self.ml_prediction(forecast, pid, gw),
+                }
+                for gw in gameweeks
+            ]
             total = (
                 sum(p["expected_points"] for p in projected)
                 if all(p["expected_points"] is not None for p in projected)
@@ -127,6 +154,13 @@ class AssistantService:
                     **self.identity(forecast, pid),
                     "gameweeks": projected,
                     "total_expected_points": total,
+                    "ml_total_expected_points": sum(p["ml"]["comparison_points"] for p in projected)
+                    if all(p["ml"]["comparison_points"] is not None for p in projected)
+                    else None,
+                    "ml_supported_gameweeks": sum(p["ml"]["source"] == "ridge" for p in projected),
+                    "ml_difference_total": sum(p["ml"]["difference"] or 0 for p in projected)
+                    if any(p["ml"]["source"] == "ridge" for p in projected) and total is not None
+                    else None,
                 }
             )
         rows.sort(
@@ -143,6 +177,8 @@ class AssistantService:
             "requested_horizon": horizon,
             "gameweeks": list(gameweeks),
             "players": rows,
+            "ml_status": ml_status,
+            "ml_note": "Ridge estimates only the next Gameweek from eligible current-season history. Later GWs, blanks, doubles, transfers and availability changes use labelled statistical fallback. ML has no simulated ranges or lineup optimiser adapter.",
             "horizon_note": f"Only {len(gameweeks)} Gameweeks remain in the published season."
             if len(gameweeks) < horizon
             else "",
@@ -156,6 +192,9 @@ class AssistantService:
             **self.metadata(forecast),
             **self.identity(forecast, pid),
             "gameweeks": list(forecast.players[pid].values()),
+            "ml_predictions": {
+                gw: self.ml_prediction(forecast, pid, gw) for gw in forecast.gameweeks
+            },
             "fixtures": [asdict(p) for p in forecast.fixtures if p.player_id == pid],
         }
 
@@ -284,8 +323,24 @@ class AssistantService:
             "player_projections": {pid: forecast.players[pid][gw] for pid in ids},
             "recommended": optimal,
             "current": current,
+            "ml_starting_xi_comparison": self.ml_lineup_comparison(
+                forecast, current["starting_ids"], gw
+            ),
             "expected_gain": optimal["expected_points"] - current["expected_points"],
             "comparison_note": "Same shared outcomes and FPL scoring for both lineups; scores are gross of any already-incurred account hits, which public data cannot verify for the next deadline.",
+        }
+
+    def ml_lineup_comparison(self, forecast: HorizonForecast, ids: list[int], gw: int) -> dict:
+        self.ml_status(forecast)
+        rows = [self.ml_prediction(forecast, pid, gw) for pid in ids]
+        supported = all(r["source"] == "ridge" for r in rows)
+        stat = [forecast.players[pid][gw]["expected_points"] for pid in ids]
+        return {
+            "label": "Fixed starting XI, unmultiplied marginal subtotal",
+            "statistical": sum(stat) if all(v is not None for v in stat) else None,
+            "ridge": sum(r["expected_points"] for r in rows) if supported else None,
+            "supported_players": sum(r["source"] == "ridge" for r in rows),
+            "note": "Excludes captain/vice multipliers, bench and autosubs. This is not a simulated lineup total; recommendations and ranges remain statistical.",
         }
 
     def transfers(

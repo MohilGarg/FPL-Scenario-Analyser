@@ -35,6 +35,99 @@ BASE_URL = "https://fantasy.premierleague.com/api"
 USER_AGENT = "FPL-Forfeit-Analyser/0.3 (+public analysis service)"
 
 
+def parse_ml_history(
+    payload: dict, fixtures: list[dict], player_id: int, target_gameweek: int, cutoff: datetime
+) -> list[dict]:
+    """Official per-fixture history to the frozen training contract; no snapshot totals."""
+    from .assistant.ml_features import INT_STATS, RESULT_LAG, STATS
+
+    if cutoff.tzinfo is None or not isinstance(payload.get("history"), list):
+        raise ValueError("History/cutoff unavailable")
+    index = {int(f["id"]): f for f in fixtures}
+    records, seen = [], {}
+    for raw in payload["history"]:
+        gw = int(raw["round"])
+        if gw >= target_gameweek:
+            continue
+        fid = int(raw["fixture"])
+        f = index.get(fid)
+        if f is None:
+            raise ValueError("Historical fixture missing from official schedule")
+        if not f.get("finished") or not raw.get("kickoff_time"):
+            continue
+        kickoff = datetime.fromisoformat(raw["kickoff_time"])
+        if kickoff.tzinfo is None or not f.get("kickoff_time"):
+            raise ValueError("Unknown historical kickoff")
+        official_kickoff = datetime.fromisoformat(f["kickoff_time"])
+        if kickoff != official_kickoff or int(f["event"]) != gw:
+            raise ValueError("Contradictory historical fixture time/round")
+        if kickoff + RESULT_LAG >= cutoff:
+            continue
+        if fid in seen:
+            if seen[fid] != raw:
+                raise ValueError("Conflicting history duplicates")
+            continue
+        seen[fid] = raw
+        if int(raw.get("element", player_id)) != player_id or not isinstance(
+            raw.get("was_home"), bool
+        ):
+            raise ValueError("Contradictory history identity")
+        team = int(f["team_h"] if raw["was_home"] else f["team_a"])
+        opponent = int(f["team_a"] if raw["was_home"] else f["team_h"])
+        if int(raw["opponent_team"]) != opponent:
+            raise ValueError("Historical opponent mismatch")
+        stats = {}
+        for name in STATS:
+            value = raw.get(name)
+            if value is None or str(value).strip().lower() in {
+                "",
+                "none",
+                "null",
+                "nan",
+                "na",
+                "n/a",
+            }:
+                stats[name] = None
+                continue
+            parsed = float(value)
+            if not math.isfinite(parsed) or name in INT_STATS and not parsed.is_integer():
+                raise ValueError("Invalid historical statistic")
+            stats[name] = int(parsed) if name in INT_STATS else parsed
+        if (
+            stats["starts"] not in (None, 0, 1)
+            or stats["minutes"] is not None
+            and not 0 <= stats["minutes"] <= 130
+        ):
+            raise ValueError("Invalid fixture minutes/starts")
+        records.append(
+            {
+                "gameweek": gw,
+                "fixture_id": fid,
+                "kickoff_utc": kickoff,
+                "team_id": team,
+                "player_id": player_id,
+                **stats,
+            }
+        )
+    return sorted(records, key=lambda r: (r["kickoff_utc"], r["fixture_id"]))
+
+
+def parse_final_event_points(payload: dict) -> dict[int, int | None]:
+    """Keep unknown official event scores unknown, including zero-minute disciplinary scores."""
+    if not isinstance(payload.get("elements"), list):
+        raise TypeError("Official final event elements unavailable")
+    points = {}
+    for element in payload["elements"]:
+        pid = int(element["id"])
+        if pid in points:
+            raise ValueError("Duplicate official event identity")
+        value = element.get("stats", {}).get("total_points")
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            raise ValueError("Invalid official final points")
+        points[pid] = value
+    return points
+
+
 class FPLAPIError(RuntimeError):
     """An FPL request succeeded badly or returned an unexpected shape."""
 
@@ -87,7 +180,36 @@ class FPLClient:
 
     def forecast_catalogue(self) -> FPLCatalogue:
         """Two public requests; callers cache the whole observed generation."""
-        return parse_forecast_catalogue(self._get("bootstrap-static/"), self._get("fixtures/"))
+        snapshot = self.forecast_snapshot()
+        self.latest_forecast_snapshot = snapshot
+        return parse_forecast_catalogue(snapshot["bootstrap"], snapshot["fixtures"])
+
+    def forecast_snapshot(self) -> dict[str, Any]:
+        started = datetime.now(UTC)
+        bootstrap, fixtures = self._get("bootstrap-static/"), self._get("fixtures/")
+        return {
+            "bootstrap": bootstrap,
+            "fixtures": fixtures,
+            "source_started_utc": started.isoformat(),
+            "source_finished_utc": datetime.now(UTC).isoformat(),
+            "sources": [f"{self.base_url}/bootstrap-static/", f"{self.base_url}/fixtures/"],
+        }
+
+    def ml_history_snapshot(self, player_id: int) -> dict[str, Any]:
+        """Uncached raw history with collection time; ML owns its season/version-aware cache."""
+        payload = self._get(f"element-summary/{player_id}/")
+        return {
+            "payload": payload,
+            "retrieved_at": datetime.now(UTC).isoformat(),
+            "source": f"{self.base_url}/element-summary/{player_id}/",
+        }
+
+    def final_event_snapshot(self, gameweek: int) -> dict[str, Any]:
+        return {
+            "payload": self._get(f"event/{gameweek}/live/"),
+            "retrieved_at": datetime.now(UTC).isoformat(),
+            "source": f"{self.base_url}/event/{gameweek}/live/",
+        }
 
     def public_squad(self, entry_id: int, catalogue: FPLCatalogue) -> PublicSquadSnapshot:
         if entry_id <= 0:

@@ -138,6 +138,46 @@ red-card/own-goal events are incomplete. An exhaustive XI is optimal **on its fi
 not guaranteed optimal under the unknown true distribution. Small gains can be sampling/model noise.
 Ranges are simulated score uncertainty, not confidence guarantees for model accuracy.
 
+### Live Ridge comparison
+
+Predictions defaults to the original statistical forecast. **Point estimates** also offers
+**Machine learning + fallbacks** and **ML minus statistical**. The packaged Phase 2b Ridge runs
+on official current-season match histories with the same 216-feature contract, saved training
+imputation/scaling and 24-hour result buffer. The initial roster history load runs in the
+background with four workers; statistical planning remains available during loading or failure.
+The model status shows progress, version, timestamp and supported-player count.
+
+The existing model supports one upcoming single-fixture GW from observed history. Later GWs
+in the six-GW horizon use explicitly labelled statistical fallbacks. So do cold starts, missing
+core history, detected transfers, current availability flags, blanks, doubles and incomplete
+schedules. There is no invented Ridge fixture, injury or opponent adjustment. Player details
+show coverage and fallback reasons; fallback differences are unknown rather than zero.
+
+My Team offers an **unmultiplied fixed starting XI marginal subtotal** only when all eleven
+players have direct Ridge estimates. It excludes captain/vice, bench and autosubs. The main
+lineup totals, simulated ranges, optimisers, transfer comparisons and chip calculations continue
+to use the original shared statistical simulations. The ML estimates are experimental and have
+not been calibrated prospectively for 2026/27 or newer defensive-contribution scoring.
+
+The normal `pip install .` deployment includes the small portable `ridge_v1.json` model and
+preprocessing; no scikit-learn, LightGBM, raw historical data or training step is required on
+Render. `FPL_RIDGE_MODEL` can point to a reviewed replacement with the identical schema.
+Invalid or missing models leave statistical planning available. The new status route remains
+behind the same server-side authentication as all Assistant data routes.
+
+When private access is configured, a process-local recorder runs every 30 minutes. It writes
+immutable public-football inputs, both forecasts and provenance to ignored `snapshots/ml/`,
+and records actual player points after official `finished` and `data_checked` flags. It saves
+no personal squads, entry IDs, passwords or sessions. Set `FPL_ML_AUTORECORD=0` to disable the
+background scheduler and `FPL_ML_ARCHIVE_DIR` to choose a writable archive location. The
+recording CLI works independently of private login and can run on an existing scheduled runner.
+
+**Free Render recording is best effort:** sleeping instances do not run the timer, and local
+files disappear on spin-down/restart/redeploy. Durable unattended evaluation requires a runner
+and archive outside that ephemeral instance. No paid storage or new external service has been
+enabled. See [the live inference guide](ml/reports/LIVE_INFERENCE.md) for recording/replay
+commands, storage limits and the verified live run.
+
 Transfer screening ignores autosub/vice effects and can omit the best replacement; exact refinement
 then includes them. Manual multi-transfer plans are evaluated, but automatic multi-transfer search,
 sequential future transfers, saved free-transfer value and risk preferences are not implemented.

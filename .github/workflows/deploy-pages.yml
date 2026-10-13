@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      - "src/**"
+      - "tests/**"
+      - "pyproject.toml"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -31,6 +34,12 @@ jobs:
         env:
           API_BASE_URL: ${{ vars.API_BASE_URL || 'https://fpl-scenario-analyser-api.onrender.com' }}
         run: python frontend/build.py --output frontend/dist
+      - name: Install backend and test dependencies
+        run: pip install '.[test]'
+      - name: Verify backend and private inference
+        run: python -m unittest discover -s tests -v
+      - name: Verify private frontend syntax
+        run: node --check frontend/src/assistant.js
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
