@@ -139,7 +139,9 @@ class GitHubStore:
 
     def finish_draft(self, release: dict, root: Path) -> dict:
         if release is None:
-            raise StorageError("Reserved release unavailable; preserve original candidate and retry")
+            raise StorageError(
+                "Reserved release unavailable; preserve original candidate and retry"
+            )
         assets = [a for a in release["assets"] if a["name"] == "capture.zip"]
         if len(assets) != 1 or assets[0]["state"] != "uploaded":
             raise StorageError(
