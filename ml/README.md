@@ -1,4 +1,4 @@
-# Historical FPL research — Phases 1, 2a and 2b
+# Historical FPL research — Phases 1, 2a, 2b and 2c
 
 This area discovers, audits and prepares historical outcomes/features and runs small offline
 baseline experiments. It has no imports from `src/fpl_forfeit` or application entry points.
@@ -50,6 +50,7 @@ ml/
   reports/DATA_AUDIT.md        # reviewed audit, missing features and Phase 2 recommendations
   reports/TRAINING_READINESS.md # reviewed Phase 2a findings, provenance and limitations
   reports/BASELINE_EXPERIMENTS.md # reviewed actual Phase 2b validation/holdout results
+  reports/TWO_STAGE_EXPERIMENT.md # Phase 2c appearance/conditional-points validation comparison
   reports/generated/          # ignored: audit.md/json and readiness.md/json
   data/raw/                   # ignored: original CSV bytes and manifest.json
   data/processed/             # ignored:
@@ -153,3 +154,7 @@ training/holdout commands, prediction reproduction and artifact locations. Only 
 82,472 candidate observations enter experiments. The first run used validation-only model
 selection, then a frozen holdout evaluation; 2025/26 is now a reported, consumed test period.
 Subsequent experiment design must not use its outcomes to tune or select models/features.
+
+Phase 2c's fixed appearance/conditional-points experiment compares against the same Ridge on
+2024/25 only. It has no test stage and does not reuse 2025/26 arrays or outcomes. The report and
+reproduction commands are linked from [training/README.md](training/README.md).

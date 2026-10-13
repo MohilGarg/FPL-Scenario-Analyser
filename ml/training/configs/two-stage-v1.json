@@ -1,0 +1,35 @@
+{
+  "experiment_id": "two-stage-v1",
+  "protocol_version": 1,
+  "seed": 20261012,
+  "threads": 2,
+  "splits": {"train": "2023-24", "validation": "2024-25"},
+  "historical_reference_only": "2025-26",
+  "expected_candidates": {"2023-24": 27877, "2024-25": 26098},
+  "features": "existing_approved_list_only",
+  "appearance": {
+    "C": 1.0,
+    "solver": "lbfgs",
+    "max_iter": 1000,
+    "tol": 0.000001,
+    "class_weight": null
+  },
+  "conditional_ridge": {"alpha": 100.0, "solver": "cholesky"},
+  "reference_ridge": {"alpha": 100.0, "solver": "cholesky"},
+  "nonappearance": "training_nonappearance_points_mean",
+  "probability_reference_feature": "pre_gw_last5_gws_appearance_rate",
+  "regular_starters": {
+    "window": "pre_gw_last5_gws",
+    "count": 5,
+    "minimum_start_rate": 0.8,
+    "minimum_minutes_mean": 60.0
+  },
+  "calibration": {
+    "probability_bins": 10,
+    "points_band_edges": [0.0, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0]
+  },
+  "uncertainty": {"bootstrap_draws": 1000, "gameweek_block_length": 4},
+  "parameter_search": false,
+  "prediction_clipping": false,
+  "validation_refit": false
+}
