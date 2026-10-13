@@ -210,6 +210,20 @@ class RecordingTests(unittest.TestCase):
                 store.finish_draft(draft, self.root)
             api.assert_not_called()
 
+    def test_draft_lookup_survives_github_by_tag_endpoint_404(self):
+        store = GitHubStore("example/repo")
+        draft = self.release(draft=True)
+        with (
+            patch.object(store, "api", side_effect=FileNotFoundError),
+            patch.object(store, "releases", return_value=[draft]),
+        ):
+            self.assertEqual(store.release(draft["tag_name"]), draft)
+        with (
+            patch.object(store, "api", side_effect=FileNotFoundError),
+            patch.object(store, "releases", return_value=[]),
+        ):
+            self.assertIsNone(store.release(draft["tag_name"]))
+
     def test_exact_candidate_recovery_rejects_reconstruction(self):
         store = GitHubStore("example/repo", now=lambda: NOW)
         draft = self.release(draft=True)

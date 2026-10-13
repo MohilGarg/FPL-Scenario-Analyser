@@ -98,7 +98,9 @@ class GitHubStore:
         try:
             return self.api(f"{self.base}/releases/tags/{tag}")
         except FileNotFoundError:
-            return None
+            # GitHub's by-tag REST endpoint omits unpublished drafts. The authenticated
+            # listing includes them even before their Git tag exists.
+            return next((r for r in self.releases() if r["tag_name"] == tag), None)
 
     def fetch(self, release: dict, root: Path, *, published: bool = True) -> Path:
         folder = root / release["tag_name"]
@@ -136,6 +138,8 @@ class GitHubStore:
         return path
 
     def finish_draft(self, release: dict, root: Path) -> dict:
+        if release is None:
+            raise StorageError("Reserved release unavailable; preserve original candidate and retry")
         assets = [a for a in release["assets"] if a["name"] == "capture.zip"]
         if len(assets) != 1 or assets[0]["state"] != "uploaded":
             raise StorageError(
