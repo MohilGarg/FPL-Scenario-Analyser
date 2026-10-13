@@ -1,0 +1,47 @@
+{
+  "reviewed_on": "2026-10-13",
+  "outcome_revision": "9779cdbc0c07f6c900c2d0c181ddf6bb9c800f88",
+  "deadline_archive_revision": "4cbbe8b206686a6def6751966c640fbc673333a7",
+  "schedule_coverage_verified": false,
+  "sources": [
+    {
+      "url": "https://github.com/vaastav/Fantasy-Premier-League/blob/9779cdbc0c07f6c900c2d0c181ddf6bb9c800f88/LICENSE",
+      "finding": "MIT software license; the license explicitly distinguishes third-party data ownership. No additional football dataset introduced."
+    },
+    {
+      "url": "https://api.github.com/repos/vaastav/Fantasy-Premier-League/commits?path=data/2024-25/fixtures.csv&per_page=5",
+      "finding": "Older fixture versions exist. Sample commits describe post-GW updates; no timestamped ingestion manifests or complete deadline schedule reconstruction were established.",
+      "sample": {"sha": "59c767596750f554ba464de94cf4fce8664a6cbe", "committer_time": "2025-06-04T15:20:23Z", "message": "Add GW38 data"}
+    },
+    {
+      "url": "https://api.github.com/repos/vaastav/Fantasy-Premier-League/commits?path=data/2025-26/fixtures.csv&per_page=5",
+      "finding": "Sample versions include GW38, GW29 and midseason updates. Git commit time alone does not verify fixture collection time or intervening changes at a deadline.",
+      "sample": {"sha": "77ab48216404b0f49f55fa724c520af25b32ddae", "committer_time": "2026-03-13T01:04:19Z", "message": "update data till gw29"}
+    },
+    {
+      "url": "https://api.github.com/repos/beeradb/FPL-Armband/git/trees/4cbbe8b206686a6def6751966c640fbc673333a7?recursive=1",
+      "finding": "Each requested season has 38 capture directories. Their file types are bootstrap-static.json.gz, deadlines.json and manifest.json; no fixtures endpoint payloads are present. Three GW15 manifests were inspected.",
+      "manifest_urls": [
+        "https://raw.githubusercontent.com/beeradb/FPL-Armband/4cbbe8b206686a6def6751966c640fbc673333a7/data/captures/2023-24/GW15-2023-12-05T1200Z/manifest.json",
+        "https://raw.githubusercontent.com/beeradb/FPL-Armband/4cbbe8b206686a6def6751966c640fbc673333a7/data/captures/2024-25/GW15-2024-12-07T0000Z/manifest.json",
+        "https://raw.githubusercontent.com/beeradb/FPL-Armband/4cbbe8b206686a6def6751966c640fbc673333a7/data/captures/2025-26/GW15-2025-12-06T0437Z/manifest.json"
+      ]
+    },
+    {
+      "url": "https://www.premierleague.com/en/news/4148310",
+      "publication_date": "2024-10-15",
+      "finding": "Original announced December schedule includes Everton-Liverpool on 7 December at 12:30 GMT. An article publication date does not establish a complete immutable schedule at every subsequent deadline."
+    },
+    {
+      "url": "https://www.premierleague.com/en/news/4188928",
+      "publication_date": "2024-12-07",
+      "finding": "Official postponement notice keeps the GW15 deadline at 11:00 GMT. The page gives a date, not a precise publication timestamp."
+    },
+    {
+      "url": "https://www.premierleague.com/en/news/4221175",
+      "publication_date": "2025-01-13",
+      "finding": "Official rearrangement notice announces 12 February 2025 at 19:30 GMT. The pinned final fixture 144 is assigned GW24, illustrating why its final assignment cannot stand in for a December deadline snapshot."
+    }
+  ],
+  "decision": "Use lagged completed scores for team history; keep final opponent/venue/GW assignment/rest-to-kickoff in a separate research-only table. No schedules are promoted into predictive inputs."
+}

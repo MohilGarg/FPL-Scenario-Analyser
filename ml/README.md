@@ -1,4 +1,4 @@
-# Historical FPL research — Phases 1, 2a, 2b and 2c
+# Historical FPL research — Phases 1, 2a, 2b, 2c and 3a
 
 This area discovers, audits and prepares historical outcomes/features and runs small offline
 baseline experiments. It has no imports from `src/fpl_forfeit` or application entry points.
@@ -43,6 +43,11 @@ ml/
   audit.py                    # column/missingness, identity and score reconciliation audit
   prepare.py                  # ingestion/preparation CLI
   validate.py                 # source fidelity and dataset checks
+  fixture_features.py         # deadline-gated team form, club proxy and research-only schedules
+  prepare_fixtures.py         # offline feature sidecars, coverage and validation
+  fixture-config.json         # fixed history/smoothing policy; no model fitting
+  fixture-source-review.json  # fixture version/provenance investigation and schedule gaps
+  schemas/fixture-context-v1.json # frozen player v1 plus opt-in historical team-context inputs
   tests/                      # small offline regression tests
   training/                   # fixed Ridge/LightGBM/recent-average experiments and versioned config
   evaluation/                 # metrics, grouped uncertainty, tables and charts; no production adapter
@@ -51,6 +56,8 @@ ml/
   reports/TRAINING_READINESS.md # reviewed Phase 2a findings, provenance and limitations
   reports/BASELINE_EXPERIMENTS.md # reviewed actual Phase 2b validation/holdout results
   reports/TWO_STAGE_EXPERIMENT.md # Phase 2c appearance/conditional-points validation comparison
+  reports/FIXTURE_FEATURES.md  # Phase 3a safe history, schedule limitations and recommendations
+  reports/FIXTURE_COVERAGE.csv # small reviewed per-season/GW coverage report
   reports/generated/          # ignored: audit.md/json and readiness.md/json
   data/raw/                   # ignored: original CSV bytes and manifest.json
   data/processed/             # ignored:
@@ -158,3 +165,21 @@ Subsequent experiment design must not use its outcomes to tune or select models/
 Phase 2c's fixed appearance/conditional-points experiment compares against the same Ridge on
 2024/25 only. It has no test stage and does not reuse 2025/26 arrays or outcomes. The report and
 reproduction commands are linked from [training/README.md](training/README.md).
+
+## Prepare historical team context - Phase 3a
+
+```powershell
+ml/.venv/Scripts/python.exe -X utf8 -m ml.prepare_fixtures run
+ml/.venv/Scripts/python.exe -X utf8 -m ml.prepare_fixtures validate
+ml/.venv/Scripts/python.exe -X utf8 -m unittest ml.tests.test_fixture_features ml.tests.test_preparation ml.tests.test_readiness -v
+```
+
+This offline step uses the existing raw/processed archive and adds ignored files under
+`data/processed/fixture_context/`. It leaves the 216-column v1 preparation/training contract
+intact. The versioned opt-in v2 schema combines v1 with 152 last-observed-club history indicators;
+`ml.prepare_fixtures.approved_player_inputs` checks identity/order/cutoffs and joins whitelisted
+sidecar columns. Its output includes four join keys, which must still be excluded from X.
+The sidecar's club ID/status and separate quality/research tables are never predictive inputs.
+Schedule snapshots and current player-club registration have not been verified; final fixture
+assignments and paired opponent strengths remain explicitly research-only. No new models run.
+See [FIXTURE_FEATURES.md](reports/FIXTURE_FEATURES.md) for definitions and actual coverage.

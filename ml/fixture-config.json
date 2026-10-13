@@ -1,0 +1,11 @@
+{
+  "schema_version": "fixture-context-v1",
+  "result_buffer_hours": 24,
+  "rolling_matches": [3, 5, 10],
+  "smoothing_pseudo_matches": 5.0,
+  "opening_goal_prior": 1.35,
+  "opening_clean_sheet_prior": 0.25,
+  "season_carryover": false,
+  "schedule_policy": "final_assignments_research_only",
+  "player_club_policy": "last_eligible_observed_club_proxy"
+}
