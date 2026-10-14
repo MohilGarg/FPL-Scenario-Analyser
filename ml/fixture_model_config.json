@@ -1,0 +1,19 @@
+{
+  "version": "fixture-components-v1",
+  "fit_seasons": ["2023-24", "2024-25"],
+  "development_season": "2023-24",
+  "validation_season": "2024-25",
+  "consumed_reference_season": "2025-26",
+  "schedule_policy": "archive_within_24h_else_explicit_retrospective_proxy",
+  "minimum_player_history": 3,
+  "history_min_minutes": 90,
+  "logistic_C": 0.5,
+  "ridge_alpha": 100,
+  "poisson_alpha": 0.1,
+  "threads": 2,
+  "simulation_samples_validation": 32,
+  "seed": 20261014,
+  "horizon": "Freeze observed player/team form; vary published fixture context. Availability fallback held fixed, no predicted recovery.",
+  "fallback_components": ["defensive_contribution", "bonus", "rare_penalty_red_own_goal_events"],
+  "warning": "Historical schedule/position/roster proxies and corrected result vintages prevent strict point-in-time superiority claims. 2025-26 is not an untouched test."
+}

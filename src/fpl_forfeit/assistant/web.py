@@ -30,6 +30,7 @@ class LineupRequest(BaseModel):
     bench_ids: list[int] = Field(min_length=4, max_length=4)
     captain: int = Field(gt=0)
     vice_captain: int = Field(gt=0)
+    model: Literal["statistical", "components"] = "statistical"
 
 
 class TransferMove(BaseModel):
@@ -45,6 +46,7 @@ class TransferRequest(BaseModel):
     free_transfers: int = Field(ge=0, le=5)
     selling_prices: dict[str, int] = Field(default_factory=dict, max_length=15)
     account_confirmed: Literal[True]
+    model: Literal["statistical", "components"] = "statistical"
 
 
 class TransferSearchRequest(BaseModel):
@@ -55,6 +57,7 @@ class TransferSearchRequest(BaseModel):
     free_transfers: int = Field(ge=0, le=5)
     selling_prices: dict[str, int] = Field(default_factory=dict, max_length=15)
     account_confirmed: Literal[True]
+    model: Literal["statistical", "components"] = "statistical"
 
 
 def register_assistant(application: FastAPI, service: AssistantService, auth: SessionStore) -> None:
@@ -202,9 +205,10 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
         )
         return response
 
-    def result(call):
+    def result(call, model="statistical"):
         try:
-            return call()
+            with service.using_model(model):
+                return call()
         except FPLGameweekUnavailable as error:
             raise HTTPException(409, str(error)) from error
         except FPLNotFoundError as error:
@@ -230,8 +234,8 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
         return result(service.ml_status)
 
     @router.get("/players/{player_id}")
-    def player(player_id: int):
-        return result(lambda: service.player(player_id))
+    def player(player_id: int, model: Literal["statistical", "components"] = "statistical"):
+        return result(lambda: service.player(player_id), model)
 
     @router.post("/refresh")
     def refresh():
@@ -248,15 +252,22 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
         return result(lambda: service.squad(request.state.assistant_session.subject))
 
     @router.get("/lineup")
-    def lineup(request: Request, gameweek: int | None = Query(default=None, ge=1, le=38)):
-        return result(lambda: service.lineup(request.state.assistant_session.subject, gameweek))
+    def lineup(
+        request: Request,
+        gameweek: int | None = Query(default=None, ge=1, le=38),
+        model: Literal["statistical", "components"] = "statistical",
+    ):
+        return result(
+            lambda: service.lineup(request.state.assistant_session.subject, gameweek), model
+        )
 
     @router.post("/lineup")
     def evaluate_lineup(body: LineupRequest, request: Request):
         return result(
             lambda: service.lineup(
                 request.state.assistant_session.subject, body.gameweek, draft=body.model_dump()
-            )
+            ),
+            body.model,
         )
 
     @router.post("/transfers")
@@ -268,12 +279,13 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
                 body.bank_tenths,
                 body.free_transfers,
                 {int(pid): value for pid, value in body.selling_prices.items()},
-            )
+            ),
+            body.model,
         )
 
     @router.get("/chips")
-    def chips(request: Request):
-        return result(lambda: service.chips(request.state.assistant_session.subject))
+    def chips(request: Request, model: Literal["statistical", "components"] = "statistical"):
+        return result(lambda: service.chips(request.state.assistant_session.subject), model)
 
     @router.post("/transfers/search")
     def transfer_search(body: TransferSearchRequest, request: Request):
@@ -285,7 +297,8 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
                 body.free_transfers,
                 {int(pid): value for pid, value in body.selling_prices.items()},
                 body.horizon,
-            )
+            ),
+            body.model,
         )
 
     application.include_router(router)

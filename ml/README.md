@@ -191,3 +191,11 @@ The sidecar's club ID/status and separate quality/research tables are never pred
 Schedule snapshots and current player-club registration have not been verified; final fixture
 assignments and paired opponent strengths remain explicitly research-only. No new models run.
 See [FIXTURE_FEATURES.md](reports/FIXTURE_FEATURES.md) for definitions and actual coverage.
+
+## Fixture-aware private forecasting — Phase 4
+
+[FIXTURE_ML.md](reports/FIXTURE_ML.md) documents the trained components, 29-column contract,
+chronological diagnostics, explicit retrospective schedule proxies, live six-GW adapter and
+reproduction commands. `fixture_model_config.json` versions the fixed experiment. Fitting stays
+in the isolated ML environment; the Assistant loads the small portable JSON without scientific
+dependencies. The old Ridge and statistical methods remain available and unchanged.

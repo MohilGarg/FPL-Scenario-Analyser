@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import tempfile
+from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,8 @@ from typing import Any
 
 def canonical(value: Any) -> bytes:
     def normalized(v: Any) -> Any:
+        if isinstance(v, datetime):
+            return v.isoformat()
         if isinstance(v, dict):
             return {str(k): normalized(item) for k, item in v.items()}
         if isinstance(v, (tuple, list)):
@@ -58,6 +61,9 @@ class ForecastArchive:
         model,
         *,
         feature_asof: datetime | None = None,
+        component=None,
+        component_metadata: dict | None = None,
+        component_error: str | None = None,
     ) -> Path:
         deadlines = {
             g.id: g.deadline
@@ -114,6 +120,17 @@ class ForecastArchive:
             "statistical_samples": forecast.samples,
             "statistical_source_timestamp": forecast.catalogue.fetched_at.isoformat(),
             "note": "As-of preview; later GWs and unsupported rows use labelled statistical fallback. No personal squad or auth data.",
+        }
+        if component is not None and component_metadata is not None:
+            record["fixture_component"] = {
+                "metadata": component_metadata,
+                "predictions": component.players,
+                "fixtures": [asdict(p) for p in component.fixtures],
+                "prediction_sha256": hashlib.sha256(canonical(component.players)).hexdigest(),
+            }
+        record["fixture_component_status"] = {
+            "state": "ready" if component else "unavailable",
+            "error": component_error,
         }
         body = canonical(record)
         if immutable(path, gzip.compress(body, mtime=0)):
@@ -199,7 +216,12 @@ def main() -> None:
             ).hexdigest()
             if data["schema_version"] != 1 or legacy_hash != data["source_sha256"]:
                 raise ValueError("Source checksum mismatch")
-        catalogue = parse_forecast_catalogue(snapshot["bootstrap"], snapshot["fixtures"])
+        from dataclasses import replace
+
+        catalogue = replace(
+            parse_forecast_catalogue(snapshot["bootstrap"], snapshot["fixtures"]),
+            fetched_at=datetime.fromisoformat(data["statistical_source_timestamp"]),
+        )
         forecast = forecast_horizon(
             catalogue,
             tuple(sorted(int(g) for g in data["deadlines"])),
@@ -228,8 +250,24 @@ def main() -> None:
                 raise ValueError(f"Prediction replay mismatch for {pid}")
         if json.loads(canonical(forecast.players)) != data["statistical_predictions"]:
             raise ValueError("Statistical replay mismatch")
+        if "fixture_component" in data:
+            from .component_forecast import build_component_forecast
+            from .component_model import ComponentModel
+
+            saved = data["fixture_component"]
+            component, _ = build_component_forecast(
+                forecast,
+                snapshot,
+                {int(k): v for k, v in data["official_histories"].items()},
+                datetime.fromisoformat(data["feature_asof_utc"]),
+                model=ComponentModel(data=saved["metadata"]["model"]),
+            )
+            if canonical(component.players) != canonical(saved["predictions"]):
+                raise ValueError("Fixture component replay mismatch")
+            if canonical([asdict(p) for p in component.fixtures]) != canonical(saved["fixtures"]):
+                raise ValueError("Fixture component fixture replay mismatch")
         print(
-            f"Reproduced {len(data['ml_predictions'])} players, both forecast methods; no network or fitting"
+            f"Reproduced {len(data['ml_predictions'])} players, {'3 forecast methods' if 'fixture_component' in data else 'both forecast methods'}; no network or fitting"
         )
         return
     if args.archive_dir:

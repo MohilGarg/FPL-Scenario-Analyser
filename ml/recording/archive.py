@@ -102,6 +102,16 @@ def validate_record(record: dict, manifest: dict) -> None:
         or record["statistical_model_version"] != manifest["statistical_model_version"]
     ):
         raise ValueError("Model provenance mismatch")
+    if "fixture_component" in record:
+        component = record["fixture_component"]
+        meta = component["metadata"]
+        if (
+            digest(canonical(component["predictions"])) != component["prediction_sha256"]
+            or digest(canonical(meta["model"])) != manifest.get("component_payload_sha256")
+            or meta["version"] != manifest.get("component_version")
+            or meta["feature_asof_utc"] != record["feature_asof_utc"]
+        ):
+            raise ValueError("Fixture component provenance mismatch")
 
 
 def create_bundle(source: Path, stage: str, gw: int, context: dict, output: Path) -> Path:
@@ -135,6 +145,14 @@ def create_bundle(source: Path, stage: str, gw: int, context: dict, output: Path
             history_players=len(record["official_histories"]),
             roster_players=len(record["ml_predictions"]),
         )
+        if "fixture_component" in record:
+            meta = record["fixture_component"]["metadata"]
+            manifest.update(
+                component_version=meta["version"],
+                component_payload_sha256=digest(canonical(meta["model"])),
+            )
+        if "fixture_component_status" in record:
+            manifest["fixture_component_status"] = record["fixture_component_status"]
     validate_record(record, manifest)
     target = io.BytesIO()
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_STORED) as archive:

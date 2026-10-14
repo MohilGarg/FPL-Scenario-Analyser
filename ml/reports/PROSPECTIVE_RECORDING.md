@@ -1,5 +1,13 @@
 # Durable prospective recording for 2026/27
 
+**Phase 4 extension:** future original captures can include `fixture_component` predictions,
+fixture projections and embedded portable-model provenance, validated by extra manifest hashes.
+The evaluator adds `fixture_component_paired` only when those original fields exist, while the
+old statistical/Ridge groups and recording policy remain unchanged. Component failures are
+visible in capture status and workflow warnings; valid old-method recording can continue.
+Existing releases, including GW7 advance, cannot acquire this model retroactively. See
+[FIXTURE_ML.md](FIXTURE_ML.md). No new GitHub settings or secrets are needed.
+
 Continues `d8422ba`. A standard GitHub Actions Linux runner now records public official FPL
 inputs and the **unchanged** statistical/Ridge forecasts into immutable GitHub Release assets.
 Render's filesystem, Assistant login and availability are not dependencies. No fitting,

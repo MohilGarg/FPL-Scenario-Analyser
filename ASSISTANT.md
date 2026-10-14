@@ -192,6 +192,23 @@ cost beyond six GWs remain unknown. Nothing is submitted to FPL; this is account
 
 ## Verification and representative performance
 
+### Fixture-aware ML option
+
+The statistical forecast remains the default. Predictions now also offers the existing Ridge,
+fixture-aware ML and either difference. The separate Planning model selector uses Statistical
+or the fixture-component adapter for XI/captaincy, transfers and chips. The adapter changes
+event/minutes proposals inside the shared simulator; it never adds arbitrary point deltas.
+Ridge remains a marginal comparison only. Model version, coverage and statistical fallbacks
+are shown. Selection is request-local; unavailable ML cannot silently relabel statistical plans.
+
+The packaged portable model needs no new production dependency or manual configuration.
+Historical schedules are mostly explicitly labelled retrospective proxies, observed form/current
+availability are frozen across six GWs, and bonus/defensive contributions remain statistical.
+Accuracy is not established prospectively; regular starters worsened in historical diagnostics.
+See [FIXTURE_ML.md](ml/reports/FIXTURE_ML.md) for validation, limitations and reproducible commands.
+The existing GitHub recorder includes the new model in future captures while preserving every
+old immutable capture and the original statistical/Ridge evaluation groups.
+
 ```powershell
 $env:PYTHONPATH = (Join-Path (Get-Location).Path 'src')
 python -m unittest discover -s tests -v

@@ -1,0 +1,50 @@
+{
+  "reviewed_on": "2026-10-14",
+  "cdx_query": "https://web.archive.org/cdx/search/cdx?url=fantasy.premierleague.com/api/fixtures/&output=json&filter=statuscode:200&from=202308&to=202505&collapse=timestamp:8&limit=120",
+  "snapshots": [
+    {
+      "capture_utc": "20230930070421",
+      "url": "https://web.archive.org/web/20230930070421id_/https://fantasy.premierleague.com/api/fixtures/",
+      "cdx_digest": "TV2QLOGUHGYTEDJJNWOWSTWDKNVUW6UT",
+      "success": true,
+      "sha256": "ca114037126fac6f73df82c83a7f2c85406b883146f87d302692f7702a5550f0",
+      "bytes": 212254,
+      "fixture_count": 380
+    },
+    {
+      "capture_utc": "20240526093107",
+      "url": "https://web.archive.org/web/20240526093107id_/https://fantasy.premierleague.com/api/fixtures/",
+      "cdx_digest": "UVNIIEDGBZZNSXO5XBJAOCVWTUUVH4ZK",
+      "success": true,
+      "sha256": "dd7500dd980c816189198a7523121aba80512343410ee7f18c03a6b4b9186694",
+      "bytes": 711212,
+      "fixture_count": 380
+    },
+    {
+      "capture_utc": "20250115073817",
+      "url": "https://web.archive.org/web/20250115073817id_/https://fantasy.premierleague.com/api/fixtures/",
+      "cdx_digest": "5IINH65DOMNQCKKFHKIJQF5TLVTOH3EY",
+      "success": false
+    },
+    {
+      "capture_utc": "20250213204156",
+      "url": "https://web.archive.org/web/20250213204156id_/https://fantasy.premierleague.com/api/fixtures/",
+      "cdx_digest": "KUDAVWSGLX5JE7BW72Y3LMWJYDWJ3G6V",
+      "success": false
+    },
+    {
+      "capture_utc": "20250217210614",
+      "url": "https://web.archive.org/web/20250217210614id_/https://fantasy.premierleague.com/api/fixtures/",
+      "cdx_digest": "JHFJ2YOMTYVU6EWLI5JG7PMJG2LRED27",
+      "success": true,
+      "sha256": "4ea2da1e63c8b7e09c186be502c34d8fdc16cab84a4538ee9ac984178066d54b",
+      "bytes": 532234,
+      "fixture_count": 380
+    }
+  ],
+  "other_archives": {
+    "Unholy-smoke/fpl-mirror": "created 2026-08-13",
+    "footydeano/fpl-data": "created 2026-08-30"
+  },
+  "limits": "Daily-collapsed bounded query; not a complete crawl. Must validate source time and age per deadline. Historical player/result vintages remain unverified."
+}

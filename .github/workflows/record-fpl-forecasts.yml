@@ -10,6 +10,10 @@ on:
       - ".github/workflows/record-fpl-forecasts.yml"
       - "ml/recording/**"
       - "tests/test_prospective_recording.py"
+      - "tests/test_fixture_components.py"
+      - "src/fpl_forfeit/assistant/component*"
+      - "src/fpl_forfeit/assistant/ml_inference.py"
+      - "src/fpl_forfeit/assistant/prospective.py"
   workflow_dispatch:
     inputs:
       mode:
@@ -44,7 +48,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Test deadline gating, storage, evaluation and existing inference
-        run: python -m unittest tests.test_prospective_recording tests.test_live_ridge -v
+        run: python -m unittest tests.test_prospective_recording tests.test_live_ridge tests.test_fixture_components -v
       - name: Record or check eligible captures
         env:
           GH_TOKEN: ${{ github.token }}

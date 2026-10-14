@@ -178,6 +178,8 @@ class LiveML:
         self.history_cache: dict[tuple, dict] = {}
         self.last_archive_error = ""
         self.raw_histories: dict[int, dict] = {}
+        self.component_forecast: HorizonForecast | None = None
+        self.component_metadata: dict | None = None
         self.stopped = Event()
 
     def request(self, forecast: HorizonForecast, snapshot: dict | None) -> dict:
@@ -187,6 +189,7 @@ class LiveML:
                 return {"state": "unavailable", "reason": "official_source_snapshot_unavailable"}
             if generation != self.generation:
                 self.generation, self.rows = generation, {}
+                self.component_forecast = self.component_metadata = None
                 self.status = {
                     "state": "loading",
                     "completed": 0,
@@ -251,6 +254,16 @@ class LiveML:
                 )
                 for pid in forecast.catalogue.players
             }
+            component, component_metadata, component_error = None, None, None
+            try:
+                from .component_forecast import build_component_forecast
+
+                component, component_metadata = build_component_forecast(
+                    forecast, snapshot, histories, asof
+                )
+            except Exception as exc:
+                logger.exception("Private fixture component inference failed")
+                component_error = f"component_failed:{type(exc).__name__}"
             generated = self.now()
             with self.lock:
                 if self.stopped.is_set():
@@ -258,6 +271,7 @@ class LiveML:
                 if generation is not None and generation != self.generation:
                     return  # explicit refresh superseded this immutable source generation
                 self.rows, self.raw_histories = rows, histories
+                self.component_forecast, self.component_metadata = component, component_metadata
                 self.status = {
                     "state": "ready",
                     "completed": len(rows),
@@ -266,6 +280,11 @@ class LiveML:
                     "source_timestamp": asof.isoformat(),
                     "model_sha256": model.sha256,
                     "generated_at": generated.isoformat(),
+                    "component_state": "ready" if component else "unavailable",
+                    "component_error": component_error,
+                    "component_version": component_metadata["version"]
+                    if component_metadata
+                    else None,
                     "supported_next_gw_players": sum(
                         r[forecast.gameweeks[0]]["source"] == "ridge" for r in rows.values()
                     ),
@@ -275,7 +294,16 @@ class LiveML:
             try:
                 archive = ForecastArchive()
                 archive.record(
-                    forecast, snapshot, histories, rows, generated, model, feature_asof=asof
+                    forecast,
+                    snapshot,
+                    histories,
+                    rows,
+                    generated,
+                    model,
+                    feature_asof=asof,
+                    component=component,
+                    component_metadata=component_metadata,
+                    component_error=component_error,
                 )
                 archive.finalize(snapshot["bootstrap"], self.client)
                 self.last_archive_error = ""
@@ -338,4 +366,17 @@ class LiveML:
     def invalidate(self) -> None:
         with self.lock:
             self.rows, self.history_cache = {}, {}
+            self.component_forecast = self.component_metadata = None
             self.generation = None
+
+    def components(self, forecast: HorizonForecast) -> HorizonForecast | None:
+        with self.lock:
+            generation = (forecast.catalogue.fetched_at.isoformat(), forecast.gameweeks)
+            first = next(g for g in forecast.catalogue.gameweeks if g.id == forecast.gameweeks[0])
+            return (
+                self.component_forecast
+                if (
+                    generation == self.generation and first.deadline and self.now() < first.deadline
+                )
+                else None
+            )

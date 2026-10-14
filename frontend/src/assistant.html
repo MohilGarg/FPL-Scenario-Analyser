@@ -25,7 +25,7 @@
       <form id="assistant-login-form" class="hidden"><label for="assistant-password">Private passcode</label><input id="assistant-password" type="password" inputmode="numeric" autocomplete="current-password" required minlength="8" maxlength="256" placeholder="Your 8-digit passcode"><button class="primary-button" type="submit">Unlock assistant</button></form>
     </section>
     <div id="assistant-workspace" class="hidden">
-      <div class="assistant-toolbar"><p id="assistant-source" class="fine-print"></p><button id="assistant-refresh" class="secondary-button" type="button">Refresh forecasts</button></div>
+      <div class="assistant-toolbar"><p id="assistant-source" class="fine-print"></p><label>Planning model<select id="assistant-planning-model"><option value="statistical">Statistical (default)</option><option value="components">Fixture ML + statistical fallbacks</option></select></label><button id="assistant-refresh" class="secondary-button" type="button">Refresh forecasts</button></div>
       <nav class="assistant-tabs" role="tablist" aria-label="Private assistant sections">
         <button id="assistant-tab-team" role="tab" aria-selected="true" aria-controls="assistant-team" data-assistant-view="team">My Team</button>
         <button id="assistant-tab-predictions" role="tab" aria-selected="false" aria-controls="assistant-predictions" data-assistant-view="predictions">Predictions</button>
@@ -40,7 +40,7 @@
       <section id="assistant-predictions" class="assistant-panel hidden" role="tabpanel" aria-labelledby="assistant-tab-predictions">
         <div class="view-heading"><div><h2>Player predictions</h2><p>Published fixtures, shared football outcomes and explicit uncertainty.</p></div></div>
         <div class="assistant-filters">
-          <label>Point estimates<select id="assistant-prediction-model"><option value="statistical" selected>Statistical forecast</option><option value="ml">Machine learning / fallbacks</option><option value="difference">ML minus statistical</option></select></label>
+          <label>Point estimates<select id="assistant-prediction-model"><option value="statistical" selected>Statistical forecast</option><option value="ml">Ridge / fallbacks</option><option value="components">Fixture ML / component fallbacks</option><option value="difference">Ridge minus statistical</option><option value="component_difference">Fixture ML minus statistical</option></select></label>
           <label>Horizon<select id="assistant-horizon"><option value="1">Next Gameweek</option><option value="3" selected>Next 3 Gameweeks</option><option value="5">Next 5 Gameweeks</option><option value="6">Next 6 Gameweeks</option></select></label>
           <label>Find player<input id="assistant-search" type="search" placeholder="Player or club"></label>
           <label>Position<select id="assistant-position"><option value="">All positions</option><option>GK</option><option>DEF</option><option>MID</option><option>FWD</option></select></label>

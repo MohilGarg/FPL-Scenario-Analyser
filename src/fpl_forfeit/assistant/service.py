@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict
 from datetime import UTC, datetime
 from threading import RLock
@@ -23,6 +25,7 @@ ASSUMPTIONS = [
     "Only published fixture assignments are used. Unassigned or missing schedules are unknown, not confirmed zero-point blanks.",
     "One 192-sample joint forecast is cached for up to 20 minutes. Different public live/owned-player contexts can produce different numerical estimates; the statistical and FPL scoring implementations are shared.",
 ]
+SELECTED_MODEL: ContextVar[str] = ContextVar("assistant_forecast_model", default="statistical")
 
 
 class AssistantService:
@@ -46,6 +49,28 @@ class AssistantService:
         self.ml = LiveML(self.client, now=self.now)
 
     def forecast(self) -> HorizonForecast:
+        baseline = self.statistical_forecast()
+        if SELECTED_MODEL.get() == "components":
+            self.ml_status(baseline)
+            component = self.ml.components(baseline)
+            if component is None:
+                raise FPLGameweekUnavailable(
+                    "Fixture ML is loading or unavailable. Choose Statistical to continue planning."
+                )
+            return component
+        return baseline
+
+    @contextmanager
+    def using_model(self, model: str):
+        if model not in ("statistical", "components"):
+            raise ValueError("Ridge marginals cannot be used for simulated planning.")
+        token = SELECTED_MODEL.set(model)
+        try:
+            yield
+        finally:
+            SELECTED_MODEL.reset(token)
+
+    def statistical_forecast(self) -> HorizonForecast:
         with self.lock:
             cached = self.forecasts.get(0)
             if cached:
@@ -82,7 +107,9 @@ class AssistantService:
 
     def ml_status(self, forecast: HorizonForecast | None = None) -> dict:
         with self.lock:
-            forecast = forecast or self.forecast()
+            forecast = forecast or self.statistical_forecast()
+            if forecast is getattr(self.ml, "component_forecast", None):
+                forecast = self.statistical_forecast()
             snapshot = self.official_snapshot if forecast is self.snapshot_forecast else None
             return self.ml.request(forecast, snapshot)
 
@@ -126,7 +153,14 @@ class AssistantService:
             "provenance": [asdict(p) for p in forecast.inputs.provenance],
             "assumptions": [
                 note.replace("192-sample", f"{forecast.samples}-sample") for note in ASSUMPTIONS
-            ],
+            ]
+            + (
+                [
+                    "Fixture ML uses historical schedule proxies. Player/team form and current availability are frozen across six GWs; published opponent, venue and league rest vary. Bonus, defensive contributions and rejected or missing components remain statistical. Playing probabilities are reconciled with shared football lineup constraints."
+                ]
+                if forecast.inputs.model_version.startswith("fixture-components")
+                else []
+            ),
         }
 
     def predictions(self, horizon: int) -> dict:
@@ -134,6 +168,7 @@ class AssistantService:
             raise ValueError("Choose a 1, 3, 5 or 6 Gameweek horizon.")
         forecast = self.forecast()
         ml_status = self.ml_status(forecast)
+        component = self.ml.components(forecast) if hasattr(self.ml, "components") else None
         gameweeks = forecast.gameweeks[:horizon]
         rows = []
         for pid in forecast.catalogue.players:
@@ -141,6 +176,7 @@ class AssistantService:
                 {
                     **forecast.players[pid][gw],
                     "ml": self.ml_prediction(forecast, pid, gw),
+                    "fixture_ml": component.players[pid][gw] if component else None,
                 }
                 for gw in gameweeks
             ]
@@ -154,6 +190,10 @@ class AssistantService:
                     **self.identity(forecast, pid),
                     "gameweeks": projected,
                     "total_expected_points": total,
+                    "fixture_ml_total": sum(p["fixture_ml"]["expected_points"] for p in projected)
+                    if component
+                    and all(p["fixture_ml"]["expected_points"] is not None for p in projected)
+                    else None,
                     "ml_total_expected_points": sum(p["ml"]["comparison_points"] for p in projected)
                     if all(p["ml"]["comparison_points"] is not None for p in projected)
                     else None,
@@ -178,6 +218,7 @@ class AssistantService:
             "gameweeks": list(gameweeks),
             "players": rows,
             "ml_status": ml_status,
+            "component_note": "Fixture ML uses shared simulated outcomes. Historical schedules are mostly retrospective proxies; observed form is frozen over six GWs. Bonus/defensive contributions, cold starts, transfers and unavailable components use statistical fallbacks. Experimental, not prospectively calibrated.",
             "ml_note": "Ridge estimates only the next Gameweek from eligible current-season history. Later GWs, blanks, doubles, transfers and availability changes use labelled statistical fallback. ML has no simulated ranges or lineup optimiser adapter.",
             "horizon_note": f"Only {len(gameweeks)} Gameweeks remain in the published season."
             if len(gameweeks) < horizon
@@ -277,7 +318,13 @@ class AssistantService:
             raise ValueError(
                 f"GW{gameweek} includes unknown or unassigned squad fixtures; a complete lineup score cannot be inferred."
             )
-        key = forecast.catalogue.fetched_at, tuple(sorted(ids)), gameweek, chip
+        key = (
+            forecast.catalogue.fetched_at,
+            forecast.inputs.model_version,
+            tuple(sorted(ids)),
+            gameweek,
+            chip,
+        )
         with self.lock:
             plans = self.plans.get(subject)
             if plans is None:
@@ -331,6 +378,7 @@ class AssistantService:
         }
 
     def ml_lineup_comparison(self, forecast: HorizonForecast, ids: list[int], gw: int) -> dict:
+        forecast = self.statistical_forecast()
         self.ml_status(forecast)
         rows = [self.ml_prediction(forecast, pid, gw) for pid in ids]
         supported = all(r["source"] == "ridge" for r in rows)
@@ -423,6 +471,7 @@ class AssistantService:
             )
 
         return {
+            **self.metadata(forecast),
             "moves": [
                 {"out": self.identity(forecast, a), "in": self.identity(forecast, b)}
                 for a, b in moves
@@ -545,6 +594,7 @@ class AssistantService:
             key=lambda plan: -(plan["gain_horizon"] if plan["gain_horizon"] is not None else -1e10)
         )
         return {
+            **self.metadata(forecast),
             "gameweeks": list(gameweeks),
             "eligible_candidates": len(eligible),
             "shortlist_limit": 8,
@@ -608,6 +658,7 @@ class AssistantService:
                         row["note"] = str(error)
                 rows.append(row)
         return {
+            **self.metadata(forecast),
             "comparisons": rows,
             "notes": [
                 "Conditional Bench Boost / Triple Captain values for the same unchanged squad, with a legal optimal XI in each Gameweek.",

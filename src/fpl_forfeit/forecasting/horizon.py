@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import random
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from statistics import fmean, pvariance
 
@@ -43,6 +44,7 @@ def forecast_horizon(
     *,
     samples: int = 192,
     seed: int = DEFAULT_SEED,
+    simulator_factory: Callable[[ForecastInputs], FixtureSimulator] | None = None,
 ) -> HorizonForecast:
     if not 1 <= samples <= 1600 or len(gameweeks) > 6 or len(set(gameweeks)) != len(gameweeks):
         raise ValueError("Invalid bounded forecasting horizon.")
@@ -64,10 +66,12 @@ def forecast_horizon(
             ),
         ),
     )
+    if simulator_factory is not None:
+        inputs = simulator_factory(inputs).inputs
     accumulated = ProjectionAccumulator(inputs, inputs.players)
     outcomes: dict[int, dict[int, OutcomeSamples]] = {}
     for gw in gameweeks:
-        model = FixtureSimulator(
+        model = (simulator_factory or FixtureSimulator)(
             replace(inputs, fixtures=tuple(f for f in fixtures if f.gameweek == gw))
         )
         rng = random.Random(seed + gw)

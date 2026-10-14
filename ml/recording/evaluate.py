@@ -33,6 +33,11 @@ def evaluate(captures: list[tuple[dict, dict]], actuals: dict[int, dict]) -> dic
     groups = {
         "all_roster_paired": {"statistical": [], "ml_with_fallbacks": []},
         "direct_ridge_paired": {"statistical": [], "ridge": []},
+        "fixture_component_paired": {
+            "statistical": [],
+            "ridge_with_fallbacks": [],
+            "fixture_components": [],
+        },
     }
     per_gw, exclusions = (
         [],
@@ -79,6 +84,19 @@ def evaluate(captures: list[tuple[dict, dict]], actuals: dict[int, dict]) -> dic
                 direct += 1
                 local["direct_ridge_paired"]["statistical"].append((statistical, observed))
                 local["direct_ridge_paired"]["ridge"].append((ml["expected_points"], observed))
+            component = (
+                record.get("fixture_component", {})
+                .get("predictions", {})
+                .get(str(pid), {})
+                .get(str(gw), {})
+            )
+            if component.get("expected_points") is not None:
+                for name, value in (
+                    ("statistical", statistical),
+                    ("ridge_with_fallbacks", hybrid),
+                    ("fixture_components", component["expected_points"]),
+                ):
+                    local["fixture_component_paired"][name].append((value, observed))
         for group, models in local.items():
             for model, pairs in models.items():
                 groups[group][model].extend(pairs)

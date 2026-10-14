@@ -59,7 +59,14 @@ class RidgeBrowserFixture:
             "supported_next_gw_players": 18,
             "model_version": "browser-fixture-ridge",
             "source_timestamp": NOW.isoformat(),
+            "component_state": "ready",
+            "component_version": "fixture-components-v1-browser",
         }
+
+    def components(self, forecast):
+        return replace(
+            forecast, inputs=replace(forecast.inputs, model_version="fixture-components-v1-browser")
+        )
 
     def player(self, pid, gw, statistical, *, generation=None):
         supported = gw == 7 and statistical["expected_points"] is not None
@@ -99,7 +106,7 @@ def check(page, origin, password, client, output):
         )
     assert page.locator("#assistant-prediction-model").input_value() == "statistical"
     page.locator("#assistant-prediction-model").select_option("ml")
-    assert "1/6 ML" in page.locator("#assistant-prediction-content tbody tr").first.inner_text()
+    assert "1/6 Ridge" in page.locator("#assistant-prediction-content tbody tr").first.inner_text()
     assert "Stat" in page.locator("#assistant-prediction-content tbody tr").first.inner_text()
     assert "80% range" not in page.locator("#assistant-prediction-content thead").inner_text()
     page.locator("#assistant-prediction-model").select_option("difference")
@@ -110,6 +117,16 @@ def check(page, origin, password, client, output):
         .nth(4)
         .inner_text()
         == "1"
+    )
+    page.locator("#assistant-prediction-model").select_option("components")
+    assert "80% range" in page.locator("#assistant-prediction-content thead").inner_text()
+    page.locator("#assistant-prediction-model").select_option("component_difference")
+    assert (
+        page.locator("#assistant-prediction-content tbody tr")
+        .first.locator("td")
+        .nth(4)
+        .inner_text()
+        == "0"
     )
     page.locator("#assistant-prediction-model").select_option("statistical")
     page.locator("#assistant-search").fill("Candidate")
@@ -132,6 +149,14 @@ def check(page, origin, password, client, output):
     assert page.locator(".assistant-pitch").count() == 2
     assert page.locator(".assistant-bench .assistant-player").count() == 8
     assert "last" in page.locator("#assistant-squad-content").inner_text().lower()
+    page.locator("#assistant-planning-model").select_option("components")
+    page.wait_for_function(
+        "() => document.querySelector('#assistant-squad-content').textContent.includes('fixture-components-v1-browser')"
+    )
+    page.locator("#assistant-planning-model").select_option("statistical")
+    page.wait_for_function(
+        "() => document.querySelector('#assistant-squad-content').textContent.includes('Planning: shared-fixtures-v4')"
+    )
     page.get_by_text("Ridge starting XI comparison", exact=True).click()
     assert (
         "Unmultiplied starting XI marginals"
