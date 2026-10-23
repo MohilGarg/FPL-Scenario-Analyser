@@ -1,0 +1,5 @@
+# Research dependencies only; nothing is added to the production environment.
+numpy==2.3.3
+pyarrow==21.0.0
+scikit-learn==1.7.2
+matplotlib==3.10.6

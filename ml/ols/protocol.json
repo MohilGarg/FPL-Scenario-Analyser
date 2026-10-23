@@ -1,0 +1,17 @@
+{
+  "version": "educational-ols-v1",
+  "training_season": "2023-24",
+  "development_train_last_gw": 28,
+  "evaluation_seasons": ["2024-25", "2025-26"],
+  "rolling_observed_gameweeks": 3,
+  "result_buffer_hours": 24,
+  "estimator": "sklearn.linear_model.LinearRegression()",
+  "baseline": "mean points in the last three eligible observed Gameweeks",
+  "examples": [
+    {"season": "2024-25", "gameweek": 20, "name": "Mohamed Salah"},
+    {"season": "2024-25", "gameweek": 20, "name": "Erling Haaland"},
+    {"season": "2024-25", "gameweek": 20, "name": "Cole Palmer"}
+  ],
+  "selection": "Fixed before the first OLS fit; no model search, tuning, clipping or refitting on evaluation seasons.",
+  "evaluation_status": "Both evaluation seasons were exposed in earlier repository experiments; neither is an untouched final holdout."
+}

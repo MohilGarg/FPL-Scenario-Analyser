@@ -1,0 +1,30 @@
+{
+  "feature_names": [
+    "recent_goals_scored",
+    "recent_assists",
+    "recent_expected_goals",
+    "recent_expected_assists",
+    "recent_minutes",
+    "recent_starts",
+    "recent_total_points",
+    "is_defender",
+    "is_midfielder",
+    "is_forward",
+    "days_since_last_match"
+  ],
+  "intercept": 0.17897217632255935,
+  "coefficients": [
+    -0.29961101664347706,
+    -0.03869032988245019,
+    1.5876654082813233,
+    3.0584085368144294,
+    0.04291661035002962,
+    -1.8750124454344927,
+    0.17960807649769733,
+    -0.0884725664575454,
+    0.0913923207362131,
+    0.16966567468149055,
+    -0.0030481366492570447
+  ],
+  "protocol_sha256": "1ba4d4c991816d2650d51b4f68c02bd506a614f377f2720a7ef3c69b59f85afd"
+}

@@ -1,0 +1,12 @@
+feature,coefficient,definition,reason
+recent_goals_scored,-0.29961101664347706,Goals per observed GW,Recent scoring record; may differ from underlying xG.
+recent_assists,-0.03869032988245019,FPL assists per observed GW,Recent credited assists; not identical to xA.
+recent_expected_goals,1.5876654082813233,Official FPL xG per observed GW,Recent quality/quantity of scoring chances.
+recent_expected_assists,3.0584085368144294,Official FPL xA per observed GW,Recent quality/quantity of chances created.
+recent_minutes,0.04291661035002962,Minutes per observed GW,"Recent opportunity to earn points, including non-appearances."
+recent_starts,-1.8750124454344927,Starts per observed GW,"Recent starting role, distinct from substitute minutes."
+recent_total_points,0.17960807649769733,FPL points per observed GW,Simple summary of recent scoring; also the baseline.
+is_defender,-0.0884725664575454,"1 if last eligible record says DEF, else 0",Allows a defensive-position offset.
+is_midfielder,0.0913923207362131,"1 if last eligible record says MID, else 0",Allows a midfield-position offset.
+is_forward,0.16966567468149055,"1 if last eligible record says FWD, else 0",Allows a forward-position offset; GK is reference.
+days_since_last_match,-0.0030481366492570447,Days from last eligible kickoff to deadline,Describes how stale the observed history is.

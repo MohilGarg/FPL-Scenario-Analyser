@@ -1,0 +1,101 @@
+{
+  "rank": 12,
+  "condition_number": 16.206245623305904,
+  "correlations": [
+    {
+      "left": "recent_minutes",
+      "right": "recent_starts",
+      "correlation": 0.9831749536156733
+    },
+    {
+      "left": "recent_minutes",
+      "right": "recent_total_points",
+      "correlation": 0.7683128495717291
+    },
+    {
+      "left": "recent_goals_scored",
+      "right": "recent_expected_goals",
+      "correlation": 0.7587494027759293
+    }
+  ],
+  "training_metrics": {
+    "n": 27877,
+    "mae": 1.0332651832651816,
+    "rmse": 2.0223292604090237,
+    "r2": 0.2773332750083559
+  },
+  "participation": [
+    {
+      "season": "2024-25",
+      "group": "zero",
+      "model": "OLS",
+      "n": 15029,
+      "mae": 0.40749253887569936,
+      "rmse": 0.7210458618014999,
+      "r2": -7813.204270956543
+    },
+    {
+      "season": "2024-25",
+      "group": "zero",
+      "model": "Recent average",
+      "n": 15029,
+      "mae": 0.2616053407855923,
+      "rmse": 0.821594297077441,
+      "r2": -10144.508395439623
+    },
+    {
+      "season": "2024-25",
+      "group": "positive",
+      "model": "OLS",
+      "n": 11069,
+      "mae": 1.9209133621280114,
+      "rmse": 2.939592654356071,
+      "r2": 0.018205215631029725
+    },
+    {
+      "season": "2024-25",
+      "group": "positive",
+      "model": "Recent average",
+      "n": 11069,
+      "mae": 2.1869334778811695,
+      "rmse": 3.2285807175560355,
+      "r2": -0.18432176600061378
+    },
+    {
+      "season": "2025-26",
+      "group": "zero",
+      "model": "OLS",
+      "n": 17476,
+      "mae": 0.38253267671021096,
+      "rmse": 0.6919096814223384,
+      "r2": -8365.921657033326
+    },
+    {
+      "season": "2025-26",
+      "group": "zero",
+      "model": "Recent average",
+      "n": 17476,
+      "mae": 0.25480659189745936,
+      "rmse": 0.874977974051288,
+      "r2": -13379.154519154346
+    },
+    {
+      "season": "2025-26",
+      "group": "positive",
+      "model": "OLS",
+      "n": 11021,
+      "mae": 2.0235287370581587,
+      "rmse": 3.0736939565379124,
+      "r2": -0.039875999971055176
+    },
+    {
+      "season": "2025-26",
+      "group": "positive",
+      "model": "Recent average",
+      "n": 11021,
+      "mae": 2.3445240903729245,
+      "rmse": 3.364209897701431,
+      "r2": -0.24573732460331144
+    }
+  ]
+}

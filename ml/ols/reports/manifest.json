@@ -1,0 +1,87 @@
+{
+  "phase": "evaluate",
+  "protocol": {
+    "version": "educational-ols-v1",
+    "training_season": "2023-24",
+    "development_train_last_gw": 28,
+    "evaluation_seasons": [
+      "2024-25",
+      "2025-26"
+    ],
+    "rolling_observed_gameweeks": 3,
+    "result_buffer_hours": 24,
+    "estimator": "sklearn.linear_model.LinearRegression()",
+    "baseline": "mean points in the last three eligible observed Gameweeks",
+    "examples": [
+      {
+        "season": "2024-25",
+        "gameweek": 20,
+        "name": "Mohamed Salah"
+      },
+      {
+        "season": "2024-25",
+        "gameweek": 20,
+        "name": "Erling Haaland"
+      },
+      {
+        "season": "2024-25",
+        "gameweek": 20,
+        "name": "Cole Palmer"
+      }
+    ],
+    "selection": "Fixed before the first OLS fit; no model search, tuning, clipping or refitting on evaluation seasons.",
+    "evaluation_status": "Both evaluation seasons were exposed in earlier repository experiments; neither is an untouched final holdout."
+  },
+  "protocol_sha256": "1ba4d4c991816d2650d51b4f68c02bd506a614f377f2720a7ef3c69b59f85afd",
+  "code_sha256": {
+    "data.py": "d9d508eeaea2324a1a0bc3634a6906780d0b2216131527d4270260d0f59c408c",
+    "run.py": "0308dc05fe0c7c16b32ed39541e30af72adf68ac7b2e64fed8eb0376583fa912"
+  },
+  "versions": {
+    "python": "3.13.5",
+    "numpy": "2.3.3",
+    "sklearn": "1.7.2"
+  },
+  "train_n": 27877,
+  "evaluation_n": 54595,
+  "train_last_label_ready": "2024-05-20T15:00:00+00:00",
+  "evaluation_first_deadline": "2024-08-24T10:00:00+00:00",
+  "evaluation_status": "Both evaluation seasons were exposed in earlier repository experiments; neither is an untouched final holdout.",
+  "provenance": {
+    "source": {
+      "repository": "vaastav/Fantasy-Premier-League",
+      "revision": "9779cdbc0c07f6c900c2d0c181ddf6bb9c800f88",
+      "seasons": [
+        "2023-24",
+        "2024-25",
+        "2025-26"
+      ],
+      "files": [
+        "gws/merged_gw.csv",
+        "players_raw.csv",
+        "teams.csv",
+        "fixtures.csv"
+      ]
+    },
+    "deadline_sha256": "778b09bc31bb07f5e9d1bd3fa57d2851570826bc53b4852e6c67dadd1659beee",
+    "prepared_sha256": {
+      "match_records.parquet": "5892237d5a33334274edc0e414cf55357e261e665857affc9a1fa050962d2559",
+      "player_gameweeks.parquet": "51645216d8311cc5e2957344421c2448f6f2f492165aed18d721cf170b01f6a9",
+      "quality.parquet": "e977d6e37f2542684055caa88f1af88c66befd15a1718dbc6a1735f198aa9b6b"
+    },
+    "raw_sha256": {
+      "2023-24/gws/merged_gw.csv": "e9c09c8856f1c86b4f920f46ddd5033af83409439dfda53be925df2a3e7c8a9e",
+      "2023-24/players_raw.csv": "43d8cf5efb3d901f2499558c40b392b7f0ee22afe28030f36266ad29024c63d9",
+      "2023-24/teams.csv": "7795f091ccea17fda0752cb07b935e1515b09a9d3f924147997cbf28139edd49",
+      "2023-24/fixtures.csv": "d8521bdbb80edb5141bc17df71bf6026275f2e56fd6a6dc6041b3ae23a39ce6a",
+      "2024-25/gws/merged_gw.csv": "5bbbcba6353b4c72ad273adcc8e3aa451946a826564679788f45b1cb3325b84e",
+      "2024-25/players_raw.csv": "75686051b265cbe7755ac71213ecaad21b26ee1cc46a8bafbba19c39ce894b05",
+      "2024-25/teams.csv": "d10a6db8feca6db9e44a3ba50b15168396667ea387fee9235d6b211c7f598c3b",
+      "2024-25/fixtures.csv": "ce696e187569ca7c45da2562811d3c38f525b58e65575531be37bebd0769ee28",
+      "2025-26/gws/merged_gw.csv": "0d09f1f1cb1b5520ec8e2f25238aa652efe2a263d8ca7cb2b6538b27bf86727d",
+      "2025-26/players_raw.csv": "412ce0172016f8f98f25177dc6de9f3cd2a8ec7a6135f9aa638d7fdee784d67b",
+      "2025-26/teams.csv": "b29df099cb0ad25413e284e53116099b0e0496874f99743dbc0870d8241b46c5",
+      "2025-26/fixtures.csv": "2d7e3950d346df14ca486cb09e9b9ba406d37d943775244eed06cdc021ffb3a9"
+    }
+  }
+}

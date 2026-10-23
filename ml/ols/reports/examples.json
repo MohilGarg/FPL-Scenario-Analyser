@@ -1,0 +1,242 @@
+[
+  {
+    "season": "2024-25",
+    "gameweek": 20,
+    "name": "Mohamed Salah",
+    "actual": 7.0,
+    "baseline": 15.333333333333334,
+    "deadline_utc": "2025-01-04T11:00:00+00:00",
+    "history_latest_ready_utc": "2024-12-30T17:15:00+00:00",
+    "history_gws": 3,
+    "intercept": 0.17897217632255935,
+    "prediction": 7.618449729057662,
+    "contributions": [
+      {
+        "feature": "recent_goals_scored",
+        "value": 1.3333333333333333,
+        "coefficient": -0.29961101664347706,
+        "contribution": -0.39948135552463604
+      },
+      {
+        "feature": "recent_assists",
+        "value": 1.3333333333333333,
+        "coefficient": -0.03869032988245019,
+        "contribution": -0.05158710650993359
+      },
+      {
+        "feature": "recent_expected_goals",
+        "value": 1.4400000000000002,
+        "coefficient": 1.5876654082813233,
+        "contribution": 2.2862381879251057
+      },
+      {
+        "feature": "recent_expected_assists",
+        "value": 0.27666666666666667,
+        "coefficient": 3.0584085368144294,
+        "contribution": 0.8461596951853255
+      },
+      {
+        "feature": "recent_minutes",
+        "value": 88.66666666666667,
+        "coefficient": 0.04291661035002962,
+        "contribution": 3.805272784369293
+      },
+      {
+        "feature": "recent_starts",
+        "value": 1.0,
+        "coefficient": -1.8750124454344927,
+        "contribution": -1.8750124454344927
+      },
+      {
+        "feature": "recent_total_points",
+        "value": 15.333333333333334,
+        "coefficient": 0.17960807649769733,
+        "contribution": 2.7539905062980257
+      },
+      {
+        "feature": "is_defender",
+        "value": 0.0,
+        "coefficient": -0.0884725664575454,
+        "contribution": -0.0
+      },
+      {
+        "feature": "is_midfielder",
+        "value": 1.0,
+        "coefficient": 0.0913923207362131,
+        "contribution": 0.0913923207362131
+      },
+      {
+        "feature": "is_forward",
+        "value": 0.0,
+        "coefficient": 0.16966567468149055,
+        "contribution": 0.0
+      },
+      {
+        "feature": "days_since_last_match",
+        "value": 5.739583333333333,
+        "coefficient": -0.0030481366492570447,
+        "contribution": -0.017495034309798246
+      }
+    ]
+  },
+  {
+    "season": "2024-25",
+    "gameweek": 20,
+    "name": "Erling Haaland",
+    "actual": 13.0,
+    "baseline": 3.3333333333333335,
+    "deadline_utc": "2025-01-04T11:00:00+00:00",
+    "history_latest_ready_utc": "2024-12-30T14:30:00+00:00",
+    "history_gws": 3,
+    "intercept": 0.17897217632255935,
+    "prediction": 3.9939818242177143,
+    "contributions": [
+      {
+        "feature": "recent_goals_scored",
+        "value": 0.3333333333333333,
+        "coefficient": -0.29961101664347706,
+        "contribution": -0.09987033888115901
+      },
+      {
+        "feature": "recent_assists",
+        "value": 0.0,
+        "coefficient": -0.03869032988245019,
+        "contribution": -0.0
+      },
+      {
+        "feature": "recent_expected_goals",
+        "value": 0.6,
+        "coefficient": 1.5876654082813233,
+        "contribution": 0.9525992449687939
+      },
+      {
+        "feature": "recent_expected_assists",
+        "value": 0.07333333333333333,
+        "coefficient": 3.0584085368144294,
+        "contribution": 0.22428329269972483
+      },
+      {
+        "feature": "recent_minutes",
+        "value": 90.0,
+        "coefficient": 0.04291661035002962,
+        "contribution": 3.8624949315026655
+      },
+      {
+        "feature": "recent_starts",
+        "value": 1.0,
+        "coefficient": -1.8750124454344927,
+        "contribution": -1.8750124454344927
+      },
+      {
+        "feature": "recent_total_points",
+        "value": 3.3333333333333335,
+        "coefficient": 0.17960807649769733,
+        "contribution": 0.5986935883256578
+      },
+      {
+        "feature": "is_defender",
+        "value": 0.0,
+        "coefficient": -0.0884725664575454,
+        "contribution": -0.0
+      },
+      {
+        "feature": "is_midfielder",
+        "value": 0.0,
+        "coefficient": 0.0913923207362131,
+        "contribution": 0.0
+      },
+      {
+        "feature": "is_forward",
+        "value": 1.0,
+        "coefficient": 0.16966567468149055,
+        "contribution": 0.16966567468149055
+      },
+      {
+        "feature": "days_since_last_match",
+        "value": 5.854166666666667,
+        "coefficient": -0.0030481366492570447,
+        "contribution": -0.017844299967525616
+      }
+    ]
+  },
+  {
+    "season": "2024-25",
+    "gameweek": 20,
+    "name": "Cole Palmer",
+    "actual": 10.0,
+    "baseline": 5.0,
+    "deadline_utc": "2025-01-04T11:00:00+00:00",
+    "history_latest_ready_utc": "2024-12-31T19:45:00+00:00",
+    "history_gws": 3,
+    "intercept": 0.17897217632255935,
+    "prediction": 4.424181753889247,
+    "contributions": [
+      {
+        "feature": "recent_goals_scored",
+        "value": 0.3333333333333333,
+        "coefficient": -0.29961101664347706,
+        "contribution": -0.09987033888115901
+      },
+      {
+        "feature": "recent_assists",
+        "value": 0.0,
+        "coefficient": -0.03869032988245019,
+        "contribution": -0.0
+      },
+      {
+        "feature": "recent_expected_goals",
+        "value": 0.19000000000000003,
+        "coefficient": 1.5876654082813233,
+        "contribution": 0.30165642757345146
+      },
+      {
+        "feature": "recent_expected_assists",
+        "value": 0.35333333333333333,
+        "coefficient": 3.0584085368144294,
+        "contribution": 1.080637683007765
+      },
+      {
+        "feature": "recent_minutes",
+        "value": 90.0,
+        "coefficient": 0.04291661035002962,
+        "contribution": 3.8624949315026655
+      },
+      {
+        "feature": "recent_starts",
+        "value": 1.0,
+        "coefficient": -1.8750124454344927,
+        "contribution": -1.8750124454344927
+      },
+      {
+        "feature": "recent_total_points",
+        "value": 5.0,
+        "coefficient": 0.17960807649769733,
+        "contribution": 0.8980403824884866
+      },
+      {
+        "feature": "is_defender",
+        "value": 0.0,
+        "coefficient": -0.0884725664575454,
+        "contribution": -0.0
+      },
+      {
+        "feature": "is_midfielder",
+        "value": 1.0,
+        "coefficient": 0.0913923207362131,
+        "contribution": 0.0913923207362131
+      },
+      {
+        "feature": "is_forward",
+        "value": 0.0,
+        "coefficient": 0.16966567468149055,
+        "contribution": 0.0
+      },
+      {
+        "feature": "days_since_last_match",
+        "value": 4.635416666666667,
+        "coefficient": -0.0030481366492570447,
+        "contribution": -0.014129383426243593
+      }
+    ]
+  }
+]
