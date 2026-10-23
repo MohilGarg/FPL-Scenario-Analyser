@@ -1,0 +1,22 @@
+{
+  "purpose": "diagnostics_only_no_refit",
+  "diagnostics_code_sha256": "998c31cf7da03b4a1b6fd42164b5d22c713b8272de2d3bc8f2fabc818517a83d",
+  "prediction_sha256": "880e140bb99781b41a02bf1303b839fb5857e2fd6984546518f64103aa06237f",
+  "n": 54595,
+  "high_minutes_threshold": 60,
+  "band_edges": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    8
+  ],
+  "existing_artifact_sha256": {
+    "protocol.json": "1ba4d4c991816d2650d51b4f68c02bd506a614f377f2720a7ef3c69b59f85afd",
+    "reports/model.json": "3ef399352262f43da746a3ab471422a009332e92fa232ef6500e126369c42a73",
+    "reports/overall_metrics.csv": "ae6ca80b95bc9bfd59dd7e87e797ee93ca5f3187d6cd54c360131db7bf6c7d8a"
+  }
+}

@@ -40,6 +40,36 @@ are offline, read the resulting Parquet files, recheck provenance and never writ
 to those inputs. `--data-dir PATH` selects another prepared cache (with its sibling
 `raw/` provenance cache); it does not change the fixed season splits.
 
+## Short learning walkthrough and additional diagnostics
+
+```powershell
+.\ml\.venv\Scripts\python.exe -m ml.ols.walkthrough
+.\ml\.venv\Scripts\python.exe -m ml.ols.diagnostics
+.\ml\.venv\Scripts\python.exe -m unittest ml.ols.test_ols ml.ols.test_diagnostics -v
+```
+
+The under-100-line `walkthrough.py` shows one feature dictionary becoming a row of
+X, the separate actual-points vector y, and the original OLS estimation step. It
+reproduces the existing 2023/24 fit in memory, checks its intercept and coefficients
+against the saved model, and prints every contribution to the preselected Salah
+prediction. It reuses the existing preparation, chronological split, feature matrix
+and explanation functions. It writes no files and performs no evaluation-season fit.
+
+`diagnostics.py` reads the existing `outputs/evaluate/predictions.csv`; it does not
+estimate coefficients. It compares errors for all observations with those having
+**at least 60 historical minutes per observed GW**, and plots mean actual versus
+mean predicted points within fixed predicted-points bands. The minutes restriction
+uses the existing pre-deadline regressor and retains future non-appearances. Band
+counts and unpredicted/empty groups remain explicit. Both choices are descriptive,
+not a search for better historical performance.
+
+Read [the additional diagnostics](reports/additional-diagnostics/README.md) for the
+plots, tables and econometric interpretation. All new outputs go into that separate
+directory. The original model, protocol, predictions and historical report remain
+unchanged. On a fresh checkout the ignored prediction export must first be obtained
+from the original experiment or reproduced with the original `evaluate` command;
+the diagnostics command never silently reruns training to create it.
+
 ## What happens in the experiment
 
 1. **Fix the design:** `protocol.json` declares the split, three-GW window and three
@@ -134,6 +164,9 @@ R² compares squared error with a constant evaluation-mean prediction: 1 is perf
 | `data.py` | Deadline checks, 11-feature construction, keyed alignment, chronological splits |
 | `run.py` | The OLS fit, baseline, errors, coefficients, contribution tables and plots |
 | `test_ols.py` | Lightweight offline timing/alignment/calculation regression tests |
+| `walkthrough.py` | Read-only, under-100-line demonstration of X, y, coefficient estimation and one prediction |
+| `diagnostics.py`, `test_diagnostics.py` | Saved-prediction diagnostics and focused grouping checks |
+| `reports/additional-diagnostics/` | High-historical-minutes accuracy and predicted-band calibration plots/tables |
 | `protocol.json` | Fixed experiment decisions and preselected examples |
 | `reports/REPORT.md` | Reviewable completed historical report |
 | `reports/overall_metrics.csv`, `reports/gameweek_metrics.csv` | Full-precision scores; n=0/undefined GW1 is explicit |
