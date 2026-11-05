@@ -45,6 +45,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # Capture code is pinned independently of the production application.
+          ref: cffb0b6d43471775ed54aa0e6ed087c7c418752f
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:
@@ -55,17 +57,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RECORD_MODE: ${{ inputs.mode || 'record' }}
-        run: python -m ml.recording "$RECORD_MODE"
+        run: env -u GITHUB_SHA python -m ml.recording "$RECORD_MODE"
       - name: Compare official-final Gameweeks
         if: success() && inputs.mode != 'check'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python -m ml.recording evaluate --new-actuals-only
+        run: env -u GITHUB_SHA python -m ml.recording evaluate --new-actuals-only
       - name: Compare equivalent 24-hour cutoffs
         if: success() && inputs.mode != 'check'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python -m ml.recording evaluate --new-actuals-only --cutoff t24h
+        run: env -u GITHUB_SHA python -m ml.recording evaluate --new-actuals-only --cutoff t24h
       - name: Recovery notice
         if: failure()
         run: |
