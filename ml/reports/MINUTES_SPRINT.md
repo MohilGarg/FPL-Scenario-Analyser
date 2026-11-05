@@ -165,6 +165,10 @@ python -m ml.selection_inputs
 ```
 
 The exact locked artifacts and embedded model hashes are saved with future challenger captures.
+The first original fitted capture is now [published and verified](FITTED_CAPTURE_VERIFICATION_SPRINT.json):
+GW10, 5 Nov 14:08 UTC, clean commit `c9fe624`, 670 players in each of six internal methods.
+Workflow-only PR #3 activates that same pin independently of the draft application PR. This
+capture has no settled outcome yet and does not count toward the eight-deadline confirmation gate.
 Only their next-GW predictions are added to the durable release to bound storage. All six live
 views, public analytics and server-side Assistant authentication retain their existing boundary.
 Selectors are request-local; unsupported future means prevent complete planning totals.

@@ -1,6 +1,53 @@
 # Collection and deployment status — 5 November 2026
 
-Read-only audit completed at **13:44 UTC**. This separates collection activation,
+## Final activation update
+
+[PR #3](https://github.com/MohilGarg/FPL-Scenario-Analyser/pull/3) merged at **14:05:57 UTC**
+as `a9a3be7d47b62ccd821d7c19bf710eb4b4a01c79`. It changes only the recording workflow,
+pinning **`c9fe62487ff44b927d7364bb72c58a906253c5f0`**. The statistical application default
+and draft research/application PR #1 are unchanged. Both PR #3 validation jobs passed.
+
+[Activated run 42041732410](https://github.com/MohilGarg/FPL-Scenario-Analyser/actions/runs/42041732410)
+actually checked out `c9fe624`, passed **95 runtime/recording/selection tests**, and completed
+the record/evaluation steps successfully at **14:06 UTC**, with no current due slot or
+supplemental window and no errors. This is a push-triggered execution, not an unattended
+scheduled-band capture. PR #1's application/research jobs also passed on the pinned implementation
+([run 42041123139](https://github.com/MohilGarg/FPL-Scenario-Analyser/actions/runs/42041123139)).
+
+A separate original six-method GW10 capture was generated from that **clean committed checkout**
+and published as [rolling 20261105T140817Z](https://github.com/MohilGarg/FPL-Scenario-Analyser/releases/tag/fpl-2026-27-gw10-rolling-20261105T140817Z-v2).
+Independent download verified GitHub immutability, all hashes, asset size and publication time;
+the downloaded bytes exactly equal the original generated candidate. No earlier release was changed.
+An offline replay reproduced **670 players and all six forecast methods exactly**, including
+challenger fixtures and embedded metadata, without network or fitting.
+
+| Final sprint capture | Verified value |
+| --- | --- |
+| Feature cutoff | 5 Nov 14:04:47.253603 UTC |
+| Capture completion | 5 Nov 14:08:17.866751 UTC |
+| Durable publication | 5 Nov 14:08:49 UTC |
+| Target deadline / lead | 6 Nov 18:30 UTC / 28.362 hours |
+| Bundle | 2,758,728 bytes; SHA256 `50bfa8a03d219feafb0fa7d0bd36e729e7944af6a5cfe6f62d35c023f6a1e049` |
+| Internal methods | Statistical, Ridge with labelled fallbacks, fixture components, original minutes v1, fitted minutes, tuned empirical minutes |
+| Coverage | 670 players in each method; both new methods ready |
+| Extra durable challenger horizon | GW10 only, bounding storage; live conditional horizon remains separate |
+| External coverage | Official `ep_next`, FPL Cat and Sideline each 670 players |
+| Source times | Cat computed 13:55:07/retrieved 14:03:25; Sideline computed 03:35:03/retrieved 14:04:14 UTC |
+
+The capture is explicitly labelled manual and outside automatic start bands. It is eligible
+under the future T-24h limit but would be **4.362 hours old** at that limit if no later capture
+arrives. Source computation freshness is distinct; Sideline's original computation is older.
+Neither this new manual proof nor the green activated run establishes reliable unattended
+execution in the narrow bands. Previously observed multi-hour cron gaps still apply.
+
+The [public verification aggregate](FITTED_CAPTURE_VERIFICATION_SPRINT.json) records commit/model
+hashes, per-method coverage and source times. Local originals, download receipts and replay logs
+remain ignored under `ml/artifacts/fitted-capture-20261105/` and `snapshots/ml/checks/`.
+
+## Earlier activation audit (13:44 UTC snapshot)
+
+The following read-only audit was completed at **13:44 UTC** and is retained to distinguish
+the first activation from the later fitted-model pin above. This separates collection activation,
 remote evidence, PR validation and application deployment. The new fitted models in
 the working tree are not implied to be active merely because collection is active.
 

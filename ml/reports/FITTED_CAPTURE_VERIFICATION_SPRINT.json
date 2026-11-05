@@ -1,0 +1,90 @@
+{
+  "url": "https://github.com/MohilGarg/FPL-Scenario-Analyser/releases/tag/fpl-2026-27-gw10-rolling-20261105T140817Z-v2",
+  "tag": "fpl-2026-27-gw10-rolling-20261105T140817Z-v2",
+  "immutable": true,
+  "bundle_bytes": 2758728,
+  "captured_at": "2026-11-05T14:08:17.866751+00:00",
+  "deadline": "2026-11-06T18:30:00+00:00",
+  "code_commit": "c9fe62487ff44b927d7364bb72c58a906253c5f0",
+  "working_tree_dirty": false,
+  "challenger_status": {
+    "empirical_minutes": {
+      "error": null,
+      "state": "ready"
+    },
+    "fitted_minutes": {
+      "error": null,
+      "state": "ready"
+    }
+  },
+  "challenger_model_sha256": {
+    "empirical_minutes": "fa34160afe1a0348e1dfc9840968e00652453296a9eb5cc6b73575c4a4595eb1",
+    "fitted_minutes": "95e38d4db3ef37d9729e1cc91507172f0a5a862fe1e1c32c8364a6ed4e4eee43"
+  },
+  "roster": 670,
+  "bundle_sha256": "50bfa8a03d219feafb0fa7d0bd36e729e7944af6a5cfe6f62d35c023f6a1e049",
+  "feature_asof_utc": "2026-11-05T14:04:47.253603+00:00",
+  "durably_published_at": "2026-11-05T14:08:49Z",
+  "context": {
+    "event": "explicit_manual_fitted_activation_capture_outside_automatic_bands",
+    "source_code_sha256": "394b4f57e5339193f80026e4e64d23dae3b61aecb2f0f5c02fd9d0b6e53b4b89"
+  },
+  "capture_lead_hours": 28.36170368027778,
+  "methods": [
+    "statistical",
+    "ridge",
+    "fixture_components",
+    "minutes_states_v1",
+    "fitted_minutes",
+    "empirical_minutes"
+  ],
+  "method_rows": {
+    "statistical": 670,
+    "ridge_with_fallbacks": 670,
+    "fixture_components": 670,
+    "minutes_states_v1": 670,
+    "empirical_minutes": 670,
+    "fitted_minutes": 670
+  },
+  "challenger_archived_horizon": {
+    "empirical_minutes": [
+      10
+    ],
+    "fitted_minutes": [
+      10
+    ]
+  },
+  "external_sources": [
+    {
+      "source": "fpl_cat",
+      "source_version": "api/v1",
+      "computed_at": "2026-11-05T13:55:07.126000+00:00",
+      "retrieved_at": "2026-11-05T14:03:25.434466+00:00",
+      "redistribution_allowed": true,
+      "rows": 670
+    },
+    {
+      "source": "sideline_quant",
+      "source_version": "1.0",
+      "computed_at": "2026-11-05T03:35:03+00:00",
+      "retrieved_at": "2026-11-05T14:04:14.757150+00:00",
+      "redistribution_allowed": true,
+      "rows": 670
+    }
+  ],
+  "official_expected_points": {
+    "rows": 670,
+    "computed_at": null,
+    "retrieved_at": "2026-11-05T14:03:14.867379+00:00"
+  },
+  "downloaded_original_bytes_equal": true,
+  "publication_and_hash_verification": "GitHubStore fetched the newly published immutable release to a separate directory and validate_release checked independent asset digest, size, upload/publication times and all embedded checksums.",
+  "cutoff_limit": "Explicit original manual capture outside automatic start bands; not a fresh T24h/final capture or proof of unattended cadence.",
+  "offline_replay": {
+    "verified": true,
+    "players": 670,
+    "methods": 6,
+    "samples": 192,
+    "result": "All original predictions, fixture rows and challenger metadata reproduced exactly without network or fitting; independently downloaded bundle bytes equal the replayed original."
+  }
+}

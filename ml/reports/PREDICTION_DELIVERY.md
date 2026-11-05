@@ -2,12 +2,14 @@
 
 **Follow-up sprint:** [fitted minutes and controlled points evidence](MINUTES_SPRINT.md),
 [selection sources and disagreements](SELECTION_INPUTS_SPRINT.md), and
-[verified collection activation](COLLECTION_STATUS_SPRINT.md). PR #2 is merged; collection is
+[verified collection activation](COLLECTION_STATUS_SPRINT.md). PRs #2 and #3 are merged; collection is
 active independently of the draft research PR. The new selectable private fitted/empirical
 challengers improve historical minutes, but do not establish better candidate points on the
 three original captured deadlines. The statistical default and promotion rule are unchanged.
-Current local validation passes **364 application tests, 93 ML tests**, the frontend build,
+Current local validation passes **364 application tests, 94 ML tests**, the frontend build,
 JavaScript syntax, changed-file lint and actual Edge desktop/mobile/theme/auth interactions.
+The new immutable 670-player GW10 release includes all six internal methods and replays exactly
+offline; the main collector has executed the fitted-model pin successfully with 95 runtime checks.
 The earlier delivery measurements below are retained as the original sprint record.
 
 The working branch implements prospective evidence, external ingestion, private minutes-state

@@ -59,6 +59,40 @@ class MinutesTrainingTests(unittest.TestCase):
         self.assertAlmostEqual(estimate.no_show_probability, 0.2, delta=0.02)
         self.assertLess(estimate.start_probability, 0.5)
 
+    def test_portable_probabilities_match_scikit_learn_with_temperature(self):
+        from copy import deepcopy
+
+        import numpy as np
+        from sklearn.linear_model import LogisticRegression
+
+        from fpl_forfeit.assistant.minutes_model import FEATURES, MinutesModel, history_features
+
+        original = MinutesModel()
+        player = catalogue().players[3]
+        histories = (
+            [{"minutes": 90, "starts": 1}],
+            [{"minutes": m, "starts": int(m >= 45)} for m in (90, 70, 0, 15, 65)],
+        )
+        for temperature in (0.85, 1.0, 1.15):
+            data = deepcopy(original.data)
+            data["config"]["temperature"] = temperature
+            model = MinutesModel(data=data)
+            reference = LogisticRegression()
+            reference.classes_ = np.arange(5)
+            reference.n_features_in_ = len(FEATURES)
+            reference.coef_ = np.asarray(data["model"]["coef"]) / temperature
+            reference.intercept_ = np.asarray(data["model"]["intercept"]) / temperature
+            for history in histories:
+                features = history_features(player, history)
+                x = np.asarray([[features[name] for name in FEATURES]])
+                x = (x - data["model"]["mean"]) / data["model"]["scale"]
+                np.testing.assert_allclose(
+                    model.state_probabilities(player, history),
+                    reference.predict_proba(x)[0],
+                    rtol=1e-12,
+                    atol=1e-12,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
