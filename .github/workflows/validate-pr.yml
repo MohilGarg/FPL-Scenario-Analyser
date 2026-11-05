@@ -1,0 +1,51 @@
+name: Validate application and forecast research
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'ml/**'
+      - 'frontend/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install '.[test]'
+      - run: python -m unittest discover -s tests -v
+      - run: python frontend/build.py --output frontend/dist
+        env:
+          API_BASE_URL: https://fpl-scenario-analyser-api.onrender.com
+      - run: node --check frontend/src/assistant.js
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: ml/training/requirements.lock.txt
+      - run: python -m pip install -r ml/training/requirements.lock.txt
+      - run: python -c "from pathlib import Path; Path('ml/artifacts').mkdir(exist_ok=True)"
+      - run: python -m unittest discover -s ml/tests -v
