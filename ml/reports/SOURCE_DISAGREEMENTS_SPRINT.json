@@ -1,0 +1,515 @@
+{
+  "schema_version": 1,
+  "scope": "Descriptive pre-deadline GW10 disagreement, not forecast accuracy. No outcomes are read. Original archived internal simulations and source rows only, except explicitly named replayed raw-v1 proposals.",
+  "release_url": "https://github.com/MohilGarg/FPL-Scenario-Analyser/releases/tag/fpl-2026-27-gw10-rolling-20261105T123201Z-v2",
+  "record_sha256": "6b0147496af06472050de7e714a45b304753c9c317a64722986bff0c88b1836d",
+  "captured_at": "2026-11-05T12:32:01.146404+00:00",
+  "feature_asof_utc": "2026-11-05T12:31:09.591512+00:00",
+  "deadline_utc": "2026-11-06T18:30:00+00:00",
+  "generation_commit": "cffb0b6d43471775ed54aa0e6ed087c7c418752f",
+  "common_rows": 670,
+  "selection_candidate_rows": 166,
+  "selection_candidate_definition": "Exactly five preceding cutoff-safe fixture records, mean minutes>=60 and start rate>=.8; independent of target outcome/current forecast.",
+  "source_times": {
+    "fpl_cat": {
+      "computed_at": "2026-11-05T09:15:08.225000+00:00",
+      "retrieved_at": "2026-11-05T12:30:17.361931+00:00"
+    },
+    "sideline_quant": {
+      "computed_at": "2026-11-05T03:35:03+00:00",
+      "retrieved_at": "2026-11-05T12:30:44.611496+00:00"
+    }
+  },
+  "missing_sources": [],
+  "raw_minutes_v1_replay_rows": 670,
+  "raw_minutes_v1_replay_fallbacks": 0,
+  "raw_minutes_v1_code_sha256": "d036d2aa3bffc3cd03f14430b48f0211160e02baff1e978bc050a3309fb3ee20",
+  "analysis_code_sha256": "f805a7066dcc8e7bfd3330282d7cb84eef668da50e815aecb146ab8d03ed0453",
+  "groups": {
+    "all_common": {
+      "point_disagreement": {
+        "fpl_cat_minus_statistical": {
+          "n": 670,
+          "first_mean": 1.1992848258706468,
+          "second_mean": 1.3874328358208956,
+          "mean_second_minus_first": 0.18814800995024877,
+          "mean_absolute_disagreement": 0.39876492537313435,
+          "root_mean_squared_disagreement": 0.6250765049568967,
+          "pearson_correlation": 0.9138719122640057,
+          "share_abs_difference_ge2": 0.007462686567164179
+        },
+        "sideline_quant_minus_statistical": {
+          "n": 670,
+          "first_mean": 1.1992848258706468,
+          "second_mean": 1.3583425373134328,
+          "mean_second_minus_first": 0.15905771144278605,
+          "mean_absolute_disagreement": 0.42748111940298505,
+          "root_mean_squared_disagreement": 0.6766912548826839,
+          "pearson_correlation": 0.8972963359155683,
+          "share_abs_difference_ge2": 0.013432835820895522
+        },
+        "fpl_cat_minus_minutes_v1": {
+          "n": 670,
+          "first_mean": 1.2345926616915424,
+          "second_mean": 1.3874328358208956,
+          "mean_second_minus_first": 0.15284017412935325,
+          "mean_absolute_disagreement": 0.33857400497512435,
+          "root_mean_squared_disagreement": 0.541984241839906,
+          "pearson_correlation": 0.9350536913047288,
+          "share_abs_difference_ge2": 0.004477611940298508
+        },
+        "sideline_quant_minus_minutes_v1": {
+          "n": 670,
+          "first_mean": 1.2345926616915424,
+          "second_mean": 1.3583425373134328,
+          "mean_second_minus_first": 0.12374987562189053,
+          "mean_absolute_disagreement": 0.37811614427860696,
+          "root_mean_squared_disagreement": 0.6061657624441471,
+          "pearson_correlation": 0.9170533132967714,
+          "share_abs_difference_ge2": 0.005970149253731343
+        },
+        "sideline_quant_minus_fpl_cat": {
+          "n": 670,
+          "first_mean": 1.3874328358208956,
+          "second_mean": 1.3583425373134328,
+          "mean_second_minus_first": -0.029090298507462694,
+          "mean_absolute_disagreement": 0.20928492537313434,
+          "root_mean_squared_disagreement": 0.3204175556755195,
+          "pearson_correlation": 0.9767769710704959,
+          "share_abs_difference_ge2": 0.0
+        }
+      },
+      "selection_disagreement": {
+        "sideline_minus_archived_minutes_v1_expected_minutes": {
+          "n": 670,
+          "first_mean": 26.988580534825868,
+          "second_mean": 31.08117183956893,
+          "mean_second_minus_first": 4.092591304743056,
+          "mean_absolute_disagreement": 7.009489834437714,
+          "root_mean_squared_disagreement": 12.364709065481298,
+          "pearson_correlation": 0.9369595473211948,
+          "share_abs_difference_ge2": 0.5746268656716418
+        },
+        "sideline_minus_archived_minutes_v1_start_probability": {
+          "n": 670,
+          "first_mean": 0.3155550373134328,
+          "second_mean": 0.3297345900828194,
+          "mean_second_minus_first": 0.014179552769386556,
+          "mean_absolute_disagreement": 0.07665777512925014,
+          "root_mean_squared_disagreement": 0.13836458163518753,
+          "pearson_correlation": 0.9328847423338077,
+          "share_abs_difference_ge2": 0.0
+        },
+        "sideline_minus_archived_minutes_v1_appearance_probability": {
+          "n": 670,
+          "first_mean": 0.3999844527363184,
+          "second_mean": 0.4605040506474377,
+          "mean_second_minus_first": 0.060519597911119306,
+          "mean_absolute_disagreement": 0.09719199333842163,
+          "root_mean_squared_disagreement": 0.15839771937495542,
+          "pearson_correlation": 0.9336789459890599,
+          "share_abs_difference_ge2": 0.0
+        },
+        "sideline_minus_replayed_raw_v1_start60": {
+          "n": 670,
+          "first_mean": 0.34830092413922864,
+          "second_mean": 0.3068068464503565,
+          "mean_second_minus_first": -0.041494077688872144,
+          "mean_absolute_disagreement": 0.09083064646275085,
+          "root_mean_squared_disagreement": 0.1310664025787067,
+          "pearson_correlation": 0.9397951854065807,
+          "share_abs_difference_ge2": 0.0
+        },
+        "archived_simulation_minus_replayed_raw_v1_minutes": {
+          "n": 670,
+          "first_mean": 30.879126869712643,
+          "second_mean": 26.988580534825868,
+          "mean_second_minus_first": -3.8905463348867713,
+          "mean_absolute_disagreement": 4.266223504774478,
+          "root_mean_squared_disagreement": 6.513471333931828,
+          "pearson_correlation": 0.9865496537758882,
+          "share_abs_difference_ge2": 0.4791044776119403
+        },
+        "archived_simulation_minus_replayed_raw_v1_start": {
+          "n": 670,
+          "first_mean": 0.3613899578790202,
+          "second_mean": 0.3155550373134328,
+          "mean_second_minus_first": -0.0458349205655873,
+          "mean_absolute_disagreement": 0.05099795828748161,
+          "root_mean_squared_disagreement": 0.07741124585870283,
+          "pearson_correlation": 0.986626310536718,
+          "share_abs_difference_ge2": 0.0
+        },
+        "archived_simulation_minus_replayed_raw_v1_sixty": {
+          "n": 670,
+          "first_mean": 0.34843390170283345,
+          "second_mean": 0.3063355099502487,
+          "mean_second_minus_first": -0.04209839175258469,
+          "mean_absolute_disagreement": 0.047497237162839934,
+          "root_mean_squared_disagreement": 0.07245573401574543,
+          "pearson_correlation": 0.9877071980394269,
+          "share_abs_difference_ge2": 0.0
+        },
+        "archived_simulation_minus_replayed_raw_v1_appearance": {
+          "n": 670,
+          "first_mean": 0.4546468845774322,
+          "second_mean": 0.3999844527363184,
+          "mean_second_minus_first": -0.0546624318411138,
+          "mean_absolute_disagreement": 0.058153847975361425,
+          "root_mean_squared_disagreement": 0.08838170322285836,
+          "pearson_correlation": 0.9820290237024247,
+          "share_abs_difference_ge2": 0.0
+        }
+      },
+      "sideline_minus_archived_minutes_v1_components": {
+        "appearance": {
+          "n": 670,
+          "first_mean": 0.7063199626865672,
+          "second_mean": 0.7687632835820896,
+          "mean_second_minus_first": 0.06244332089552238,
+          "mean_absolute_disagreement": 0.15533284825870647,
+          "root_mean_squared_disagreement": 0.2611205279224678,
+          "pearson_correlation": 0.9414761138302046,
+          "share_abs_difference_ge2": 0.0
+        },
+        "goals": {
+          "n": 670,
+          "first_mean": 0.1760027985074627,
+          "second_mean": 0.2102155223880597,
+          "mean_second_minus_first": 0.03421272388059701,
+          "mean_absolute_disagreement": 0.08916536069651741,
+          "root_mean_squared_disagreement": 0.1660115293457823,
+          "pearson_correlation": 0.8917849851480835,
+          "share_abs_difference_ge2": 0.0
+        },
+        "assists": {
+          "n": 670,
+          "first_mean": 0.08010727611940298,
+          "second_mean": 0.1139820895522388,
+          "mean_second_minus_first": 0.033874813432835826,
+          "mean_absolute_disagreement": 0.052260634328358216,
+          "root_mean_squared_disagreement": 0.10026706697224377,
+          "pearson_correlation": 0.8401472909197008,
+          "share_abs_difference_ge2": 0.0
+        },
+        "clean_sheets": {
+          "n": 670,
+          "first_mean": 0.2123134328358209,
+          "second_mean": 0.18213432835820895,
+          "mean_second_minus_first": -0.030179104477611945,
+          "mean_absolute_disagreement": 0.08560139303482588,
+          "root_mean_squared_disagreement": 0.1747273952193321,
+          "pearson_correlation": 0.8796022655196668,
+          "share_abs_difference_ge2": 0.0
+        },
+        "conceded": {
+          "n": 670,
+          "first_mean": -0.05506840796019901,
+          "second_mean": -0.07948298507462687,
+          "mean_second_minus_first": -0.02441457711442786,
+          "mean_absolute_disagreement": 0.034481467661691544,
+          "root_mean_squared_disagreement": 0.0982683145678705,
+          "pearson_correlation": 0.8746703503579599,
+          "share_abs_difference_ge2": 0.0
+        },
+        "saves": {
+          "n": 670,
+          "first_mean": 0.016985385572139303,
+          "second_mean": 0.019648358208955226,
+          "mean_second_minus_first": 0.0026629726368159203,
+          "mean_absolute_disagreement": 0.00891247512437811,
+          "root_mean_squared_disagreement": 0.06171481331683806,
+          "pearson_correlation": 0.8666291069328094,
+          "share_abs_difference_ge2": 0.0
+        },
+        "defensive": {
+          "n": 670,
+          "first_mean": 0.05561256218905472,
+          "second_mean": 0.11972000000000001,
+          "mean_second_minus_first": 0.06410743781094527,
+          "mean_absolute_disagreement": 0.07076858208955224,
+          "root_mean_squared_disagreement": 0.1290498671709216,
+          "pearson_correlation": 0.8002327073319284,
+          "share_abs_difference_ge2": 0.0
+        },
+        "cards": {
+          "n": 670,
+          "first_mean": -0.047147077114427866,
+          "second_mean": -0.06291298507462686,
+          "mean_second_minus_first": -0.015765907960199006,
+          "mean_absolute_disagreement": 0.028490833333333333,
+          "root_mean_squared_disagreement": 0.04944587430514467,
+          "pearson_correlation": 0.7928552875979293,
+          "share_abs_difference_ge2": 0.0
+        },
+        "own_goals": {
+          "n": 670,
+          "first_mean": 0.0,
+          "second_mean": -0.0058564179104477615,
+          "mean_second_minus_first": -0.0058564179104477615,
+          "mean_absolute_disagreement": 0.0058564179104477615,
+          "root_mean_squared_disagreement": 0.014181714103921751,
+          "pearson_correlation": null,
+          "share_abs_difference_ge2": 0.0
+        },
+        "bonus": {
+          "n": 670,
+          "first_mean": 0.08946672885572139,
+          "second_mean": 0.09082985074626866,
+          "mean_second_minus_first": 0.0013631218905472637,
+          "mean_absolute_disagreement": 0.040412002487562194,
+          "root_mean_squared_disagreement": 0.06639159876761193,
+          "pearson_correlation": 0.8823369732330915,
+          "share_abs_difference_ge2": 0.0
+        }
+      }
+    },
+    "fixed_selection_candidates": {
+      "point_disagreement": {
+        "fpl_cat_minus_statistical": {
+          "n": 166,
+          "first_mean": 3.100652610441767,
+          "second_mean": 3.3086144578313252,
+          "mean_second_minus_first": 0.20796184738955825,
+          "mean_absolute_disagreement": 0.5711270080321286,
+          "root_mean_squared_disagreement": 0.7517496388112277,
+          "pearson_correlation": 0.6899314663728826,
+          "share_abs_difference_ge2": 0.0
+        },
+        "sideline_quant_minus_statistical": {
+          "n": 166,
+          "first_mean": 3.100652610441767,
+          "second_mean": 3.231140361445783,
+          "mean_second_minus_first": 0.13048775100401608,
+          "mean_absolute_disagreement": 0.6502846385542168,
+          "root_mean_squared_disagreement": 0.8346239414608465,
+          "pearson_correlation": 0.6512280720848427,
+          "share_abs_difference_ge2": 0.018072289156626505
+        },
+        "fpl_cat_minus_minutes_v1": {
+          "n": 166,
+          "first_mean": 3.165003765060241,
+          "second_mean": 3.3086144578313252,
+          "mean_second_minus_first": 0.14361069277108432,
+          "mean_absolute_disagreement": 0.49934613453815263,
+          "root_mean_squared_disagreement": 0.6567472360437623,
+          "pearson_correlation": 0.7628959313274866,
+          "share_abs_difference_ge2": 0.006024096385542169
+        },
+        "sideline_quant_minus_minutes_v1": {
+          "n": 166,
+          "first_mean": 3.165003765060241,
+          "second_mean": 3.231140361445783,
+          "mean_second_minus_first": 0.06613659638554215,
+          "mean_absolute_disagreement": 0.5731689257028112,
+          "root_mean_squared_disagreement": 0.7458467770071845,
+          "pearson_correlation": 0.7265313508562836,
+          "share_abs_difference_ge2": 0.0
+        },
+        "sideline_quant_minus_fpl_cat": {
+          "n": 166,
+          "first_mean": 3.3086144578313252,
+          "second_mean": 3.231140361445783,
+          "mean_second_minus_first": -0.07747409638554217,
+          "mean_absolute_disagreement": 0.31290662650602413,
+          "root_mean_squared_disagreement": 0.4082298408394556,
+          "pearson_correlation": 0.9287464104050399,
+          "share_abs_difference_ge2": 0.0
+        }
+      },
+      "selection_disagreement": {
+        "sideline_minus_archived_minutes_v1_expected_minutes": {
+          "n": 166,
+          "first_mean": 72.85764934738955,
+          "second_mean": 75.7795105408606,
+          "mean_second_minus_first": 2.9218611934710323,
+          "mean_absolute_disagreement": 6.373787283355515,
+          "root_mean_squared_disagreement": 9.545260720853246,
+          "pearson_correlation": 0.8406925277370011,
+          "share_abs_difference_ge2": 0.7108433734939759
+        },
+        "sideline_minus_archived_minutes_v1_start_probability": {
+          "n": 166,
+          "first_mean": 0.857335592369478,
+          "second_mean": 0.8473776736466331,
+          "mean_second_minus_first": -0.009957918722844898,
+          "mean_absolute_disagreement": 0.07221949992298954,
+          "root_mean_squared_disagreement": 0.11226201209953701,
+          "pearson_correlation": 0.8159489205478715,
+          "share_abs_difference_ge2": 0.0
+        },
+        "sideline_minus_archived_minutes_v1_appearance_probability": {
+          "n": 166,
+          "first_mean": 0.8899661144578314,
+          "second_mean": 0.911467776363371,
+          "mean_second_minus_first": 0.02150166190553961,
+          "mean_absolute_disagreement": 0.04915950686063203,
+          "root_mean_squared_disagreement": 0.08019705073319534,
+          "pearson_correlation": 0.8788053019336265,
+          "share_abs_difference_ge2": 0.0
+        },
+        "sideline_minus_replayed_raw_v1_start60": {
+          "n": 166,
+          "first_mean": 0.8475460463865204,
+          "second_mean": 0.808763246684094,
+          "mean_second_minus_first": -0.038782799702426304,
+          "mean_absolute_disagreement": 0.08192942660747624,
+          "root_mean_squared_disagreement": 0.12220065387499926,
+          "pearson_correlation": 0.8114677818803546,
+          "share_abs_difference_ge2": 0.0
+        },
+        "archived_simulation_minus_replayed_raw_v1_minutes": {
+          "n": 166,
+          "first_mean": 73.06068431611058,
+          "second_mean": 72.85764934738955,
+          "mean_second_minus_first": -0.20303496872102003,
+          "mean_absolute_disagreement": 1.1685365998273776,
+          "root_mean_squared_disagreement": 1.591609918231608,
+          "pearson_correlation": 0.9948291851948916,
+          "share_abs_difference_ge2": 0.1927710843373494
+        },
+        "archived_simulation_minus_replayed_raw_v1_start": {
+          "n": 166,
+          "first_mean": 0.858772815742065,
+          "second_mean": 0.857335592369478,
+          "mean_second_minus_first": -0.0014372233725871463,
+          "mean_absolute_disagreement": 0.013959686427672159,
+          "root_mean_squared_disagreement": 0.018601006603162214,
+          "pearson_correlation": 0.9941318358102378,
+          "share_abs_difference_ge2": 0.0
+        },
+        "archived_simulation_minus_replayed_raw_v1_sixty": {
+          "n": 166,
+          "first_mean": 0.8475936226798798,
+          "second_mean": 0.8461345381526105,
+          "mean_second_minus_first": -0.001459084527269346,
+          "mean_absolute_disagreement": 0.014688423946956675,
+          "root_mean_squared_disagreement": 0.01958466426842491,
+          "pearson_correlation": 0.9937193767539269,
+          "share_abs_difference_ge2": 0.0
+        },
+        "archived_simulation_minus_replayed_raw_v1_appearance": {
+          "n": 166,
+          "first_mean": 0.8955693113587619,
+          "second_mean": 0.8899661144578314,
+          "mean_second_minus_first": -0.005603196900930593,
+          "mean_absolute_disagreement": 0.013901614189310034,
+          "root_mean_squared_disagreement": 0.0194622816520877,
+          "pearson_correlation": 0.9929433925759461,
+          "share_abs_difference_ge2": 0.0
+        }
+      },
+      "sideline_minus_archived_minutes_v1_components": {
+        "appearance": {
+          "n": 166,
+          "first_mean": 1.7361006526104417,
+          "second_mean": 1.7211771084337348,
+          "mean_second_minus_first": -0.014923544176706835,
+          "mean_absolute_disagreement": 0.11535717871485944,
+          "root_mean_squared_disagreement": 0.17735095312038077,
+          "pearson_correlation": 0.8615902895100743,
+          "share_abs_difference_ge2": 0.0
+        },
+        "goals": {
+          "n": 166,
+          "first_mean": 0.45397213855421686,
+          "second_mean": 0.5103096385542168,
+          "mean_second_minus_first": 0.0563375,
+          "mean_absolute_disagreement": 0.16797665662650604,
+          "root_mean_squared_disagreement": 0.25482478412693305,
+          "pearson_correlation": 0.8824051126788807,
+          "share_abs_difference_ge2": 0.0
+        },
+        "assists": {
+          "n": 166,
+          "first_mean": 0.19653614457831325,
+          "second_mean": 0.26070903614457835,
+          "mean_second_minus_first": 0.06417289156626507,
+          "mean_absolute_disagreement": 0.09394246987951807,
+          "root_mean_squared_disagreement": 0.14170396247786338,
+          "pearson_correlation": 0.7987480760459666,
+          "share_abs_difference_ge2": 0.0
+        },
+        "clean_sheets": {
+          "n": 166,
+          "first_mean": 0.6063943273092369,
+          "second_mean": 0.5002921686746988,
+          "mean_second_minus_first": -0.10610215863453816,
+          "mean_absolute_disagreement": 0.19789392570281125,
+          "root_mean_squared_disagreement": 0.28650935970875285,
+          "pearson_correlation": 0.839788243417311,
+          "share_abs_difference_ge2": 0.0
+        },
+        "conceded": {
+          "n": 166,
+          "first_mean": -0.16920808232931728,
+          "second_mean": -0.2225536144578313,
+          "mean_second_minus_first": -0.053345532128514055,
+          "mean_absolute_disagreement": 0.07899011044176707,
+          "root_mean_squared_disagreement": 0.1499179805197355,
+          "pearson_correlation": 0.8756894230455446,
+          "share_abs_difference_ge2": 0.0
+        },
+        "saves": {
+          "n": 166,
+          "first_mean": 0.06388052208835342,
+          "second_mean": 0.06859939759036145,
+          "mean_second_minus_first": 0.0047188755020080315,
+          "mean_absolute_disagreement": 0.027940060240963856,
+          "root_mean_squared_disagreement": 0.10771565222583833,
+          "pearson_correlation": 0.8807834482065416,
+          "share_abs_difference_ge2": 0.0
+        },
+        "defensive": {
+          "n": 166,
+          "first_mean": 0.17174949799196787,
+          "second_mean": 0.3063012048192771,
+          "mean_second_minus_first": 0.13455170682730924,
+          "mean_absolute_disagreement": 0.15008263052208834,
+          "root_mean_squared_disagreement": 0.19861882534002445,
+          "pearson_correlation": 0.8061559598240464,
+          "share_abs_difference_ge2": 0.0
+        },
+        "cards": {
+          "n": 166,
+          "first_mean": -0.12606676706827308,
+          "second_mean": -0.1482813253012048,
+          "mean_second_minus_first": -0.02221455823293173,
+          "mean_absolute_disagreement": 0.05388664658634538,
+          "root_mean_squared_disagreement": 0.0688844368251169,
+          "pearson_correlation": 0.6199828693303632,
+          "share_abs_difference_ge2": 0.0
+        },
+        "own_goals": {
+          "n": 166,
+          "first_mean": 0.0,
+          "second_mean": -0.008372289156626505,
+          "mean_second_minus_first": -0.008372289156626505,
+          "mean_absolute_disagreement": 0.008372289156626505,
+          "root_mean_squared_disagreement": 0.01767671533572459,
+          "pearson_correlation": null,
+          "share_abs_difference_ge2": 0.0
+        },
+        "bonus": {
+          "n": 166,
+          "first_mean": 0.2316453313253012,
+          "second_mean": 0.23745060240963856,
+          "mean_second_minus_first": 0.00580527108433735,
+          "mean_absolute_disagreement": 0.08312464859437751,
+          "root_mean_squared_disagreement": 0.10416606995210614,
+          "pearson_correlation": 0.8258564536679905,
+          "share_abs_difference_ge2": 0.0
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Different computation vintages but all retrieved before common feature cutoff; source age is explicit.",
+    "Root-mean-squared disagreement is distance between predictions, not RMSE against outcomes.",
+    "Internal archived metrics use 192 samples; source disagreement and internal constraint shifts contain Monte Carlo noise.",
+    "Raw-v1 proposal replay is restricted to single-fixture rows; no DGW probabilities are summed or invented.",
+    "Sideline p_start60 is P(start and >=60), not all-player P(>=60); compare only replayed raw start-and60 mass.",
+    "Points differences are not uniquely attributable to minutes; component and minutes differences are diagnostics, not causal ablations.",
+    "No fitted-model forecast was retroactively inserted into this original release; new challenger evaluation is separate."
+  ]
+}

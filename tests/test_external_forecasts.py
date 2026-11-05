@@ -203,9 +203,16 @@ class ExternalForecastTests(unittest.TestCase):
         self.assertEqual(fit_past_weights([], ("a", "b"), NOW), {"a": 0.5, "b": 0.5})
         row = {"deadline": "2026-10-01T00:00:00Z", "captured_at": "2026-09-30T23:00:00Z", "outcome_available_at": "2026-10-04T00:00:00Z", "actual": 4, "predictions": {"a": 4, "b": 6}}
         weights = fit_past_weights([row], ("a", "b"), NOW)
+        self.assertEqual(weights,{"a":.5,"b":.5})
+        self.assertEqual(fit_past_weights([row]*670,("a","b"),NOW),weights)
+        past=[]
+        for index in range(8):
+            deadline=NOW-timedelta(days=10+7*index)
+            past.append({**row,"deadline":deadline.isoformat(),"captured_at":(deadline-timedelta(hours=1)).isoformat(),"outcome_available_at":(deadline+timedelta(days=3)).isoformat()})
+        weights=fit_past_weights(past,("a","b"),NOW)
         self.assertGreater(weights["a"], weights["b"])
         self.assertAlmostEqual(sum(weights.values()), 1)
-        self.assertLess(weights["a"], 0.53)
+        self.assertLess(weights["a"], 0.7)
         row["outcome_available_at"] = (NOW + timedelta(seconds=1)).isoformat()
         with self.assertRaises(ValueError):
             fit_past_weights([row], ("a", "b"), NOW)

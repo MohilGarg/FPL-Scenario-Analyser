@@ -197,6 +197,11 @@ def capture_forecast(client: FPLClient, gw: int, stage: str, root: Path, provena
                 print(
                     "::warning::Fixture component forecast unavailable; preserving valid statistical/Ridge capture. See embedded component status; do not backfill after the deadline."
                 )
+            for name, status in service.ml.status.get("challengers", {}).items():
+                if status["state"] != "ready":
+                    print(
+                        f"::warning::{name} unavailable; preserving other valid methods with embedded challenger status. Do not backfill after the deadline."
+                    )
             sources = list(Path(work).glob("forecast-*.json.gz"))
             if len(sources) != 1:
                 raise RuntimeError("Expected one original forecast capture")

@@ -1,0 +1,769 @@
+{
+  "selection_rule": "Latest completed and durably published capture <= final cutoff; primary GW only; stage priority breaks equal-time ties; never selected using outcomes",
+  "cutoff": "final",
+  "cutoff_policy": {
+    "policy_version": "prospective-cutoffs-2026-27-v3-bounded",
+    "rolling_windows": [
+      {
+        "name": "t24h",
+        "opens_hours": 26,
+        "closes_hours": 24.5,
+        "maximum_captures": 1
+      },
+      {
+        "name": "final_available",
+        "opens_hours": 2,
+        "closes_hours": 0.75,
+        "maximum_captures": 1
+      }
+    ],
+    "rolling_minimum_interval_seconds": 3600,
+    "cutoffs": {
+      "t24h": 24,
+      "final": 0
+    },
+    "selection": "latest originally completed and durably published capture at or before cutoff; ties use legacy stage priority",
+    "note": "At most two supplemental captures/GW to respect the existing 512MiB season cap; preserve legacy three slots. Actual observed capture times, never nominal cron times. Final means final available archived run, not a guaranteed last-minute run. Missing cutoffs stay missing."
+  },
+  "gameweeks": [
+    {
+      "gameweek": 7,
+      "stage": "final",
+      "captured_at": "2026-10-17T04:34:33.192745+00:00",
+      "lead_hours": 5.424113126388889,
+      "cutoff": "final",
+      "cutoff_age_hours": 5.424113126388889,
+      "direct_ridge_rows": 468,
+      "metrics": {
+        "all_roster_paired": {
+          "statistical": {
+            "n": 667,
+            "mae": 1.1039246001999001,
+            "rmse": 2.0223623440744647,
+            "bias": -0.12083801849075461
+          },
+          "ml_with_fallbacks": {
+            "n": 667,
+            "mae": 1.0738557468471526,
+            "rmse": 2.029342143139684,
+            "bias": -0.18005331049663664
+          }
+        },
+        "predeadline_minutes_ge45_paired": {
+          "statistical": {
+            "n": 213,
+            "mae": 2.3670530125195617,
+            "rmse": 3.0709865070540263,
+            "bias": -0.12996381064162754
+          },
+          "ml_with_fallbacks": {
+            "n": 213,
+            "mae": 2.3118655464814357,
+            "rmse": 3.132433825613516,
+            "bias": -0.4112779463561302
+          }
+        },
+        "direct_ridge_paired": {
+          "statistical": {
+            "n": 468,
+            "mae": 1.4773081374643875,
+            "rmse": 2.3398936871550897,
+            "bias": -0.1731548254985755
+          },
+          "ridge": {
+            "n": 468,
+            "mae": 1.4344535964680571,
+            "rmse": 2.3484904999787064,
+            "bias": -0.2575492694471296
+          }
+        },
+        "fixture_component_paired": {
+          "statistical": {
+            "n": 667,
+            "mae": 1.1039246001999001,
+            "rmse": 2.0223623440744647,
+            "bias": -0.12083801849075461
+          },
+          "ridge_with_fallbacks": {
+            "n": 667,
+            "mae": 1.0738557468471526,
+            "rmse": 2.029342143139684,
+            "bias": -0.18005331049663664
+          },
+          "fixture_components": {
+            "n": 667,
+            "mae": 1.1243440779610194,
+            "rmse": 2.0565757508669638,
+            "bias": -0.12909170414792603
+          }
+        },
+        "minutes_model_paired": {
+          "statistical": {
+            "n": 0,
+            "mae": null,
+            "rmse": null,
+            "bias": null
+          },
+          "minutes_model": {
+            "n": 0,
+            "mae": null,
+            "rmse": null,
+            "bias": null
+          }
+        },
+        "external_official_fpl_paired": {
+          "statistical": {
+            "n": 667,
+            "mae": 1.1039246001999001,
+            "rmse": 2.0223623440744647,
+            "bias": -0.12083801849075461
+          },
+          "official_fpl": {
+            "n": 667,
+            "mae": 1.2827586206896553,
+            "rmse": 2.469040688008296,
+            "bias": 0.02368815592203898
+          }
+        },
+        "external_official_fpl_selection_paired": {
+          "statistical": {
+            "n": 213,
+            "mae": 2.3670530125195617,
+            "rmse": 3.0709865070540263,
+            "bias": -0.12996381064162754
+          },
+          "official_fpl": {
+            "n": 213,
+            "mae": 2.898122065727699,
+            "rmse": 3.8768665048868542,
+            "bias": 0.13755868544600938
+          },
+          "internal_source_mean": {
+            "n": 213,
+            "mae": 2.533409135367762,
+            "rmse": 3.3332097097286217,
+            "bias": 0.00379743740219093
+          }
+        },
+        "external_all_source_common": {
+          "statistical": {
+            "n": 667,
+            "mae": 1.1039246001999001,
+            "rmse": 2.0223623440744647,
+            "bias": -0.12083801849075461
+          },
+          "official_fpl": {
+            "n": 667,
+            "mae": 1.2827586206896553,
+            "rmse": 2.469040688008296,
+            "bias": 0.02368815592203898
+          },
+          "external_mean": {
+            "n": 667,
+            "mae": 1.2827586206896553,
+            "rmse": 2.469040688008296,
+            "bias": 0.02368815592203898
+          },
+          "external_median": {
+            "n": 667,
+            "mae": 1.2827586206896553,
+            "rmse": 2.469040688008296,
+            "bias": 0.02368815592203898
+          },
+          "internal_external_mean": {
+            "n": 667,
+            "mae": 1.1428793415792102,
+            "rmse": 2.136973209440165,
+            "bias": -0.04857493128435782
+          },
+          "internal_external_without_official_fpl": {
+            "n": 667,
+            "mae": 1.1039246001999001,
+            "rmse": 2.0223623440744647,
+            "bias": -0.12083801849075461
+          }
+        }
+      }
+    },
+    {
+      "gameweek": 8,
+      "stage": "final",
+      "captured_at": "2026-10-23T13:31:02.410802+00:00",
+      "lead_hours": 3.9826636661111112,
+      "cutoff": "final",
+      "cutoff_age_hours": 3.9826636661111112,
+      "direct_ridge_rows": 460,
+      "metrics": {
+        "all_roster_paired": {
+          "statistical": {
+            "n": 668,
+            "mae": 1.1266139595808384,
+            "rmse": 2.0830306841826314,
+            "bias": -0.18922311626746505
+          },
+          "ml_with_fallbacks": {
+            "n": 668,
+            "mae": 1.0955576952368122,
+            "rmse": 2.095844537402636,
+            "bias": -0.26123536794590896
+          }
+        },
+        "predeadline_minutes_ge45_paired": {
+          "statistical": {
+            "n": 200,
+            "mae": 2.545703125,
+            "rmse": 3.33253833700051,
+            "bias": -0.41658854166666665
+          },
+          "ml_with_fallbacks": {
+            "n": 200,
+            "mae": 2.4899497750594795,
+            "rmse": 3.3684479259903144,
+            "bias": -0.7209639287476862
+          }
+        },
+        "direct_ridge_paired": {
+          "statistical": {
+            "n": 460,
+            "mae": 1.5658401268115942,
+            "rmse": 2.485631274085176,
+            "bias": -0.30184556159420284
+          },
+          "ridge": {
+            "n": 460,
+            "mae": 1.520741029894617,
+            "rmse": 2.501224321045752,
+            "bias": -0.4064198749011605
+          }
+        },
+        "fixture_component_paired": {
+          "statistical": {
+            "n": 668,
+            "mae": 1.1266139595808384,
+            "rmse": 2.0830306841826314,
+            "bias": -0.18922311626746505
+          },
+          "ridge_with_fallbacks": {
+            "n": 668,
+            "mae": 1.0955576952368122,
+            "rmse": 2.095844537402636,
+            "bias": -0.26123536794590896
+          },
+          "fixture_components": {
+            "n": 668,
+            "mae": 1.172646893712575,
+            "rmse": 2.124475430876804,
+            "bias": -0.20115238273453093
+          }
+        },
+        "minutes_model_paired": {
+          "statistical": {
+            "n": 0,
+            "mae": null,
+            "rmse": null,
+            "bias": null
+          },
+          "minutes_model": {
+            "n": 0,
+            "mae": null,
+            "rmse": null,
+            "bias": null
+          }
+        },
+        "external_official_fpl_paired": {
+          "statistical": {
+            "n": 668,
+            "mae": 1.1266139595808384,
+            "rmse": 2.0830306841826314,
+            "bias": -0.18922311626746505
+          },
+          "official_fpl": {
+            "n": 668,
+            "mae": 1.3076347305389222,
+            "rmse": 2.47606808744281,
+            "bias": -0.11781437125748503
+          }
+        },
+        "external_official_fpl_selection_paired": {
+          "statistical": {
+            "n": 200,
+            "mae": 2.545703125,
+            "rmse": 3.33253833700051,
+            "bias": -0.41658854166666665
+          },
+          "official_fpl": {
+            "n": 200,
+            "mae": 3.014,
+            "rmse": 3.942549936272209,
+            "bias": -0.24600000000000002
+          },
+          "internal_source_mean": {
+            "n": 200,
+            "mae": 2.6852682291666667,
+            "rmse": 3.491496041607551,
+            "bias": -0.33129427083333335
+          }
+        },
+        "external_all_source_common": {
+          "statistical": {
+            "n": 668,
+            "mae": 1.1266139595808384,
+            "rmse": 2.0830306841826314,
+            "bias": -0.18922311626746505
+          },
+          "official_fpl": {
+            "n": 668,
+            "mae": 1.3076347305389222,
+            "rmse": 2.47606808744281,
+            "bias": -0.11781437125748503
+          },
+          "external_mean": {
+            "n": 668,
+            "mae": 1.3076347305389222,
+            "rmse": 2.47606808744281,
+            "bias": -0.11781437125748503
+          },
+          "external_median": {
+            "n": 668,
+            "mae": 1.3076347305389222,
+            "rmse": 2.47606808744281,
+            "bias": -0.11781437125748503
+          },
+          "internal_external_mean": {
+            "n": 668,
+            "mae": 1.1765180576347305,
+            "rmse": 2.1828208361251202,
+            "bias": -0.15351874376247504
+          },
+          "internal_external_without_official_fpl": {
+            "n": 668,
+            "mae": 1.1266139595808384,
+            "rmse": 2.0830306841826314,
+            "bias": -0.18922311626746505
+          }
+        }
+      }
+    },
+    {
+      "gameweek": 9,
+      "stage": "final",
+      "captured_at": "2026-10-31T05:51:11.693248+00:00",
+      "lead_hours": 5.146751875555555,
+      "cutoff": "final",
+      "cutoff_age_hours": 5.146751875555555,
+      "direct_ridge_rows": 471,
+      "metrics": {
+        "all_roster_paired": {
+          "statistical": {
+            "n": 669,
+            "mae": 1.0401641131041355,
+            "rmse": 1.8860023728635322,
+            "bias": -0.11926226955655206
+          },
+          "ml_with_fallbacks": {
+            "n": 669,
+            "mae": 0.9694253061491803,
+            "rmse": 1.8352105018223484,
+            "bias": -0.17074673840678656
+          }
+        },
+        "predeadline_minutes_ge45_paired": {
+          "statistical": {
+            "n": 201,
+            "mae": 2.1381374378109452,
+            "rmse": 2.764580071374114,
+            "bias": -0.037080223880597014
+          },
+          "ml_with_fallbacks": {
+            "n": 201,
+            "mae": 2.0115907575849516,
+            "rmse": 2.709676890414247,
+            "bias": -0.3261194214910293
+          }
+        },
+        "direct_ridge_paired": {
+          "statistical": {
+            "n": 471,
+            "mae": 1.3935443205944797,
+            "rmse": 2.186782650489253,
+            "bias": -0.15431484430290163
+          },
+          "ridge": {
+            "n": 471,
+            "mae": 1.29306818077948,
+            "rmse": 2.124513043229218,
+            "bias": -0.22744246566342577
+          }
+        },
+        "fixture_component_paired": {
+          "statistical": {
+            "n": 669,
+            "mae": 1.0401641131041355,
+            "rmse": 1.8860023728635322,
+            "bias": -0.11926226955655206
+          },
+          "ridge_with_fallbacks": {
+            "n": 669,
+            "mae": 0.9694253061491803,
+            "rmse": 1.8352105018223484,
+            "bias": -0.17074673840678656
+          },
+          "fixture_components": {
+            "n": 669,
+            "mae": 1.0319740284005978,
+            "rmse": 1.8668458704731965,
+            "bias": -0.13651438714499253
+          }
+        },
+        "minutes_model_paired": {
+          "statistical": {
+            "n": 0,
+            "mae": null,
+            "rmse": null,
+            "bias": null
+          },
+          "minutes_model": {
+            "n": 0,
+            "mae": null,
+            "rmse": null,
+            "bias": null
+          }
+        },
+        "external_official_fpl_paired": {
+          "statistical": {
+            "n": 669,
+            "mae": 1.0401641131041355,
+            "rmse": 1.8860023728635322,
+            "bias": -0.11926226955655206
+          },
+          "official_fpl": {
+            "n": 669,
+            "mae": 1.0144992526158445,
+            "rmse": 1.928896770274058,
+            "bias": -0.032137518684603884
+          }
+        },
+        "external_official_fpl_selection_paired": {
+          "statistical": {
+            "n": 201,
+            "mae": 2.1381374378109452,
+            "rmse": 2.764580071374114,
+            "bias": -0.037080223880597014
+          },
+          "official_fpl": {
+            "n": 201,
+            "mae": 2.191542288557214,
+            "rmse": 2.857468176219895,
+            "bias": 0.19253731343283584
+          },
+          "internal_source_mean": {
+            "n": 201,
+            "mae": 2.066451596185738,
+            "rmse": 2.67549067635463,
+            "bias": 0.07772854477611939
+          }
+        },
+        "external_all_source_common": {
+          "statistical": {
+            "n": 669,
+            "mae": 1.0401641131041355,
+            "rmse": 1.8860023728635322,
+            "bias": -0.11926226955655206
+          },
+          "official_fpl": {
+            "n": 669,
+            "mae": 1.0144992526158445,
+            "rmse": 1.928896770274058,
+            "bias": -0.032137518684603884
+          },
+          "external_mean": {
+            "n": 669,
+            "mae": 1.0144992526158445,
+            "rmse": 1.928896770274058,
+            "bias": -0.032137518684603884
+          },
+          "external_median": {
+            "n": 669,
+            "mae": 1.0144992526158445,
+            "rmse": 1.928896770274058,
+            "bias": -0.032137518684603884
+          },
+          "internal_external_mean": {
+            "n": 669,
+            "mae": 0.9836019245142004,
+            "rmse": 1.8261211647680748,
+            "bias": -0.07569989412057798
+          },
+          "internal_external_without_official_fpl": {
+            "n": 669,
+            "mae": 1.0401641131041355,
+            "rmse": 1.8860023728635322,
+            "bias": -0.11926226955655206
+          }
+        }
+      }
+    }
+  ],
+  "exclusions": {
+    "not_officially_final": 0,
+    "unknown_actual": 0,
+    "unknown_prediction": 0,
+    "final_deadline_changed_or_crossed": 0,
+    "stale_external_batches": 0
+  },
+  "selection_pool_definition": "Original pre-deadline statistical expected GW minutes >=45; same observed rows for each paired method; never selected using actual minutes/points",
+  "note": "Paired observations at identical captured cutoffs. ML-with-fallbacks is a hybrid, not pure Ridge. No retraining or model selection.",
+  "metrics": {
+    "external_official_fpl_paired": {
+      "statistical": {
+        "n": 2004,
+        "mae": 1.0902024076846308,
+        "rmse": 1.9987640690616282,
+        "bias": -0.14310701513639387
+      },
+      "official_fpl": {
+        "n": 2004,
+        "mae": 1.2014970059880241,
+        "rmse": 2.3053677708518086,
+        "bias": -0.042115768463073855
+      }
+    },
+    "external_official_fpl_selection_paired": {
+      "statistical": {
+        "n": 614,
+        "mae": 2.35030707111835,
+        "rmse": 3.064502003116003,
+        "bias": -0.1929203990228013
+      },
+      "official_fpl": {
+        "n": 614,
+        "mae": 2.704560260586319,
+        "rmse": 3.598619894706831,
+        "bias": 0.030618892508143324
+      },
+      "internal_source_mean": {
+        "n": 614,
+        "mae": 2.430010688110749,
+        "rmse": 3.1887956249956764,
+        "bias": -0.08115075325732898
+      }
+    },
+    "external_all_source_common": {
+      "statistical": {
+        "n": 2004,
+        "mae": 1.0902024076846308,
+        "rmse": 1.9987640690616282,
+        "bias": -0.14310701513639387
+      },
+      "official_fpl": {
+        "n": 2004,
+        "mae": 1.2014970059880241,
+        "rmse": 2.3053677708518086,
+        "bias": -0.042115768463073855
+      },
+      "external_mean": {
+        "n": 2004,
+        "mae": 1.2014970059880241,
+        "rmse": 2.3053677708518086,
+        "bias": -0.042115768463073855
+      },
+      "external_median": {
+        "n": 2004,
+        "mae": 1.2014970059880241,
+        "rmse": 2.3053677708518086,
+        "bias": -0.042115768463073855
+      },
+      "internal_external_mean": {
+        "n": 2004,
+        "mae": 1.1009202948270127,
+        "rmse": 2.054607472109763,
+        "bias": -0.09261139179973386
+      },
+      "internal_external_without_official_fpl": {
+        "n": 2004,
+        "mae": 1.0902024076846308,
+        "rmse": 1.9987640690616282,
+        "bias": -0.14310701513639387
+      }
+    }
+  },
+  "paired_uncertainty": {
+    "external_official_fpl_paired:official_fpl-minus-statistical": {
+      "deadline_count": 3,
+      "metrics": {
+        "mae": {
+          "difference": 0.11129459830339328,
+          "interval_95": [
+            -0.025664860488290975,
+            0.18102077095808355
+          ],
+          "deadlines_improved": 1
+        },
+        "rmse": {
+          "difference": 0.30660370179018037,
+          "interval_95": [
+            0.04289439741052581,
+            0.4466783439338311
+          ],
+          "deadlines_improved": 0
+        }
+      },
+      "method": "2000 paired whole-Gameweek bootstrap draws; seed20261105; too few deadlines for final confirmation"
+    },
+    "external_official_fpl_selection_paired:official_fpl-minus-statistical": {
+      "deadline_count": 3,
+      "metrics": {
+        "mae": {
+          "difference": 0.35425318946796924,
+          "interval_95": [
+            0.05340485074626811,
+            0.5310690532081375
+          ],
+          "deadlines_improved": 0
+        },
+        "rmse": {
+          "difference": 0.534117891590828,
+          "interval_95": [
+            0.0928881048457808,
+            0.8058799978328275
+          ],
+          "deadlines_improved": 0
+        }
+      },
+      "method": "2000 paired whole-Gameweek bootstrap draws; seed20261105; too few deadlines for final confirmation"
+    },
+    "external_official_fpl_selection_paired:internal_source_mean-minus-statistical": {
+      "deadline_count": 3,
+      "metrics": {
+        "mae": {
+          "difference": 0.07970361699239925,
+          "interval_95": [
+            -0.0716858416252073,
+            0.16635612284820045
+          ],
+          "deadlines_improved": 1
+        },
+        "rmse": {
+          "difference": 0.1242936218796733,
+          "interval_95": [
+            -0.08908939501948421,
+            0.2622232026745954
+          ],
+          "deadlines_improved": 1
+        }
+      },
+      "method": "2000 paired whole-Gameweek bootstrap draws; seed20261105; too few deadlines for final confirmation"
+    },
+    "external_all_source_common:official_fpl-minus-statistical": {
+      "deadline_count": 3,
+      "metrics": {
+        "mae": {
+          "difference": 0.11129459830339328,
+          "interval_95": [
+            -0.025664860488290975,
+            0.18102077095808355
+          ],
+          "deadlines_improved": 1
+        },
+        "rmse": {
+          "difference": 0.30660370179018037,
+          "interval_95": [
+            0.04289439741052581,
+            0.4466783439338311
+          ],
+          "deadlines_improved": 0
+        }
+      },
+      "method": "2000 paired whole-Gameweek bootstrap draws; seed20261105; too few deadlines for final confirmation"
+    },
+    "external_all_source_common:external_mean-minus-statistical": {
+      "deadline_count": 3,
+      "metrics": {
+        "mae": {
+          "difference": 0.11129459830339328,
+          "interval_95": [
+            -0.025664860488290975,
+            0.18102077095808355
+          ],
+          "deadlines_improved": 1
+        },
+        "rmse": {
+          "difference": 0.30660370179018037,
+          "interval_95": [
+            0.04289439741052581,
+            0.4466783439338311
+          ],
+          "deadlines_improved": 0
+        }
+      },
+      "method": "2000 paired whole-Gameweek bootstrap draws; seed20261105; too few deadlines for final confirmation"
+    },
+    "external_all_source_common:external_median-minus-statistical": {
+      "deadline_count": 3,
+      "metrics": {
+        "mae": {
+          "difference": 0.11129459830339328,
+          "interval_95": [
+            -0.025664860488290975,
+            0.18102077095808355
+          ],
+          "deadlines_improved": 1
+        },
+        "rmse": {
+          "difference": 0.30660370179018037,
+          "interval_95": [
+            0.04289439741052581,
+            0.4466783439338311
+          ],
+          "deadlines_improved": 0
+        }
+      },
+      "method": "2000 paired whole-Gameweek bootstrap draws; seed20261105; too few deadlines for final confirmation"
+    },
+    "external_all_source_common:internal_external_mean-minus-statistical": {
+      "deadline_count": 3,
+      "metrics": {
+        "mae": {
+          "difference": 0.010717887142381866,
+          "interval_95": [
+            -0.056562188589935114,
+            0.04990409805389184
+          ],
+          "deadlines_improved": 1
+        },
+        "rmse": {
+          "difference": 0.05584340304813451,
+          "interval_95": [
+            -0.059881208095457605,
+            0.11461086536570031
+          ],
+          "deadlines_improved": 1
+        }
+      },
+      "method": "2000 paired whole-Gameweek bootstrap draws; seed20261105; too few deadlines for final confirmation"
+    },
+    "external_all_source_common:internal_external_without_official_fpl-minus-statistical": {
+      "deadline_count": 3,
+      "metrics": {
+        "mae": {
+          "difference": 0.0,
+          "interval_95": [
+            0.0,
+            0.0
+          ],
+          "deadlines_improved": 0
+        },
+        "rmse": {
+          "difference": 0.0,
+          "interval_95": [
+            0.0,
+            0.0
+          ],
+          "deadlines_improved": 0
+        }
+      },
+      "method": "2000 paired whole-Gameweek bootstrap draws; seed20261105; too few deadlines for final confirmation"
+    }
+  },
+  "source_contract": "Official ep_next recovered exclusively from the original immutable predeadline bootstrap; no new historical provider download. Cat/Sideline first captured GW10 and have no settled outcomes yet. Three distinct deadlines do not permit learned blend weights."
+}

@@ -27,6 +27,7 @@ from ml.recording.archive import (
     policy,
     read_bundle,
     tag_for,
+    validate_record,
     validate_release,
 )
 from ml.recording.evaluate import distribution_metrics, evaluate, probability_metrics
@@ -248,6 +249,37 @@ class RecordingTests(unittest.TestCase):
             manifest["minutes_metadata_sha256"],
             digest(canonical(record["minute_model"]["metadata"])),
         )
+
+    def test_fitted_challenger_archives_only_next_gw_and_validates_metadata(self):
+        from fpl_forfeit.assistant.fitted_forecast import build_fitted_forecast
+
+        fitted, metadata = build_fitted_forecast(
+            self.forecast, self.snapshot, {1: self.history}, NOW
+        )
+        source = ForecastArchive(self.root / "fitted").record(
+            self.forecast,
+            self.snapshot,
+            {1: self.history},
+            self.predictions,
+            NOW,
+            self.model,
+            feature_asof=NOW,
+            challengers={"fitted_minutes": fitted},
+            challenger_metadata={"fitted_minutes": metadata},
+        )
+        bundle = create_bundle(source, "advance", 7, self.context, self.root / "fitted.zip")
+        manifest, record = read_bundle(bundle)
+        saved = record["challengers"]["fitted_minutes"]
+        self.assertEqual(record["challenger_status"]["fitted_minutes"]["state"], "ready")
+        self.assertEqual(record["challenger_status"]["empirical_minutes"]["state"], "unavailable")
+        self.assertEqual(saved["archived_horizon"], [7])
+        self.assertTrue(all(set(weekly) == {"7"} for weekly in saved["predictions"].values()))
+        self.assertEqual({row["gameweek"] for row in saved["fixtures"]}, {7})
+        self.assertEqual(saved["metadata"]["model_sha256"], metadata["model_sha256"])
+        altered = deepcopy(record)
+        altered["challengers"]["fitted_minutes"]["metadata"]["lineup_sampler"] = "corrupted"
+        with self.assertRaisesRegex(ValueError, "challenger provenance"):
+            validate_record(altered, manifest)
 
     def test_public_bundle_rejects_restricted_or_late_external_forecasts(self):
         from fpl_forfeit.assistant.external_forecasts import (

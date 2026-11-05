@@ -96,7 +96,9 @@ Source probabilities and scoring components retain explicit definitions in
 individual source rows. GW aggregate probabilities stay null without a joint
 distribution.
 
-The optional learned blend uses past settled, common observations only,
+The optional learned blend requires **eight distinct settled common deadlines** before
+estimating weights; otherwise it returns equal weights. Hundreds
+of players from one deadline count as one deadline. It uses past settled, common observations only,
 nonnegative inverse-MSE weights shrunk towards equal weights. This is a simple
 diagnostic comparator, not a tuned stacking model. Future/pending outcomes and
 post-deadline captures are rejected. Correlated provider inputs, source ablations,

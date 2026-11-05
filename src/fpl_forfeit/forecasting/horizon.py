@@ -56,6 +56,7 @@ def forecast_horizon(
         fixtures,
         catalogue.fetched_at,
         team_goal_rates=catalogue.team_goal_rates,
+        scoring_season=catalogue.scoring_season,
         provenance=(
             DataSource(
                 "official_fpl_bootstrap",
@@ -87,7 +88,9 @@ def forecast_horizon(
             accumulated.add(draws)
             for draw in draws:
                 for pid, stats in draw.stats.items():
-                    points[pid][index] += event_points(inputs.players[pid].position, stats)
+                    points[pid][index] += event_points(
+                        inputs.players[pid].position, stats, season=inputs.scoring_season
+                    )
                     minutes[pid][index] += stats.get("minutes", 0)
                     appeared[pid][index] |= bool(
                         stats.get("minutes") or stats.get("yellow_cards") or stats.get("red_cards")

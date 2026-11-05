@@ -168,6 +168,12 @@ def evaluate(
         },
         "minutes_model_paired": {"statistical": [], "minutes_model": []},
     }
+    challenger_names = sorted(
+        {name for _, record in captures for name in record.get("challengers", {})}
+    )
+    for name in challenger_names:
+        groups[f"challenger_{name}_paired"] = {"statistical": [], name: []}
+        groups[f"challenger_{name}_selection_paired"] = {"statistical": [], name: []}
     source_names = sorted(
         {
             b["source"]
@@ -175,8 +181,21 @@ def evaluate(
             for b in r.get("external_forecasts", {}).get("batches", [])
         }
     )
+    if any(
+        any(
+            e.get("ep_next") is not None
+            for e in record.get("official_snapshot", {}).get("bootstrap", {}).get("elements", [])
+        )
+        for _, record in captures
+    ):
+        source_names = sorted(set(source_names) | {"official_fpl"})
     for source in source_names:
         groups[f"external_{source}_paired"] = {"statistical": [], source: []}
+        groups[f"external_{source}_selection_paired"] = {
+            "statistical": [],
+            source: [],
+            "internal_source_mean": [],
+        }
     if source_names:
         groups["external_all_source_common"] = {
             name: []
@@ -191,9 +210,12 @@ def evaluate(
         }
     calibration = {
         model: {kind: [] for kind in ("appearance", "start", "sixty_minutes")}
-        for model in ("statistical", "minutes_model")
+        for model in ("statistical", "minutes_model", *challenger_names)
     }
-    distributions = {model: [] for model in ("statistical", "fixture_components", "minutes_model")}
+    distributions = {
+        model: []
+        for model in ("statistical", "fixture_components", "minutes_model", *challenger_names)
+    }
     per_gw, exclusions = (
         [],
         {
@@ -220,6 +242,19 @@ def evaluate(
             continue
         local = {k: {model: [] for model in rows} for k, rows in groups.items()}
         external_rows = {}
+        official_source = record.get("official_snapshot", {})
+        if any(
+            e.get("ep_next") is not None
+            for e in official_source.get("bootstrap", {}).get("elements", [])
+        ):
+            from fpl_forfeit.assistant.external_forecasts import gameweek_rows, parse_official_fpl
+
+            batch = parse_official_fpl(
+                official_source["bootstrap"], stamp(official_source["source_finished_utc"])
+            )
+            external_rows["official_fpl"] = gameweek_rows(
+                batch, gw, official_source["fixtures"], official_source["bootstrap"]
+            )
         if record.get("external_forecasts", {}).get("batches"):
             from fpl_forfeit.assistant.external_forecasts import batch_from_dict, gameweek_rows
 
@@ -291,11 +326,43 @@ def evaluate(
                 local["minutes_model_paired"]["minutes_model"].append(
                     (minute["expected_points"], observed)
                 )
+            challenger_rows = {
+                name: record.get("challengers", {})
+                .get(name, {})
+                .get("predictions", {})
+                .get(str(pid), {})
+                .get(str(gw), {})
+                for name in challenger_names
+            }
+            for name, predicted in challenger_rows.items():
+                if predicted.get("expected_points") is None:
+                    continue
+                local[f"challenger_{name}_paired"]["statistical"].append((statistical, observed))
+                local[f"challenger_{name}_paired"][name].append(
+                    (predicted["expected_points"], observed)
+                )
+                if (weekly[str(gw)].get("expected_minutes") or 0) >= 45:
+                    local[f"challenger_{name}_selection_paired"]["statistical"].append(
+                        (statistical, observed)
+                    )
+                    local[f"challenger_{name}_selection_paired"][name].append(
+                        (predicted["expected_points"], observed)
+                    )
             for name, rows in external_rows.items():
                 row = rows.get(int(pid))
                 if row is not None:
                     local[f"external_{name}_paired"]["statistical"].append((statistical, observed))
                     local[f"external_{name}_paired"][name].append((row.expected_points, observed))
+                    if (weekly[str(gw)].get("expected_minutes") or 0) >= 45:
+                        local[f"external_{name}_selection_paired"]["statistical"].append(
+                            (statistical, observed)
+                        )
+                        local[f"external_{name}_selection_paired"][name].append(
+                            (row.expected_points, observed)
+                        )
+                        local[f"external_{name}_selection_paired"]["internal_source_mean"].append(
+                            ((row.expected_points + statistical) / 2, observed)
+                        )
             if source_names and all(
                 int(pid) in external_rows.get(name, {}) for name in source_names
             ):
@@ -333,7 +400,11 @@ def evaluate(
                 if fixture_minutes
                 else (0 if stats.get("minutes") == 0 else None)
             )
-            for model, predicted in (("statistical", weekly[str(gw)]), ("minutes_model", minute)):
+            for model, predicted in (
+                ("statistical", weekly[str(gw)]),
+                ("minutes_model", minute),
+                *challenger_rows.items(),
+            ):
                 for kind, field, actual_field in (
                     ("appearance", "appearance_probability", "minutes"),
                     ("start", "starting_probability", "starts"),
@@ -349,6 +420,7 @@ def evaluate(
                 ("statistical", weekly[str(gw)]),
                 ("fixture_components", component),
                 ("minutes_model", minute),
+                *challenger_rows.items(),
             ):
                 if predicted.get("expected_points") is not None:
                     distributions[model].append((predicted, observed))

@@ -90,6 +90,9 @@ class ForecastArchive:
         component_error: str | None = None,
         minutes_forecast=None,
         minutes_metadata: dict | None = None,
+        challengers: dict | None = None,
+        challenger_metadata: dict | None = None,
+        challenger_errors: dict | None = None,
     ) -> Path:
         asof = feature_asof or captured
         deadlines = {
@@ -161,6 +164,23 @@ class ForecastArchive:
             "statistical_source_timestamp": forecast.catalogue.fetched_at.isoformat(),
             "note": "As-of preview; later GWs and unsupported rows use labelled statistical fallback. No personal squad or auth data.",
         }
+        from .selection_inputs import official_availability
+
+        selection = official_availability(
+            snapshot["bootstrap"],
+            datetime.fromisoformat(snapshot["source_finished_utc"]),
+        )
+        record["official_selection_evidence"] = {
+            "source": selection["source"],
+            "retrieved_at": selection["retrieved_at"],
+            "roster_rows": len(selection["rows"]),
+            "publication_timestamp_rows": sum(
+                row["published_at"] is not None for row in selection["rows"]
+            ),
+            "details_location": "Original official_snapshot.bootstrap.elements status/chance/news_added; no duplicated restricted external reports.",
+            "horizon": "next_gameweek_only",
+            "return_dates_inferred": False,
+        }
         if component is not None and component_metadata is not None:
             record["fixture_component"] = {
                 "metadata": component_metadata,
@@ -181,6 +201,29 @@ class ForecastArchive:
             "state": "ready" if component else "unavailable",
             "error": component_error,
         }
+        if challengers is not None:
+            record["challenger_status"] = {
+                name: {
+                    "state": "ready" if name in challengers else "unavailable",
+                    "error": (challenger_errors or {}).get(name),
+                }
+                for name in ("fitted_minutes", "empirical_minutes")
+            }
+        if challengers:
+            record["challengers"] = {}
+            first = forecast.gameweeks[0]
+            for name, challenger in challengers.items():
+                predictions = {
+                    pid: {first: weekly[first]} for pid, weekly in challenger.players.items()
+                }
+                record["challengers"][name] = {
+                    "metadata": challenger_metadata[name],
+                    "predictions": predictions,
+                    "fixtures": [asdict(p) for p in challenger.fixtures if p.gameweek == first],
+                    "prediction_sha256": hashlib.sha256(canonical(predictions)).hexdigest(),
+                    "archived_horizon": [first],
+                    "horizon_note": "Next-GW challenger evidence bounds durable storage; live conditional horizon is separate.",
+                }
         body = canonical(record)
         if immutable(path, gzip.compress(body, mtime=0)):
             immutable(
@@ -341,7 +384,41 @@ def main() -> None:
                 raise ValueError("Playing-time prediction replay mismatch")
             if canonical([asdict(p) for p in minutes.fixtures]) != canonical(saved["fixtures"]):
                 raise ValueError("Playing-time fixture replay mismatch")
-        methods = 2 + int("fixture_component" in data) + int("minute_model" in data)
+        if data.get("challengers"):
+            from .fitted_forecast import build_fitted_forecast
+            from .minutes_model import MinutesModel
+
+            for name, saved in data["challengers"].items():
+                challenger, metadata = build_fitted_forecast(
+                    forecast,
+                    snapshot,
+                    {int(k): v for k, v in data["official_histories"].items()},
+                    datetime.fromisoformat(data["feature_asof_utc"]),
+                    model=MinutesModel(data=saved["metadata"]["model"]),
+                    balanced=saved["metadata"]["lineup_sampler"] == "pivotal",
+                )
+                selected = {
+                    pid: {g: weekly[int(g)] for g in saved["archived_horizon"]}
+                    for pid, weekly in challenger.players.items()
+                }
+                if canonical(selected) != canonical(saved["predictions"]) or canonical(
+                    metadata
+                ) != canonical(saved["metadata"]):
+                    raise ValueError(f"Coherent challenger replay mismatch: {name}")
+                if canonical(
+                    [
+                        asdict(p)
+                        for p in challenger.fixtures
+                        if p.gameweek in saved["archived_horizon"]
+                    ]
+                ) != canonical(saved["fixtures"]):
+                    raise ValueError(f"Coherent challenger fixture replay mismatch: {name}")
+        methods = (
+            2
+            + int("fixture_component" in data)
+            + int("minute_model" in data)
+            + len(data.get("challengers", {}))
+        )
         print(
             f"Reproduced {len(data['ml_predictions'])} players, {str(methods) + ' forecast methods' if methods > 2 else 'both forecast methods'}; no network or fitting"
         )

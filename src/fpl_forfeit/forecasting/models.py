@@ -50,6 +50,7 @@ class ForecastInputs:
         default_factory=dict
     )
     model_version: str = MODEL_VERSION
+    scoring_season: str = "2026-27"
 
 
 class ScenarioConflict(ValueError):

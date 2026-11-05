@@ -212,6 +212,7 @@ class FPLCatalogue:
     maximum_free_transfers: int | None
     chips: tuple[ChipWindow, ...]
     missing_schedule_team_ids: frozenset[int] = frozenset()
+    scoring_season: str = "2026-27"
 
 
 @dataclass(frozen=True, slots=True)

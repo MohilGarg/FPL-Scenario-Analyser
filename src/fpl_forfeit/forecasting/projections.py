@@ -59,7 +59,11 @@ class ProjectionAccumulator:
                 row = self.totals.get((pid, sample.fixture_id))
                 if row is None:
                     continue
-                row.points.append(event_points(self.inputs.players[pid].position, stats))
+                row.points.append(
+                    event_points(
+                        self.inputs.players[pid].position, stats, season=self.inputs.scoring_season
+                    )
+                )
                 minutes = stats.get("minutes", 0)
                 row.minutes += minutes
                 row.appearances += bool(
@@ -71,7 +75,7 @@ class ProjectionAccumulator:
                 row.substitutes += start > 0 and end > start
                 row.no_shows += minutes == 0
                 for name, points in point_components(
-                    self.inputs.players[pid].position, stats
+                    self.inputs.players[pid].position, stats, season=self.inputs.scoring_season
                 ).items():
                     row.components[name] = row.components.get(name, 0) + points
                 row.goals += stats.get("goals_scored", 0)
@@ -81,6 +85,7 @@ class ProjectionAccumulator:
                 row.defensive_points += event_points(
                     self.inputs.players[pid].position,
                     {"defensive_contribution": stats.get("defensive_contribution", 0)},
+                    season=self.inputs.scoring_season,
                 )
 
     def results(self) -> tuple[PlayerFixtureProjection, ...]:
@@ -97,7 +102,8 @@ class ProjectionAccumulator:
                     fixture_id=fid,
                     gameweek=fixture.gameweek,
                     expected_points=mean,
-                    expected_remaining_points=mean - event_points(player.position, old)
+                    expected_remaining_points=mean
+                    - event_points(player.position, old, season=self.inputs.scoring_season)
                     if mean is not None
                     else None,
                     expected_minutes=row.minutes / n if n else None,

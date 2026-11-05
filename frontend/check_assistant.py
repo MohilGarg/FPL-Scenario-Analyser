@@ -61,6 +61,9 @@ class RidgeBrowserFixture:
             "source_timestamp": NOW.isoformat(),
             "component_state": "ready",
             "component_version": "fixture-components-v1-browser",
+            "challengers": {
+                name: {"state": "ready"} for name in ("fitted_minutes", "empirical_minutes")
+            },
         }
 
     def components(self, forecast):
@@ -72,6 +75,14 @@ class RidgeBrowserFixture:
         return replace(
             forecast, inputs=replace(forecast.inputs, model_version="minutes-states-v1-browser")
         )
+
+    def challenger(self, forecast, name):
+        version = (
+            "minutes-fitted-v2-browser"
+            if name == "fitted_minutes"
+            else "minutes-empirical-v2-browser"
+        )
+        return replace(forecast, inputs=replace(forecast.inputs, model_version=version))
 
     def player(self, pid, gw, statistical, *, generation=None):
         supported = gw == 7 and statistical["expected_points"] is not None
@@ -139,6 +150,13 @@ def check(page, origin, password, client, output):
         "Minutes states are experimental"
         in page.locator("#assistant-prediction-content").inner_text()
     )
+    for mode in ("fitted_minutes", "empirical_minutes"):
+        page.locator("#assistant-prediction-model").select_option(mode)
+        assert "60+ min" in page.locator("#assistant-prediction-content thead").inner_text()
+        assert (
+            "Coherent minutes challengers"
+            in page.locator("#assistant-prediction-content").inner_text()
+        )
     for mode in ("ensemble", "external_mean"):
         page.locator("#assistant-prediction-model").select_option(mode)
         assert (
@@ -178,6 +196,19 @@ def check(page, origin, password, client, output):
     page.wait_for_function(
         "() => document.querySelector('#assistant-squad-content').textContent.includes('minutes-states-v1-browser')"
     )
+    page.locator("#assistant-planning-model").select_option("statistical")
+    page.wait_for_function(
+        "() => document.querySelector('#assistant-squad-content').textContent.includes('Planning: shared-fixtures-v4')"
+    )
+    for mode, version in (
+        ("fitted_minutes", "minutes-fitted-v2-browser"),
+        ("empirical_minutes", "minutes-empirical-v2-browser"),
+    ):
+        page.locator("#assistant-planning-model").select_option(mode)
+        page.wait_for_function(
+            "version=>document.querySelector('#assistant-squad-content').textContent.includes(version)",
+            arg=version,
+        )
     page.locator("#assistant-planning-model").select_option("statistical")
     page.wait_for_function(
         "() => document.querySelector('#assistant-squad-content').textContent.includes('Planning: shared-fixtures-v4')"

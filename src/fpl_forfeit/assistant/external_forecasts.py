@@ -504,6 +504,7 @@ def fit_past_weights(observations: Iterable[dict], sources: tuple[str, ...], cut
 
     Uses identical complete rows and settled outcomes available strictly before
     the forecast cutoff. Correlated sources and sparse data favour equal weights.
+    Fewer than eight distinct settled common-coverage deadlines returns equal weights.
     A more complex stack must beat this and equal-weight blending prospectively.
     """
     if not sources or len(set(sources)) != len(sources) or shrinkage < 0:
@@ -522,7 +523,7 @@ def fit_past_weights(observations: Iterable[dict], sources: tuple[str, ...], cut
         for s in sources:
             errors[s].append((number(row["predictions"][s]) - actual) ** 2)
     n = len(errors[sources[0]])
-    if not n:
+    if not n or len(deadlines) < 8:
         return {s: 1 / len(sources) for s in sources}
     inverse = {s: 1 / max(statistics.mean(errors[s]), 0.01) for s in sources}
     total = sum(inverse.values())

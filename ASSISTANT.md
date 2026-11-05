@@ -245,6 +245,28 @@ cost beyond six GWs remain unknown. Nothing is submitted to FPL; this is account
 
 ## Verification and representative performance
 
+### Coherent playing-time challengers (November 2026)
+
+Predictions and Planning offer **Fitted minutes** and **Tuned empirical minutes** alongside the
+existing methods. Both use the shared football simulator and FPL scorer, with training-only cold
+priors, five coherent appearance/selection states and conditional duration distributions. The
+statistical model remains the default. Selection is request-local and an unavailable method
+returns an explicit error rather than relabelling a statistical result.
+
+Official chance affects only the next GW and is sampled once across a double. Later forecasts
+for currently flagged players have unknown unconditional means and labelled conditional-if-available
+fixture details; complete planning totals are refused when those unknown means matter. Current
+club-change uncertainty, missing-history fallbacks and model hashes are exposed in provenance.
+These models need no new production dependencies. The optional attacking allocation ablation is
+research only and is not a selectable planning model.
+
+Regular-starter minutes accuracy improves in chronological development, but candidate points
+RMSE improves only about 0.01 points and does not meet the unchanged promotion rule. See
+[the sprint evidence](ml/reports/MINUTES_SPRINT.md),
+[selection-source coverage](ml/reports/SELECTION_INPUTS_SPRINT.md), and
+[actual collector/deployment status](ml/reports/COLLECTION_STATUS_SPRINT.md). Collection activation
+is independent of application deployment; a draft research PR does not itself deploy these selectors.
+
 ### Fixture-aware ML option
 
 The statistical forecast remains the default. Predictions now also offers the existing Ridge,

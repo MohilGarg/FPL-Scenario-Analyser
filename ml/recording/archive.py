@@ -188,6 +188,15 @@ def validate_record(record: dict, manifest: dict) -> None:
             canonical(minutes["metadata"])
         ) != manifest.get("minutes_metadata_sha256"):
             raise ValueError("Minutes forecast provenance mismatch")
+    for name, challenger in record.get("challengers", {}).items():
+        if name not in {"fitted_minutes", "empirical_minutes"} or (
+            digest(canonical(challenger["predictions"])) != challenger["prediction_sha256"]
+            or digest(canonical(challenger["metadata"]))
+            != manifest.get("challenger_metadata_sha256", {}).get(name)
+            or challenger["metadata"]["feature_asof_utc"] != record["feature_asof_utc"]
+            or challenger["archived_horizon"] != [manifest["gameweek"]]
+        ):
+            raise ValueError("Coherent challenger provenance mismatch")
 
 
 def create_bundle(source: Path, stage: str, gw: int, context: dict, output: Path) -> Path:
@@ -237,6 +246,11 @@ def create_bundle(source: Path, stage: str, gw: int, context: dict, output: Path
             manifest["minutes_metadata_sha256"] = digest(
                 canonical(record["minute_model"]["metadata"])
             )
+        if record.get("challengers"):
+            manifest["challenger_metadata_sha256"] = {
+                name: digest(canonical(value["metadata"]))
+                for name, value in record["challengers"].items()
+            }
     validate_record(record, manifest)
     target = io.BytesIO()
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_STORED) as archive:

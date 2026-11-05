@@ -1,0 +1,111 @@
+{
+  "scope": "Conditional on realised playing exposure for rate fitting only; full-population points evaluation separately retains nonappearances. Past xA and recorded FPL assists are distinct inputs/targets.",
+  "outer": [
+    {
+      "first_gw": 1,
+      "chosen": {
+        "goal": {
+          "alpha": 0.01,
+          "inner_deviance": [
+            0.41183675324176505,
+            0.4250233062291908,
+            0.4731623543140904
+          ]
+        },
+        "assist": {
+          "alpha": 0.01,
+          "inner_deviance": [
+            0.3998123471499729,
+            0.4104710202147642,
+            0.4362133548072135
+          ]
+        }
+      }
+    },
+    {
+      "first_gw": 11,
+      "chosen": {
+        "goal": {
+          "alpha": 0.01,
+          "inner_deviance": [
+            0.38085903602345017,
+            0.3953562807622653,
+            0.4368245467485198
+          ]
+        },
+        "assist": {
+          "alpha": 0.01,
+          "inner_deviance": [
+            0.39419694245535175,
+            0.39981923156763577,
+            0.41801214627316247
+          ]
+        }
+      }
+    },
+    {
+      "first_gw": 21,
+      "chosen": {
+        "goal": {
+          "alpha": 0.01,
+          "inner_deviance": [
+            0.3767710114993141,
+            0.39192872469498086,
+            0.43824640479223137
+          ]
+        },
+        "assist": {
+          "alpha": 0.01,
+          "inner_deviance": [
+            0.40200773589140176,
+            0.40722452926442965,
+            0.4271646884844823
+          ]
+        }
+      }
+    },
+    {
+      "first_gw": 30,
+      "chosen": {
+        "goal": {
+          "alpha": 0.01,
+          "inner_deviance": [
+            0.37487391426939554,
+            0.3911570098930245,
+            0.43955956509002814
+          ]
+        },
+        "assist": {
+          "alpha": 0.01,
+          "inner_deviance": [
+            0.39793593446577,
+            0.4054136846273821,
+            0.4265212531268076
+          ]
+        }
+      }
+    }
+  ],
+  "metrics": {
+    "goal": {
+      "baseline": {
+        "poisson_deviance": 0.37221083290980406,
+        "bias": 0.006847981910886256
+      },
+      "model": {
+        "poisson_deviance": 0.3712218522013183,
+        "bias": 0.005468598715710454
+      }
+    },
+    "assist": {
+      "baseline": {
+        "poisson_deviance": 0.39047827963111387,
+        "bias": -0.011855910230481378
+      },
+      "model": {
+        "poisson_deviance": 0.38757148989413004,
+        "bias": 0.005506943787932987
+      }
+    }
+  }
+}

@@ -70,11 +70,25 @@ class AssistantService:
                     "Minutes experiment is loading or unavailable. Choose Statistical to continue planning."
                 )
             return minutes
+        if SELECTED_MODEL.get() in {"fitted_minutes", "empirical_minutes"}:
+            self.ml_status(baseline)
+            challenger = self.ml.challenger(baseline, SELECTED_MODEL.get())
+            if challenger is None:
+                raise FPLGameweekUnavailable(
+                    "Coherent minutes challenger is loading or unavailable. Choose Statistical to continue."
+                )
+            return challenger
         return baseline
 
     @contextmanager
     def using_model(self, model: str):
-        if model not in ("statistical", "components", "minutes"):
+        if model not in (
+            "statistical",
+            "components",
+            "minutes",
+            "fitted_minutes",
+            "empirical_minutes",
+        ):
             raise ValueError("Ridge marginals cannot be used for simulated planning.")
         token = SELECTED_MODEL.set(model)
         try:
@@ -121,8 +135,10 @@ class AssistantService:
     def ml_status(self, forecast: HorizonForecast | None = None) -> dict:
         with self.lock:
             forecast = forecast or self.statistical_forecast()
-            if forecast is getattr(self.ml, "component_forecast", None) or forecast is getattr(
-                self.ml, "minutes_forecast", None
+            if (
+                forecast is getattr(self.ml, "component_forecast", None)
+                or forecast is getattr(self.ml, "minutes_forecast", None)
+                or any(forecast is f for f in getattr(self.ml, "challenger_forecasts", {}).values())
             ):
                 forecast = self.statistical_forecast()
             snapshot = self.official_snapshot if forecast is self.snapshot_forecast else None
@@ -173,7 +189,15 @@ class AssistantService:
                 "haul_probability": "Gameweek points >= 10.",
             },
             "assumptions": [
-                note.replace("192-sample", f"{forecast.samples}-sample") for note in ASSUMPTIONS
+                (
+                    "Football rates are held fixed; coherent selection uncertainty grows over the horizon. Official availability applies to the next GW only; later flagged-player totals are unknown with conditional-if-available scenarios."
+                    if forecast.inputs.model_version.startswith(
+                        ("minutes-fitted", "minutes-empirical")
+                    )
+                    and note.startswith("Season xG")
+                    else note.replace("192-sample", f"{forecast.samples}-sample")
+                )
+                for note in ASSUMPTIONS
             ]
             + (
                 [
@@ -198,6 +222,14 @@ class AssistantService:
         ml_status = self.ml_status(forecast)
         component = self.ml.components(forecast) if hasattr(self.ml, "components") else None
         minutes = self.ml.minutes(forecast) if hasattr(self.ml, "minutes") else None
+        challengers = (
+            {
+                name: self.ml.challenger(forecast, name)
+                for name in ("fitted_minutes", "empirical_minutes")
+            }
+            if hasattr(self.ml, "challenger")
+            else {}
+        )
         gameweeks = forecast.gameweeks[:horizon]
         external = self.external_comparison(forecast, gameweeks)
         rows = []
@@ -208,6 +240,10 @@ class AssistantService:
                     "ml": self.ml_prediction(forecast, pid, gw),
                     "fixture_ml": component.players[pid][gw] if component else None,
                     "minutes_model": minutes.players[pid][gw] if minutes else None,
+                    "challengers": {
+                        name: candidate.players[pid][gw] if candidate else None
+                        for name, candidate in challengers.items()
+                    },
                     **external[gw]["players"].get(pid, {}),
                 }
                 for gw in gameweeks
@@ -222,6 +258,16 @@ class AssistantService:
                     **self.identity(forecast, pid),
                     "gameweeks": projected,
                     "total_expected_points": total,
+                    "challenger_totals": {
+                        name: sum(candidate.players[pid][gw]["expected_points"] for gw in gameweeks)
+                        if candidate
+                        and all(
+                            candidate.players[pid][gw]["expected_points"] is not None
+                            for gw in gameweeks
+                        )
+                        else None
+                        for name, candidate in challengers.items()
+                    },
                     "minutes_model_total": sum(
                         p["minutes_model"]["expected_points"] for p in projected
                     )
@@ -278,6 +324,7 @@ class AssistantService:
             ),
             "external_note": "Only locally captured fresh pre-deadline sources are compared. Missing forecasts are unknown. Live source and cached internal input vintages can differ; only the recorded benchmark enforces equivalent cutoffs. The experimental ensemble equally averages the internal mean and available external source means; source correlations are not calibrated. It has no joint distribution and cannot drive planning or simulated ranges. Current statistical default is retained.",
             "component_note": "Fixture ML uses shared simulated outcomes. Historical schedules are mostly retrospective proxies; observed form is frozen over six GWs. Bonus/defensive contributions, cold starts, transfers and unavailable components use statistical fallbacks. Experimental, not prospectively calibrated.",
+            "challenger_note": "Coherent minutes challengers use five playing states, learned cold priors, conditional durations and legal dependent starter sampling. Current official chance caps next-GW appearance once. Future flagged-player availability is unknown; conditional-if-available scenarios are not unconditional totals. No model is promoted.",
             "ml_note": "Ridge estimates only the next Gameweek from eligible current-season history. Later GWs, blanks, doubles, transfers and availability changes use labelled statistical fallback. ML has no simulated ranges or lineup optimiser adapter.",
             "horizon_note": f"Only {len(gameweeks)} Gameweeks remain in the published season."
             if len(gameweeks) < horizon
@@ -367,7 +414,16 @@ class AssistantService:
             "ml_predictions": {
                 gw: self.ml_prediction(forecast, pid, gw) for gw in forecast.gameweeks
             },
-            "fixtures": [asdict(p) for p in forecast.fixtures if p.player_id == pid],
+            "fixtures": [
+                {
+                    **asdict(p),
+                    "conditional_if_available": bool(
+                        forecast.players[pid][p.gameweek].get("availability_unknown")
+                    ),
+                }
+                for p in forecast.fixtures
+                if p.player_id == pid
+            ],
         }
 
     def load_squad(self, subject: str, entry_id: int) -> dict:

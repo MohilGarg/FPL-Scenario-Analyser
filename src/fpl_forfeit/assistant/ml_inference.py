@@ -182,6 +182,8 @@ class LiveML:
         self.component_metadata: dict | None = None
         self.minutes_forecast: HorizonForecast | None = None
         self.minutes_metadata: dict | None = None
+        self.challenger_forecasts: dict[str, HorizonForecast] = {}
+        self.challenger_metadata: dict[str, dict] = {}
         self.stopped = Event()
 
     def request(self, forecast: HorizonForecast, snapshot: dict | None) -> dict:
@@ -193,6 +195,7 @@ class LiveML:
                 self.generation, self.rows = generation, {}
                 self.component_forecast = self.component_metadata = None
                 self.minutes_forecast = self.minutes_metadata = None
+                self.challenger_forecasts, self.challenger_metadata = {}, {}
                 self.status = {
                     "state": "loading",
                     "completed": 0,
@@ -277,6 +280,26 @@ class LiveML:
             except Exception as exc:
                 logger.exception("Private minutes state inference failed")
                 minutes_error = f"minutes_failed:{type(exc).__name__}"
+            challengers, challenger_metadata, challenger_errors = {}, {}, {}
+            for name, filename in (
+                ("fitted_minutes", "minutes_v2.json"),
+                ("empirical_minutes", "minutes_empirical_v2.json"),
+            ):
+                try:
+                    from .fitted_forecast import build_fitted_forecast
+                    from .minutes_model import MinutesModel
+
+                    challenger, metadata = build_fitted_forecast(
+                        forecast,
+                        snapshot,
+                        histories,
+                        asof,
+                        model=MinutesModel(Path(__file__).with_name(filename)),
+                    )
+                    challengers[name], challenger_metadata[name] = challenger, metadata
+                except Exception as exc:
+                    logger.exception("Private coherent minutes challenger failed")
+                    challenger_errors[name] = f"challenger_failed:{type(exc).__name__}"
             generated = self.now()
             with self.lock:
                 if self.stopped.is_set():
@@ -286,6 +309,10 @@ class LiveML:
                 self.rows, self.raw_histories = rows, histories
                 self.component_forecast, self.component_metadata = component, component_metadata
                 self.minutes_forecast, self.minutes_metadata = minutes, minutes_metadata
+                self.challenger_forecasts, self.challenger_metadata = (
+                    challengers,
+                    challenger_metadata,
+                )
                 self.status = {
                     "state": "ready",
                     "completed": len(rows),
@@ -299,6 +326,16 @@ class LiveML:
                     "minutes_state": "ready" if minutes else "unavailable",
                     "minutes_error": minutes_error,
                     "minutes_version": minutes.inputs.model_version if minutes else None,
+                    "challengers": {
+                        name: {
+                            "state": "ready" if name in challengers else "unavailable",
+                            "version": challengers[name].inputs.model_version
+                            if name in challengers
+                            else None,
+                            "error": challenger_errors.get(name),
+                        }
+                        for name in ("fitted_minutes", "empirical_minutes")
+                    },
                     "component_version": component_metadata["version"]
                     if component_metadata
                     else None,
@@ -323,6 +360,9 @@ class LiveML:
                     component_error=component_error,
                     minutes_forecast=minutes,
                     minutes_metadata=minutes_metadata,
+                    challengers=challengers,
+                    challenger_metadata=challenger_metadata,
+                    challenger_errors=challenger_errors,
                 )
                 archive.finalize(snapshot["bootstrap"], self.client)
                 self.last_archive_error = ""
@@ -387,6 +427,7 @@ class LiveML:
             self.rows, self.history_cache = {}, {}
             self.component_forecast = self.component_metadata = None
             self.minutes_forecast = self.minutes_metadata = None
+            self.challenger_forecasts, self.challenger_metadata = {}, {}
             self.generation = None
 
     def components(self, forecast: HorizonForecast) -> HorizonForecast | None:
@@ -407,6 +448,18 @@ class LiveML:
             first = next(g for g in forecast.catalogue.gameweeks if g.id == forecast.gameweeks[0])
             return (
                 self.minutes_forecast
+                if (
+                    generation == self.generation and first.deadline and self.now() < first.deadline
+                )
+                else None
+            )
+
+    def challenger(self, forecast: HorizonForecast, name: str) -> HorizonForecast | None:
+        with self.lock:
+            generation = (forecast.catalogue.fetched_at.isoformat(), forecast.gameweeks)
+            first = next(g for g in forecast.catalogue.gameweeks if g.id == forecast.gameweeks[0])
+            return (
+                self.challenger_forecasts.get(name)
                 if (
                     generation == self.generation and first.deadline and self.now() < first.deadline
                 )

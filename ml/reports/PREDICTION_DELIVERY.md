@@ -1,5 +1,15 @@
 # Prediction-system delivery — 5 November 2026
 
+**Follow-up sprint:** [fitted minutes and controlled points evidence](MINUTES_SPRINT.md),
+[selection sources and disagreements](SELECTION_INPUTS_SPRINT.md), and
+[verified collection activation](COLLECTION_STATUS_SPRINT.md). PR #2 is merged; collection is
+active independently of the draft research PR. The new selectable private fitted/empirical
+challengers improve historical minutes, but do not establish better candidate points on the
+three original captured deadlines. The statistical default and promotion rule are unchanged.
+Current local validation passes **364 application tests, 93 ML tests**, the frontend build,
+JavaScript syntax, changed-file lint and actual Edge desktop/mobile/theme/auth interactions.
+The earlier delivery measurements below are retained as the original sprint record.
+
 The working branch implements prospective evidence, external ingestion, private minutes-state
 forecasts and honest chronological comparisons. The public analyser and authentication boundary
 are preserved; no forecast default is promoted.
