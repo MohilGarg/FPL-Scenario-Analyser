@@ -25,6 +25,19 @@ class LineupOptimisationTests(unittest.TestCase):
         self.assertEqual(result["bench_ids"], [1, 8, 4, 3])
         self.assertEqual(result["points_interval_80"], [119, 119])
 
+    def test_fixed_lineup_paired_error_cancels_common_sample_variation(self):
+        noisy = {pid: OutcomeSamples((pid, pid + 8), (90, 90), bytes([1, 1])) for pid in self.ids}
+        optimiser = LineupOptimiser(self.players, noisy, self.ids)
+        first = optimiser.optimise()
+        same = optimiser.compare(first, first)
+        self.assertEqual(same["monte_carlo_interval_95"], [0, 0])
+        self.assertTrue(same["too_close_to_distinguish"])
+        second = {**first, "captain": first["vice_captain"], "vice_captain": first["captain"]}
+        paired = optimiser.compare(first, second)
+        self.assertEqual(paired["standard_error"], 0)
+        self.assertEqual(paired["expected_difference"], first["captain"] - second["captain"])
+        self.assertFalse(paired["too_close_to_distinguish"])
+
     def test_matches_brute_force_legal_xis_for_certain_appearances(self):
         scores = {pid: ElementScore(pid, 90) for pid in self.ids}
         best = float("-inf")

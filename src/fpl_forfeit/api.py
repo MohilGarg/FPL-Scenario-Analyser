@@ -550,6 +550,11 @@ def parse_forecast_catalogue(
             for c in bootstrap.get("chips", [])
         ),
         missing_schedule_team_ids=frozenset(t for pair in expected_pairs - pairs for t in pair),
+        scoring_season=(
+            f"{int(bootstrap['events'][0]['deadline_time'][:4])}-{(int(bootstrap['events'][0]['deadline_time'][:4]) + 1) % 100:02d}"
+            if bootstrap.get("events") and bootstrap["events"][0].get("deadline_time")
+            else "2026-27"
+        ),
     )
 
 

@@ -32,7 +32,7 @@ from ml.fixture_dataset import LAG, load
 from ml.train_fixture_model import metrics
 
 
-def historical_points(position, stats):
+def historical_points(position, stats, *, season=None):
     # 2024/25 had no defensive-contribution points; goalkeeper goals already scored ten.
     return event_points(position, {**stats, "defensive_contribution": 0})
 

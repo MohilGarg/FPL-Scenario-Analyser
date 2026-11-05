@@ -98,3 +98,30 @@ models, reproduces every validation prediction and metric, and optionally matche
 Phase 2b **validation** Ridge predictions. It never accesses the Phase 2b test outputs.
 `report` only renders saved results; rendering changes are separately fingerprinted.
 There is no prediction integration or deployment.
+
+## Chronological development benchmark and minutes proposals
+
+The implemented November 2026 follow-up is separate from the frozen Phase 2b/2c
+protocols. It includes cold-start source rows, nested chronological Ridge alpha
+selection, small OLS, bounded tree tuning, minutes-feature ablation, paired
+deadline-block RMSE/MAE uncertainty, and appearance/start/60-minute diagnostics.
+It never reads 2025/26 outcomes for model selection and does not promote a default.
+The independent private minutes-state proposal comparison uses identical
+cutoff-safe histories for the experimental and statistical methods, preserves
+runtime cold/transfer fallbacks, and reports selection-candidate limitations.
+
+See [PREDICTION_BENCHMARK.md](../reports/PREDICTION_BENCHMARK.md) for measured
+results, the future promotion rule and all reproduction commands. Entry points:
+
+```powershell
+$env:PYTHONPATH='src'
+ml/.venv/Scripts/python.exe -m ml.prediction_benchmark reproduce
+ml/.venv/Scripts/python.exe -m ml.prediction_benchmark run
+ml/.venv/Scripts/python.exe -m ml.evaluate_playing_time
+ml/.venv/Scripts/python.exe -m ml.report_prediction_benchmark
+```
+
+The `run` command requires a fresh output directory; pass `--output-dir` for a
+reproduction. Fitting remains offline in this isolated environment. Historical
+source membership, registration, prices, injuries and publication vintages remain
+unverified; all gains are development evidence, not a prospective accuracy claim.

@@ -14,7 +14,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fpl_forfeit.assistant.ml_inference import RidgeModel, predict_player
-from fpl_forfeit.assistant.prospective import ForecastArchive, canonical
+from fpl_forfeit.assistant.prospective import (
+    ForecastArchive,
+    canonical,
+    replay_projection,
+    start_recording,
+)
 from fpl_forfeit.forecasting.horizon import forecast_horizon
 from ml.recording.archive import (
     create_bundle,
@@ -22,11 +27,12 @@ from ml.recording.archive import (
     policy,
     read_bundle,
     tag_for,
+    validate_record,
     validate_release,
 )
-from ml.recording.evaluate import evaluate
+from ml.recording.evaluate import distribution_metrics, evaluate, probability_metrics
 from ml.recording.github import GitHubStore, StorageError
-from ml.recording.run import RetryClient, due_slot, missing_stages
+from ml.recording.run import RetryClient, due_rolling, due_slot, missing_stages
 from tests.assistant_fixtures import NOW, catalogue
 from tests.test_live_ridge import source
 
@@ -124,6 +130,204 @@ class RecordingTests(unittest.TestCase):
             "GW07 advance window missed; never backfilled",
             missing_stages(self.bootstrap(4), NOW, []),
         )
+
+    def test_rolling_runs_are_rate_limited_and_use_original_completion_times(self):
+        self.assertEqual(due_rolling(self.bootstrap(25), NOW, []), 7)
+        for lead in (31, 0.75, -1):
+            self.assertIsNone(due_rolling(self.bootstrap(lead), NOW, []))
+        stage = "rolling-" + NOW.strftime("%Y%m%dT%H%M%SZ")
+        bundle = create_bundle(self.path, stage, 7, self.context, self.root / "rolling.zip")
+        manifest, _ = read_bundle(bundle)
+        self.assertEqual(manifest["archive_version"], 2)
+        self.assertIn("t24h", manifest["cutoff_evidence"]["eligible_cutoffs"])
+        release = {**self.release(), "tag_name": tag_for(7, stage)}
+        self.assertIsNone(due_rolling(self.bootstrap(25), NOW + timedelta(minutes=59), [release]))
+        self.assertIsNone(due_rolling(self.bootstrap(25), NOW + timedelta(hours=1), [release]))
+        near_deadline = {
+            **release,
+            "tag_name": tag_for(
+                7, "rolling-" + (NOW - timedelta(hours=23.5)).strftime("%Y%m%dT%H%M%SZ")
+            ),
+        }
+        self.assertEqual(due_rolling(self.bootstrap(1.5), NOW, [near_deadline]), 7)
+        with self.assertRaises(ValueError):
+            create_bundle(
+                self.path, "rolling-20261011T010000Z", 7, self.context, self.root / "misdated.zip"
+            )
+
+    def test_cutoff_selection_uses_capture_and_durable_publication_not_stage_or_outcome(self):
+        deadline = self.deadline
+        early = {
+            **self.manifest,
+            "captured_at": (deadline - timedelta(hours=25)).isoformat(),
+            "durably_published_at": (deadline - timedelta(hours=24, minutes=50)).isoformat(),
+        }
+        late_upload = {
+            **early,
+            "stage": "final",
+            "captured_at": (deadline - timedelta(hours=24, minutes=30)).isoformat(),
+            "durably_published_at": (deadline - timedelta(hours=23)).isoformat(),
+        }
+        final = {
+            **early,
+            "stage": "rolling-20261016T090000Z",
+            "captured_at": (deadline - timedelta(hours=1)).isoformat(),
+            "durably_published_at": (deadline - timedelta(minutes=40)).isoformat(),
+        }
+        captures = [(early, self.record), (late_upload, self.record), (final, self.record)]
+        result = evaluate(captures, {7: self.actual()}, cutoff_name="t24h")
+        self.assertEqual(result["gameweeks"][0]["stage"], "advance")
+        self.assertEqual(result["gameweeks"][0]["cutoff_age_hours"], 1)
+        self.assertEqual(
+            evaluate(captures, {7: self.actual()})["gameweeks"][0]["stage"], final["stage"]
+        )
+        empty = evaluate([(final, self.record)], {7: self.actual()}, cutoff_name="t24h")
+        self.assertEqual(empty["missing_cutoff_gameweeks"], [7])
+        self.assertEqual(empty["metrics"]["all_roster_paired"]["statistical"]["n"], 0)
+
+    def test_input_retrieval_cannot_follow_feature_cutoff_even_before_generation(self):
+        with self.assertRaises(ValueError):
+            ForecastArchive(self.root / "badcutoff").record(
+                self.forecast,
+                self.snapshot,
+                {1: self.history},
+                self.predictions,
+                NOW + timedelta(minutes=10),
+                self.model,
+                feature_asof=NOW - timedelta(seconds=1),
+            )
+
+    def test_legacy_replay_allows_only_additive_fields_and_old_dgw_start_convention(self):
+        saved = {"fixture_ids": [1, 2], "expected_points": 7.5, "starting_probability": None}
+        generated = {**saved, "starting_probability": 0.9, "new_probability": 0.5}
+        self.assertEqual(replay_projection(generated, saved, legacy=True), saved)
+        self.assertNotEqual(replay_projection(generated, saved, legacy=False), saved)
+        self.assertEqual(
+            replay_projection({**generated, "expected_points": 8}, saved, legacy=True)[
+                "expected_points"
+            ],
+            8,
+        )
+
+    def test_background_external_collection_is_independent_of_actuals_failure(self):
+        service = unittest.mock.Mock()
+        service.official_snapshot = self.snapshot
+        with (
+            patch("threading.Event") as event,
+            patch("threading.Thread") as thread,
+            patch.object(
+                ForecastArchive, "finalize", side_effect=RuntimeError("actuals unavailable")
+            ),
+            patch(
+                "fpl_forfeit.assistant.external_forecasts.collect_sources",
+                return_value={"fpl_cat": {"state": "ready"}},
+            ) as collect,
+        ):
+            event.return_value.is_set.side_effect = [False, True]
+            start_recording(service)
+            thread.call_args.kwargs["target"]()
+            collect.assert_called_once()
+            service.external_cache.clear.assert_called_once()
+            self.assertEqual(service.external_collection_status["fpl_cat"]["state"], "ready")
+
+    def test_minutes_forecast_is_archived_with_its_own_integrity_evidence(self):
+        source = ForecastArchive(self.root / "minutes").record(
+            self.forecast,
+            self.snapshot,
+            {1: self.history},
+            self.predictions,
+            NOW,
+            self.model,
+            feature_asof=NOW,
+            minutes_forecast=self.forecast,
+            minutes_metadata={"version": "test-minutes-v1", "feature_asof_utc": NOW.isoformat()},
+        )
+        bundle = create_bundle(source, "advance", 7, self.context, self.root / "minutes.zip")
+        manifest, record = read_bundle(bundle)
+        self.assertEqual(record["minute_model"]["predictions"], record["statistical_predictions"])
+        self.assertEqual(
+            manifest["minutes_metadata_sha256"],
+            digest(canonical(record["minute_model"]["metadata"])),
+        )
+
+    def test_fitted_challenger_archives_only_next_gw_and_validates_metadata(self):
+        from fpl_forfeit.assistant.fitted_forecast import build_fitted_forecast
+
+        fitted, metadata = build_fitted_forecast(
+            self.forecast, self.snapshot, {1: self.history}, NOW
+        )
+        source = ForecastArchive(self.root / "fitted").record(
+            self.forecast,
+            self.snapshot,
+            {1: self.history},
+            self.predictions,
+            NOW,
+            self.model,
+            feature_asof=NOW,
+            challengers={"fitted_minutes": fitted},
+            challenger_metadata={"fitted_minutes": metadata},
+        )
+        bundle = create_bundle(source, "advance", 7, self.context, self.root / "fitted.zip")
+        manifest, record = read_bundle(bundle)
+        saved = record["challengers"]["fitted_minutes"]
+        self.assertEqual(record["challenger_status"]["fitted_minutes"]["state"], "ready")
+        self.assertEqual(record["challenger_status"]["empirical_minutes"]["state"], "unavailable")
+        self.assertEqual(saved["archived_horizon"], [7])
+        self.assertTrue(all(set(weekly) == {"7"} for weekly in saved["predictions"].values()))
+        self.assertEqual({row["gameweek"] for row in saved["fixtures"]}, {7})
+        self.assertEqual(saved["metadata"]["model_sha256"], metadata["model_sha256"])
+        altered = deepcopy(record)
+        altered["challengers"]["fitted_minutes"]["metadata"]["lineup_sampler"] = "corrupted"
+        with self.assertRaisesRegex(ValueError, "challenger provenance"):
+            validate_record(altered, manifest)
+
+    def test_public_bundle_rejects_restricted_or_late_external_forecasts(self):
+        from fpl_forfeit.assistant.external_forecasts import (
+            ATTRIBUTIONS,
+            ForecastBatch,
+            ForecastRow,
+        )
+
+        batch = ForecastBatch(
+            source="fpl_cat",
+            source_version="api/v1",
+            season="2026-27",
+            redistribution_allowed=True,
+            attribution=ATTRIBUTIONS["fpl_cat"],
+            computed_at=NOW.isoformat(),
+            retrieved_at=NOW.isoformat(),
+            deadline=self.deadline.isoformat(),
+            rows=(ForecastRow(player_id=1, gameweek=7, expected_points=4.5),),
+        ).to_dict()
+
+        def bundle_for(candidate_batch, suffix):
+            data = deepcopy(self.record)
+            data["official_snapshot"]["bootstrap"]["events"].append(
+                {"id": 7, "deadline_time": self.deadline.isoformat()}
+            )
+            data["source_sha256"] = digest(
+                canonical(
+                    {"snapshot": data["official_snapshot"], "histories": data["official_histories"]}
+                )
+            )
+            data["external_forecasts"] = {
+                "batches": [candidate_batch],
+                "sha256": digest(canonical([candidate_batch])),
+            }
+            raw = self.root / f"external-{suffix}.gz"
+            raw.write_bytes(gzip.compress(canonical(data), mtime=0))
+            return create_bundle(
+                raw, "advance", 7, self.context, self.root / f"external-{suffix}.zip"
+            )
+
+        read_bundle(bundle_for(batch, "valid"))
+        for suffix, changes in (
+            ("restricted", {"redistribution_allowed": False}),
+            ("late", {"retrieved_at": (NOW + timedelta(seconds=1)).isoformat()}),
+            ("wrong-season", {"season": "2025-26"}),
+        ):
+            with self.assertRaises(ValueError):
+                bundle_for({**batch, **changes}, suffix)
 
     def test_one_immutable_capture_per_slot_and_unpublished_drafts_are_not_success(self):
         self.assertIsNone(due_slot(self.bootstrap(48), NOW, [self.release()]))
@@ -322,12 +526,101 @@ class RecordingTests(unittest.TestCase):
             ]["statistical"]["n"],
             1,
         )
+
+    def test_probability_metrics_and_deadline_bootstrap_keep_the_correct_unit(self):
+        values = probability_metrics([(0.0, 0), (1.0, 1), (0.5, 1)])
+        self.assertAlmostEqual(values["brier"], 1 / 12)
+        self.assertEqual(values["n"], 3)
+        bad = probability_metrics([(0, 1), (1, 0)])
+        self.assertGreater(bad["log_loss"], 20)
+        with self.assertRaises(ValueError):
+            probability_metrics([(1.1, 1)])
+        result = evaluate([(self.manifest, self.record)], {7: self.actual()})
+        interval = result["paired_uncertainty"][
+            "all_roster_paired:ml_with_fallbacks-minus-statistical"
+        ]
+        self.assertEqual(interval["deadline_count"], 1)
+        self.assertIsNone(interval["metrics"]["rmse"]["interval_95"])
         self.assertEqual(
             evaluate([(self.manifest, self.record)], {7: self.actual(None)})["exclusions"][
                 "unknown_actual"
             ],
             1,
         )
+
+    def test_external_ensemble_ablations_use_identical_common_coverage_without_ridge_dependency(
+        self,
+    ):
+        from fpl_forfeit.assistant.external_forecasts import (
+            ATTRIBUTIONS,
+            ForecastBatch,
+            ForecastRow,
+        )
+
+        record = deepcopy(self.record)
+        record["statistical_predictions"]["1"]["7"]["expected_points"] = 6
+        record["statistical_predictions"]["2"] = deepcopy(record["statistical_predictions"]["1"])
+        record["official_snapshot"]["bootstrap"]["elements"] = [
+            {"id": 1, "team": 1},
+            {"id": 2, "team": 1},
+        ]
+        record["ml_predictions"] = {}
+        batches = []
+        for name, version, rows in (
+            ("fpl_cat", "api/v1", (ForecastRow(1, 7, 4), ForecastRow(2, 7, 10))),
+            ("sideline_quant", "1.0", (ForecastRow(1, 7, 8),)),
+        ):
+            batches.append(
+                ForecastBatch(
+                    name,
+                    version,
+                    "2026-27",
+                    NOW.isoformat(),
+                    NOW.isoformat(),
+                    self.deadline.isoformat(),
+                    rows,
+                    ATTRIBUTIONS[name],
+                    True,
+                ).to_dict()
+            )
+        record["external_forecasts"] = {"batches": batches}
+        actual = self.actual(6)
+        actual["actual_points"]["2"] = 6
+        result = evaluate([(self.manifest, record)], {7: actual})
+        self.assertEqual(result["metrics"]["external_fpl_cat_paired"]["fpl_cat"]["n"], 2)
+        common = result["metrics"]["external_all_source_common"]
+        self.assertTrue(all(m["n"] == 1 for m in common.values()))
+        self.assertEqual(common["internal_external_mean"]["mae"], 0)
+        self.assertEqual(common["internal_external_without_fpl_cat"]["mae"], 1)
+        self.assertEqual(common["internal_external_without_sideline_quant"]["mae"], 1)
+
+    def test_distribution_scores_are_proper_and_dgw_sixty_event_uses_fixture_minutes(self):
+        scores = distribution_metrics(
+            [({"points_interval_80": [0, 4], "points_quantiles": {"0.5": 4}}, 6)]
+        )
+        self.assertEqual(scores["interval_80"]["coverage"], 0)
+        self.assertEqual(scores["interval_80"]["interval_score"], 24)
+        self.assertEqual(scores["quantile_pinball"]["0.5"]["loss"], 1)
+        self.assertEqual(scores["quantile_pinball"]["0.1"]["n"], 0)
+        record = deepcopy(self.record)
+        record["statistical_predictions"]["1"]["7"]["probability_60_minutes"] = 0
+        actual = self.actual(4)
+        actual["source"] = {
+            "payload": {
+                "elements": [
+                    {
+                        "id": 1,
+                        "stats": {"minutes": 60, "starts": 2},
+                        "explain": [
+                            {"fixture": fid, "stats": [{"identifier": "minutes", "value": 30}]}
+                            for fid in (111, 112)
+                        ],
+                    }
+                ]
+            }
+        }
+        result = evaluate([(self.manifest, record)], {7: actual})
+        self.assertEqual(result["probability_metrics"]["statistical"]["sixty_minutes"]["brier"], 0)
 
     def test_capture_selection_never_uses_outcomes_or_future_gameweeks(self):
         final = {**self.manifest, "stage": "final"}

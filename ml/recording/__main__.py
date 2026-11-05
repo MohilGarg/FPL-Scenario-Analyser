@@ -23,6 +23,12 @@ def main() -> None:
     parser.add_argument("--gh-executable", default=os.getenv("GH_EXECUTABLE", "gh"))
     parser.add_argument("--bundle", type=Path)
     parser.add_argument(
+        "--cutoff",
+        choices=("final", "t24h"),
+        default="final",
+        help="Equivalent information cutoff for evaluation, using only originally archived runs",
+    )
+    parser.add_argument(
         "--new-actuals-only",
         action="store_true",
         help="Workflow optimisation: evaluate only actuals published by this run",
@@ -74,13 +80,14 @@ def main() -> None:
             if not gameweeks:
                 print("No new official-final actuals this run; no historical downloads")
                 return
-        result = from_releases(store, args.root, gameweeks=gameweeks)
+        result = from_releases(store, args.root, gameweeks=gameweeks, cutoff_name=args.cutoff)
         text = markdown(result)
         print(text)
-        (args.root / "evaluation.json").write_text(
+        stem = "evaluation" if args.cutoff == "final" else f"evaluation-{args.cutoff}"
+        (args.root / f"{stem}.json").write_text(
             json.dumps(result, indent=2) + "\n", encoding="utf-8"
         )
-        (args.root / "evaluation.md").write_text(text, encoding="utf-8")
+        (args.root / f"{stem}.md").write_text(text, encoding="utf-8")
         if path := os.getenv("GITHUB_STEP_SUMMARY"):
             with Path(path).open("a", encoding="utf-8") as stream:
                 stream.write(text)

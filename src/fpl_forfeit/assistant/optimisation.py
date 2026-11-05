@@ -193,6 +193,51 @@ class LineupOptimiser:
             )
         return base + bonus / self.n
 
+    def compare(self, first: dict, second: dict) -> dict:
+        """Paired Monte Carlo error, conditional on these two fixed candidate lineups.
+
+        This does not account for model error or selection optimism from searching
+        many lineups on the same draws. No claim of an out-of-sample optimum follows.
+        """
+        managers = [
+            make_lineup(
+                self.ids,
+                self.players,
+                tuple(row["starting_ids"]),
+                tuple(row["bench_ids"]),
+                row["captain"],
+                row["vice_captain"],
+                row.get("chip"),
+            )
+            for row in (first, second)
+        ]
+        complete = {p.team_id: True for p in self.players.values()}
+        deltas = []
+        for i in range(self.n):
+            scores = {
+                pid: ElementScore(
+                    self.outcomes[pid].points[i],
+                    self.outcomes[pid].minutes[i],
+                    bool(self.outcomes[pid].appeared[i] and not self.outcomes[pid].minutes[i]),
+                )
+                for pid in self.ids
+            }
+            deltas.append(
+                score_manager(managers[0], self.players, scores, complete)
+                - score_manager(managers[1], self.players, scores, complete)
+            )
+        mean = fmean(deltas)
+        error = sqrt(pvariance(deltas) / (self.n - 1)) if self.n > 1 else None
+        interval = [mean - 1.96 * error, mean + 1.96 * error] if error is not None else None
+        return {
+            "expected_difference": mean,
+            "standard_error": error,
+            "monte_carlo_interval_95": interval,
+            "samples": self.n,
+            "too_close_to_distinguish": interval is None or interval[0] <= 0 <= interval[1],
+            "note": "Paired Monte Carlo uncertainty for fixed choices. Excludes model error and selection optimism from searching on these same draws.",
+        }
+
     def _captain_key(self, pair: tuple[int, int]) -> tuple:
         captain, vice = pair
         return self.captain_pairs[pair], self.means[vice], self.means[captain], -captain, -vice

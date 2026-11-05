@@ -47,6 +47,30 @@ def immutable(path: Path, body: bytes) -> bool:
         Path(name).unlink(missing_ok=True)
 
 
+def replay_projection(actual: Any, saved: Any, *, legacy: bool) -> Any:
+    """Compare old stored fields exactly while allowing additive projection metadata.
+
+    Legacy GW start probability was deliberately unknown for blanks/doubles. This
+    conversion restores only that presentation convention; points never change.
+    """
+    if not legacy:
+        return actual
+    if isinstance(saved, dict) and isinstance(actual, dict):
+        result = {k: replay_projection(actual[k], v, legacy=True) for k, v in saved.items()}
+        if (
+            "fixture_ids" in saved
+            and len(saved["fixture_ids"]) != 1
+            and saved.get("starting_probability") is None
+        ):
+            result["starting_probability"] = None
+        return result
+    if isinstance(saved, list) and isinstance(actual, list):
+        if len(actual) != len(saved):
+            raise ValueError("Projection row count changed during replay")
+        return [replay_projection(a, s, legacy=True) for a, s in zip(actual, saved, strict=True)]
+    return actual
+
+
 class ForecastArchive:
     def __init__(self, root: Path | None = None) -> None:
         self.root = root or Path(os.getenv("FPL_ML_ARCHIVE_DIR", "snapshots/ml"))
@@ -64,7 +88,13 @@ class ForecastArchive:
         component=None,
         component_metadata: dict | None = None,
         component_error: str | None = None,
+        minutes_forecast=None,
+        minutes_metadata: dict | None = None,
+        challengers: dict | None = None,
+        challenger_metadata: dict | None = None,
+        challenger_errors: dict | None = None,
     ) -> Path:
+        asof = feature_asof or captured
         deadlines = {
             g.id: g.deadline
             for g in forecast.catalogue.gameweeks
@@ -73,11 +103,17 @@ class ForecastArchive:
         if (
             len(deadlines) != len(forecast.gameweeks)
             or not deadlines
+            or captured.tzinfo is None
+            or asof.tzinfo is None
+            or any(d.tzinfo is None for d in deadlines.values())
             or captured >= min(deadlines.values())
-            or feature_asof is not None
-            and feature_asof > captured
-            or datetime.fromisoformat(snapshot["source_finished_utc"]) > captured
-            or any(datetime.fromisoformat(h["retrieved_at"]) > captured for h in histories.values())
+            or asof > captured
+            or not datetime.fromisoformat(
+                snapshot.get("source_started_utc", snapshot["source_finished_utc"])
+            )
+            <= datetime.fromisoformat(snapshot["source_finished_utc"])
+            <= asof
+            or any(datetime.fromisoformat(h["retrieved_at"]) > asof for h in histories.values())
         ):
             raise ValueError(
                 "All source inputs and generated forecasts must precede their deadlines"
@@ -102,9 +138,16 @@ class ForecastArchive:
             )
         record = {
             "schema_version": 2,
+            "projection_schema_version": 2,
             "season": season,
             "captured_at": captured.isoformat(),
-            "feature_asof_utc": (feature_asof or captured).isoformat(),
+            "feature_asof_utc": asof.isoformat(),
+            "information_policy": {
+                "availability": "official bootstrap status/chance/news exactly as retrieved; no inferred return dates",
+                "fixtures": "official schedule exactly as retrieved; later changes require a new capture",
+                "cutoff": "all source retrieval completed by feature_asof_utc; forecast completed by captured_at",
+                "external_history": "newly retrieved projections are prospective only unless independent original publication proof exists",
+            },
             "deadlines": {g: d.isoformat() for g, d in deadlines.items()},
             "official_snapshot": snapshot,
             "official_histories": histories,
@@ -121,6 +164,23 @@ class ForecastArchive:
             "statistical_source_timestamp": forecast.catalogue.fetched_at.isoformat(),
             "note": "As-of preview; later GWs and unsupported rows use labelled statistical fallback. No personal squad or auth data.",
         }
+        from .selection_inputs import official_availability
+
+        selection = official_availability(
+            snapshot["bootstrap"],
+            datetime.fromisoformat(snapshot["source_finished_utc"]),
+        )
+        record["official_selection_evidence"] = {
+            "source": selection["source"],
+            "retrieved_at": selection["retrieved_at"],
+            "roster_rows": len(selection["rows"]),
+            "publication_timestamp_rows": sum(
+                row["published_at"] is not None for row in selection["rows"]
+            ),
+            "details_location": "Original official_snapshot.bootstrap.elements status/chance/news_added; no duplicated restricted external reports.",
+            "horizon": "next_gameweek_only",
+            "return_dates_inferred": False,
+        }
         if component is not None and component_metadata is not None:
             record["fixture_component"] = {
                 "metadata": component_metadata,
@@ -128,10 +188,42 @@ class ForecastArchive:
                 "fixtures": [asdict(p) for p in component.fixtures],
                 "prediction_sha256": hashlib.sha256(canonical(component.players)).hexdigest(),
             }
+        if minutes_forecast is not None and minutes_metadata is not None:
+            record["minute_model"] = {
+                "metadata": minutes_metadata,
+                "predictions": minutes_forecast.players,
+                "fixtures": [asdict(p) for p in minutes_forecast.fixtures],
+                "prediction_sha256": hashlib.sha256(
+                    canonical(minutes_forecast.players)
+                ).hexdigest(),
+            }
         record["fixture_component_status"] = {
             "state": "ready" if component else "unavailable",
             "error": component_error,
         }
+        if challengers is not None:
+            record["challenger_status"] = {
+                name: {
+                    "state": "ready" if name in challengers else "unavailable",
+                    "error": (challenger_errors or {}).get(name),
+                }
+                for name in ("fitted_minutes", "empirical_minutes")
+            }
+        if challengers:
+            record["challengers"] = {}
+            first = forecast.gameweeks[0]
+            for name, challenger in challengers.items():
+                predictions = {
+                    pid: {first: weekly[first]} for pid, weekly in challenger.players.items()
+                }
+                record["challengers"][name] = {
+                    "metadata": challenger_metadata[name],
+                    "predictions": predictions,
+                    "fixtures": [asdict(p) for p in challenger.fixtures if p.gameweek == first],
+                    "prediction_sha256": hashlib.sha256(canonical(predictions)).hexdigest(),
+                    "archived_horizon": [first],
+                    "horizon_note": "Next-GW challenger evidence bounds durable storage; live conditional horizon is separate.",
+                }
         body = canonical(record)
         if immutable(path, gzip.compress(body, mtime=0)):
             immutable(
@@ -248,7 +340,12 @@ def main() -> None:
             )
             if json.loads(canonical(actual)) != saved:
                 raise ValueError(f"Prediction replay mismatch for {pid}")
-        if json.loads(canonical(forecast.players)) != data["statistical_predictions"]:
+        legacy = data.get("projection_schema_version", 1) < 2
+        current = json.loads(canonical(forecast.players))
+        if (
+            replay_projection(current, data["statistical_predictions"], legacy=legacy)
+            != data["statistical_predictions"]
+        ):
             raise ValueError("Statistical replay mismatch")
         if "fixture_component" in data:
             from .component_forecast import build_component_forecast
@@ -262,12 +359,68 @@ def main() -> None:
                 datetime.fromisoformat(data["feature_asof_utc"]),
                 model=ComponentModel(data=saved["metadata"]["model"]),
             )
-            if canonical(component.players) != canonical(saved["predictions"]):
+            current = json.loads(canonical(component.players))
+            if (
+                replay_projection(current, saved["predictions"], legacy=legacy)
+                != saved["predictions"]
+            ):
                 raise ValueError("Fixture component replay mismatch")
-            if canonical([asdict(p) for p in component.fixtures]) != canonical(saved["fixtures"]):
+            current = json.loads(canonical([asdict(p) for p in component.fixtures]))
+            if replay_projection(current, saved["fixtures"], legacy=legacy) != saved["fixtures"]:
                 raise ValueError("Fixture component fixture replay mismatch")
+        if "minute_model" in data:
+            from .playing_time import build_minutes_forecast
+
+            saved = data["minute_model"]
+            minutes, metadata = build_minutes_forecast(
+                forecast,
+                snapshot,
+                {int(k): v for k, v in data["official_histories"].items()},
+                datetime.fromisoformat(data["feature_asof_utc"]),
+            )
+            if canonical(minutes.players) != canonical(saved["predictions"]) or canonical(
+                metadata
+            ) != canonical(saved["metadata"]):
+                raise ValueError("Playing-time prediction replay mismatch")
+            if canonical([asdict(p) for p in minutes.fixtures]) != canonical(saved["fixtures"]):
+                raise ValueError("Playing-time fixture replay mismatch")
+        if data.get("challengers"):
+            from .fitted_forecast import build_fitted_forecast
+            from .minutes_model import MinutesModel
+
+            for name, saved in data["challengers"].items():
+                challenger, metadata = build_fitted_forecast(
+                    forecast,
+                    snapshot,
+                    {int(k): v for k, v in data["official_histories"].items()},
+                    datetime.fromisoformat(data["feature_asof_utc"]),
+                    model=MinutesModel(data=saved["metadata"]["model"]),
+                    balanced=saved["metadata"]["lineup_sampler"] == "pivotal",
+                )
+                selected = {
+                    pid: {g: weekly[int(g)] for g in saved["archived_horizon"]}
+                    for pid, weekly in challenger.players.items()
+                }
+                if canonical(selected) != canonical(saved["predictions"]) or canonical(
+                    metadata
+                ) != canonical(saved["metadata"]):
+                    raise ValueError(f"Coherent challenger replay mismatch: {name}")
+                if canonical(
+                    [
+                        asdict(p)
+                        for p in challenger.fixtures
+                        if p.gameweek in saved["archived_horizon"]
+                    ]
+                ) != canonical(saved["fixtures"]):
+                    raise ValueError(f"Coherent challenger fixture replay mismatch: {name}")
+        methods = (
+            2
+            + int("fixture_component" in data)
+            + int("minute_model" in data)
+            + len(data.get("challengers", {}))
+        )
         print(
-            f"Reproduced {len(data['ml_predictions'])} players, {'3 forecast methods' if 'fixture_component' in data else 'both forecast methods'}; no network or fitting"
+            f"Reproduced {len(data['ml_predictions'])} players, {str(methods) + ' forecast methods' if methods > 2 else 'both forecast methods'}; no network or fitting"
         )
         return
     if args.archive_dir:
@@ -297,9 +450,32 @@ def start_recording(service) -> None:
                 forecast = service.forecast()
                 service.ml_status(forecast)
                 if service.official_snapshot:
-                    ForecastArchive().finalize(
-                        service.official_snapshot["bootstrap"], service.client
-                    )
+                    try:
+                        ForecastArchive().finalize(
+                            service.official_snapshot["bootstrap"], service.client
+                        )
+                    except Exception:  # noqa: BLE001 - preserve independent collection below
+                        service.ml.last_archive_error = "actual_recording_unavailable"
+                    # Existing auth-configured background scheduler only; no source fetch
+                    # or training in a private API request. Restarted hosts recollect fresh
+                    # local files; immutable GitHub releases remain the durable evidence.
+                    try:
+                        from .external_forecasts import collect_sources
+
+                        service.external_collection_status = collect_sources(
+                            service.official_snapshot["bootstrap"],
+                            Path(os.getenv("FPL_EXTERNAL_FORECAST_DIR", "snapshots/ml/external")),
+                            now=datetime.fromisoformat(
+                                service.official_snapshot["source_finished_utc"]
+                            ),
+                            fixtures=service.official_snapshot["fixtures"],
+                        )
+                        service.external_cache.clear()
+                    except Exception:  # noqa: BLE001 - independent upstream availability
+                        service.external_collection_status = {
+                            "state": "unavailable",
+                            "error": "background_external_collection_failed",
+                        }
             except Exception:  # noqa: BLE001 - recorder failures must not stop the application
                 # End of season still needs final actuals even when no future forecast exists.
                 snapshot = getattr(service.client, "latest_forecast_snapshot", None)

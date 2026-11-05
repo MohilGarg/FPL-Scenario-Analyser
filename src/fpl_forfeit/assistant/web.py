@@ -30,7 +30,9 @@ class LineupRequest(BaseModel):
     bench_ids: list[int] = Field(min_length=4, max_length=4)
     captain: int = Field(gt=0)
     vice_captain: int = Field(gt=0)
-    model: Literal["statistical", "components"] = "statistical"
+    model: Literal[
+        "statistical", "components", "minutes", "fitted_minutes", "empirical_minutes"
+    ] = "statistical"
 
 
 class TransferMove(BaseModel):
@@ -46,7 +48,9 @@ class TransferRequest(BaseModel):
     free_transfers: int = Field(ge=0, le=5)
     selling_prices: dict[str, int] = Field(default_factory=dict, max_length=15)
     account_confirmed: Literal[True]
-    model: Literal["statistical", "components"] = "statistical"
+    model: Literal[
+        "statistical", "components", "minutes", "fitted_minutes", "empirical_minutes"
+    ] = "statistical"
 
 
 class TransferSearchRequest(BaseModel):
@@ -57,7 +61,9 @@ class TransferSearchRequest(BaseModel):
     free_transfers: int = Field(ge=0, le=5)
     selling_prices: dict[str, int] = Field(default_factory=dict, max_length=15)
     account_confirmed: Literal[True]
-    model: Literal["statistical", "components"] = "statistical"
+    model: Literal[
+        "statistical", "components", "minutes", "fitted_minutes", "empirical_minutes"
+    ] = "statistical"
 
 
 def register_assistant(application: FastAPI, service: AssistantService, auth: SessionStore) -> None:
@@ -234,7 +240,12 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
         return result(service.ml_status)
 
     @router.get("/players/{player_id}")
-    def player(player_id: int, model: Literal["statistical", "components"] = "statistical"):
+    def player(
+        player_id: int,
+        model: Literal[
+            "statistical", "components", "minutes", "fitted_minutes", "empirical_minutes"
+        ] = "statistical",
+    ):
         return result(lambda: service.player(player_id), model)
 
     @router.post("/refresh")
@@ -255,7 +266,9 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
     def lineup(
         request: Request,
         gameweek: int | None = Query(default=None, ge=1, le=38),
-        model: Literal["statistical", "components"] = "statistical",
+        model: Literal[
+            "statistical", "components", "minutes", "fitted_minutes", "empirical_minutes"
+        ] = "statistical",
     ):
         return result(
             lambda: service.lineup(request.state.assistant_session.subject, gameweek), model
@@ -284,7 +297,12 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
         )
 
     @router.get("/chips")
-    def chips(request: Request, model: Literal["statistical", "components"] = "statistical"):
+    def chips(
+        request: Request,
+        model: Literal[
+            "statistical", "components", "minutes", "fitted_minutes", "empirical_minutes"
+        ] = "statistical",
+    ):
         return result(lambda: service.chips(request.state.assistant_session.subject), model)
 
     @router.post("/transfers/search")

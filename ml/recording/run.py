@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import subprocess
@@ -14,7 +15,17 @@ from fpl_forfeit.api import FPLAccessError, FPLAPIError, FPLClient, FPLNotFoundE
 from fpl_forfeit.assistant.prospective import ForecastArchive, canonical, immutable
 from fpl_forfeit.assistant.service import AssistantService
 
-from .archive import TAG, create_bundle, policy, read_bundle, stamp, tag_for
+from .archive import (
+    TAG,
+    create_bundle,
+    cutoff_policy,
+    digest,
+    policy,
+    read_bundle,
+    stamp,
+    tag_for,
+    unpack_record,
+)
 from .github import GitHubStore, StorageError
 
 
@@ -39,8 +50,17 @@ def context() -> dict:
         os.getenv("GITHUB_SHA")
         or subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     )
+    files = sorted(Path("src/fpl_forfeit").rglob("*.py")) + sorted(
+        Path("ml/recording").glob("*.py")
+    )
+    code_hashes = {p.as_posix(): digest(p.read_bytes()) for p in files}
     return {
         "code_commit": commit,
+        "working_tree_dirty": bool(
+            subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()
+        ),
+        "source_code_sha256": digest(canonical(code_hashes)),
+        "source_file_sha256": code_hashes,
         "run_id": os.getenv("GITHUB_RUN_ID"),
         "run_attempt": os.getenv("GITHUB_RUN_ATTEMPT"),
         "event": os.getenv("GITHUB_EVENT_NAME", "local"),
@@ -82,6 +102,42 @@ def due_slot(bootstrap: dict, now: datetime, releases: list[dict]) -> tuple[int,
     return None
 
 
+def due_rolling(bootstrap: dict, now: datetime, releases: list[dict]) -> int | None:
+    """Supplemental immutable runs enable actual latest-before-cutoff selection."""
+    if season_of(bootstrap) != policy()["season"] or now >= stamp(policy()["stop_after_utc"]):
+        return None
+    events = sorted(
+        (int(e["id"]), stamp(e["deadline_time"]))
+        for e in bootstrap["events"]
+        if e.get("deadline_time")
+        and int(e["id"]) >= policy()["first_gameweek"]
+        and stamp(e["deadline_time"]) > now
+    )
+    if not events:
+        return None
+    gw, deadline = events[0]
+    cfg = cutoff_policy()
+    lead = (deadline - now).total_seconds() / 3600
+    windows = [w for w in cfg["rolling_windows"] if w["closes_hours"] < lead <= w["opens_hours"]]
+    if not windows:
+        return None
+    window = windows[0]
+    captures_in_window = 0
+    for release in releases:
+        match = TAG.fullmatch(release["tag_name"])
+        if not match or int(match[2]) != gw or not match[3].startswith("rolling-"):
+            continue
+        captured = datetime.strptime(match[3][8:], "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+        if (now - captured).total_seconds() < cfg["rolling_minimum_interval_seconds"]:
+            return None
+        original_lead = (deadline - captured).total_seconds() / 3600
+        if window["closes_hours"] < original_lead <= window["opens_hours"]:
+            captures_in_window += 1
+    if captures_in_window >= window["maximum_captures"]:
+        return None
+    return gw
+
+
 def tracked_gameweeks(releases: list[dict]) -> set[int]:
     tracked = set()
     for release in releases:
@@ -112,6 +168,24 @@ def capture_forecast(client: FPLClient, gw: int, stage: str, root: Path, provena
             forecast = service.forecast()
             if forecast.gameweeks[0] != gw:
                 raise ValueError("Deadline crossed/changed during collection; no backfill allowed")
+            from fpl_forfeit.assistant.external_forecasts import (
+                collect_sources,
+                may_redistribute,
+                read_batch,
+            )
+
+            external_status = collect_sources(
+                service.official_snapshot["bootstrap"],
+                root / "external-private",
+                now=stamp(service.official_snapshot["source_finished_utc"]),
+                fixtures=service.official_snapshot["fixtures"],
+            )
+            external_batches = []
+            for status in external_status.values():
+                if status["state"] == "ready":
+                    batch = read_batch(Path(status["path"]))
+                    if may_redistribute(batch):
+                        external_batches.append(batch.to_dict())
             service.ml.build(forecast, service.official_snapshot)
             if (
                 service.ml.status["state"] != "ready"
@@ -123,9 +197,30 @@ def capture_forecast(client: FPLClient, gw: int, stage: str, root: Path, provena
                 print(
                     "::warning::Fixture component forecast unavailable; preserving valid statistical/Ridge capture. See embedded component status; do not backfill after the deadline."
                 )
+            for name, status in service.ml.status.get("challengers", {}).items():
+                if status["state"] != "ready":
+                    print(
+                        f"::warning::{name} unavailable; preserving other valid methods with embedded challenger status. Do not backfill after the deadline."
+                    )
             sources = list(Path(work).glob("forecast-*.json.gz"))
             if len(sources) != 1:
                 raise RuntimeError("Expected one original forecast capture")
+            original = unpack_record(sources[0].read_bytes())
+            # Collection precedes feature cutoff. Never expose restricted manual imports or
+            # cached raw payload/news in a public release, even if available on this host.
+            original["external_forecasts"] = {
+                "batches": external_batches,
+                "sha256": digest(canonical(external_batches)),
+                "status": {
+                    name: {k: v for k, v in status.items() if k != "path"}
+                    for name, status in external_status.items()
+                },
+                "policy": "Only explicitly redistributable normalized forecasts; no historical backdating or private imports",
+            }
+            enriched = Path(work) / "enriched.json.gz"
+            immutable(enriched, gzip.compress(canonical(original), mtime=0))
+            if stage == "rolling":
+                stage = "rolling-" + stamp(original["captured_at"]).strftime("%Y%m%dT%H%M%SZ")
             candidate = (
                 root
                 / "candidates"
@@ -133,7 +228,7 @@ def capture_forecast(client: FPLClient, gw: int, stage: str, root: Path, provena
                 / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
                 / "capture.zip"
             )
-            return create_bundle(sources[0], stage, gw, provenance, candidate)
+            return create_bundle(enriched, stage, gw, provenance, candidate)
         finally:
             if old is None:
                 os.environ.pop("FPL_ML_ARCHIVE_DIR", None)
@@ -218,10 +313,12 @@ def run(
     releases = store.releases()
     provenance = context()
     slot = due_slot(snapshot["bootstrap"], now(), releases)
+    rolling_gw = due_rolling(snapshot["bootstrap"], now(), releases)
     report = {
         "state": "check" if check else "recorded",
         "checked_at": now().isoformat(),
         "due_slot": list(slot) if slot else None,
+        "due_rolling_gameweek": rolling_gw,
         "published": [],
         "errors": [],
         "gaps": [],
@@ -245,16 +342,37 @@ def run(
                 report["errors"].append(str(exc))
     releases = store.releases()
     slot = due_slot(snapshot["bootstrap"], now(), releases)
-    if slot:
+    rolling_gw = due_rolling(snapshot["bootstrap"], now(), releases)
+    if slot or rolling_gw:
         try:
-            reserved = store.release(tag_for(*slot))
+            reserved = store.release(tag_for(*slot)) if slot else None
             if reserved:
                 raise StorageError(
                     f"Incomplete earlier draft {reserved['tag_name']}; preserve the reserved original, see recovery instructions"
                 )
-            candidate = capture_forecast(client, *slot, root, provenance)
+            chosen = slot or (rolling_gw, "rolling")
+            candidate = capture_forecast(client, *chosen, root, provenance)
             published = store.publish(candidate, root / "archive")
             report["published"].append(published["html_url"])
+            if slot and rolling_gw:
+                # Reuse the exact same original bytes; no second all-roster history load.
+                import zipfile
+
+                manifest, record = read_bundle(candidate)
+                with zipfile.ZipFile(candidate) as bundle:
+                    raw = bundle.read(manifest["record_file"])
+                rolling_stage = "rolling-" + stamp(record["captured_at"]).strftime("%Y%m%dT%H%M%SZ")
+                raw_path = candidate.parent / "rolling-source.json.gz"
+                immutable(raw_path, raw)
+                rolling = create_bundle(
+                    raw_path,
+                    rolling_stage,
+                    rolling_gw,
+                    provenance,
+                    candidate.parent / "rolling" / "capture.zip",
+                )
+                published = store.publish(rolling, root / "archive")
+                report["published"].append(published["html_url"])
         except (RuntimeError, ValueError, OSError) as exc:
             report["errors"].append(str(exc))
     releases = store.releases()
