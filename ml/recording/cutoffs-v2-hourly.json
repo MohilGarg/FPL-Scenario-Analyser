@@ -1,0 +1,9 @@
+{
+  "policy_version": "prospective-cutoffs-2026-27-v2",
+  "rolling_opens_hours": 30,
+  "rolling_closes_hours": 0.75,
+  "rolling_minimum_interval_seconds": 3600,
+  "cutoffs": {"t24h": 24, "final": 0},
+  "selection": "latest originally completed and durably published capture at or before cutoff; ties use legacy stage priority",
+  "note": "Actual observed capture times, never nominal cron times. Final means final available archived run, not a guaranteed last-minute run. Missing cutoffs stay missing."
+}

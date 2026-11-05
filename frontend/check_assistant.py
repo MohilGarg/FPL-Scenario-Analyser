@@ -68,6 +68,11 @@ class RidgeBrowserFixture:
             forecast, inputs=replace(forecast.inputs, model_version="fixture-components-v1-browser")
         )
 
+    def minutes(self, forecast):
+        return replace(
+            forecast, inputs=replace(forecast.inputs, model_version="minutes-states-v1-browser")
+        )
+
     def player(self, pid, gw, statistical, *, generation=None):
         supported = gw == 7 and statistical["expected_points"] is not None
         points = statistical["expected_points"] + 1 if supported else None
@@ -128,6 +133,18 @@ def check(page, origin, password, client, output):
         .inner_text()
         == "0"
     )
+    page.locator("#assistant-prediction-model").select_option("minutes")
+    assert "60+ min" in page.locator("#assistant-prediction-content thead").inner_text()
+    assert (
+        "Minutes states are experimental"
+        in page.locator("#assistant-prediction-content").inner_text()
+    )
+    for mode in ("ensemble", "external_mean"):
+        page.locator("#assistant-prediction-model").select_option(mode)
+        assert (
+            "no simulated intervals" in page.locator("#assistant-prediction-content").inner_text()
+        )
+        assert "80% range" not in page.locator("#assistant-prediction-content thead").inner_text()
     page.locator("#assistant-prediction-model").select_option("statistical")
     page.locator("#assistant-search").fill("Candidate")
     assert page.locator("#assistant-prediction-content tbody tr").count() == 3
@@ -152,6 +169,14 @@ def check(page, origin, password, client, output):
     page.locator("#assistant-planning-model").select_option("components")
     page.wait_for_function(
         "() => document.querySelector('#assistant-squad-content').textContent.includes('fixture-components-v1-browser')"
+    )
+    page.locator("#assistant-planning-model").select_option("statistical")
+    page.wait_for_function(
+        "() => document.querySelector('#assistant-squad-content').textContent.includes('Planning: shared-fixtures-v4')"
+    )
+    page.locator("#assistant-planning-model").select_option("minutes")
+    page.wait_for_function(
+        "() => document.querySelector('#assistant-squad-content').textContent.includes('minutes-states-v1-browser')"
     )
     page.locator("#assistant-planning-model").select_option("statistical")
     page.wait_for_function(

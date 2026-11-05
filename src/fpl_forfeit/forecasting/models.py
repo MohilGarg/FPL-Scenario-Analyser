@@ -129,3 +129,9 @@ class PlayerFixtureProjection:
     provenance: tuple[DataSource, ...]
     expected_defensive_contribution: float | None = None
     expected_defensive_points: float | None = None
+    probability_60_minutes: float | None = None
+    substitute_probability: float | None = None
+    no_show_probability: float | None = None
+    blank_probability: float | None = None
+    haul_probability: float | None = None
+    expected_points_components: dict[str, float] | None = None

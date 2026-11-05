@@ -14,6 +14,8 @@ on:
       - "src/fpl_forfeit/assistant/component*"
       - "src/fpl_forfeit/assistant/ml_inference.py"
       - "src/fpl_forfeit/assistant/prospective.py"
+      - "src/fpl_forfeit/assistant/external_forecasts.py"
+      - "src/fpl_forfeit/assistant/playing_time.py"
   workflow_dispatch:
     inputs:
       mode:
@@ -48,7 +50,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Test deadline gating, storage, evaluation and existing inference
-        run: python -m unittest tests.test_prospective_recording tests.test_live_ridge tests.test_fixture_components -v
+        run: python -m unittest tests.test_prospective_recording tests.test_live_ridge tests.test_fixture_components tests.test_external_forecasts -v
       - name: Record or check eligible captures
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,6 +61,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python -m ml.recording evaluate --new-actuals-only
+      - name: Compare equivalent 24-hour cutoffs
+        if: success() && inputs.mode != 'check'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m ml.recording evaluate --new-actuals-only --cutoff t24h
       - name: Recovery notice
         if: failure()
         run: |

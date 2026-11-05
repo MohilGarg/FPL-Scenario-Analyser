@@ -70,6 +70,7 @@ def forecast_horizon(
         inputs = simulator_factory(inputs).inputs
     accumulated = ProjectionAccumulator(inputs, inputs.players)
     outcomes: dict[int, dict[int, OutcomeSamples]] = {}
+    event_probabilities: dict[tuple[int, int], tuple[float, float, float]] = {}
     for gw in gameweeks:
         model = (simulator_factory or FixtureSimulator)(
             replace(inputs, fixtures=tuple(f for f in fixtures if f.gameweek == gw))
@@ -78,6 +79,9 @@ def forecast_horizon(
         points = {pid: [0] * samples for pid in inputs.players}
         minutes = {pid: [0] * samples for pid in inputs.players}
         appeared = {pid: bytearray(samples) for pid in inputs.players}
+        starts = {pid: bytearray(samples) for pid in inputs.players}
+        sixty = {pid: bytearray(samples) for pid in inputs.players}
+        substitutes = {pid: bytearray(samples) for pid in inputs.players}
         for index in range(samples):
             draws = model.sample(rng)
             accumulated.add(draws)
@@ -88,10 +92,21 @@ def forecast_horizon(
                     appeared[pid][index] |= bool(
                         stats.get("minutes") or stats.get("yellow_cards") or stats.get("red_cards")
                     )
+                    a, b = draw.windows[pid]
+                    starts[pid][index] |= a == 0 and b > 0
+                    sixty[pid][index] |= stats.get("minutes", 0) >= 60
+                    substitutes[pid][index] |= a > 0 and b > a
         outcomes[gw] = {
             pid: OutcomeSamples(tuple(points[pid]), tuple(minutes[pid]), bytes(appeared[pid]))
             for pid in inputs.players
         }
+        # Event probabilities are unions across DGW legs, never sums of probabilities.
+        for pid in inputs.players:
+            event_probabilities[pid, gw] = (
+                sum(starts[pid]) / samples,
+                sum(sixty[pid]) / samples,
+                sum(substitutes[pid]) / samples,
+            )
     projections = accumulated.results()
     by_player: dict[tuple[int, int], list[PlayerFixtureProjection]] = defaultdict(list)
     for projection in projections:
@@ -125,8 +140,43 @@ def forecast_horizon(
                 "published_fixture_points": fmean(draws.points) if projected else None,
                 "expected_minutes": fmean(draws.minutes) if available else None,
                 "appearance_probability": sum(draws.appeared) / samples if available else None,
-                "starting_probability": projected[0].starting_probability
-                if len(projected) == 1
+                "starting_probability": event_probabilities[pid, gw][0] if available else None,
+                "probability_60_minutes": event_probabilities[pid, gw][1] if available else None,
+                "substitute_probability": event_probabilities[pid, gw][2] if available else None,
+                "no_show_probability": sum(m == 0 for m in draws.minutes) / samples
+                if available
+                else None,
+                "blank_probability": sum(p <= 2 for p in draws.points) / samples
+                if available
+                else None,
+                "haul_probability": sum(p >= 10 for p in draws.points) / samples
+                if available
+                else None,
+                "points_quantiles": {
+                    str(q): ordered[round((samples - 1) * q)] for q in (0.1, 0.5, 0.9)
+                }
+                if available
+                else None,
+                "mean_standard_error": (pvariance(draws.points) / samples) ** 0.5
+                if available
+                else None,
+                "expected_points_components": {
+                    name: sum((p.expected_points_components or {}).get(name, 0) for p in projected)
+                    for name in (
+                        "appearance",
+                        "goals",
+                        "assists",
+                        "clean_sheets",
+                        "conceded",
+                        "saves",
+                        "penalties",
+                        "cards",
+                        "own_goals",
+                        "bonus",
+                        "defensive",
+                    )
+                }
+                if available
                 else None,
                 "expected_goals": sum(p.expected_goals or 0 for p in projected)
                 if available

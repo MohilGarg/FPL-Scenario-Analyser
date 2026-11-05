@@ -1,0 +1,11 @@
+{
+  "policy_version": "prospective-cutoffs-2026-27-v3-bounded",
+  "rolling_windows": [
+    {"name": "t24h", "opens_hours": 26, "closes_hours": 24.5, "maximum_captures": 1},
+    {"name": "final_available", "opens_hours": 2, "closes_hours": 0.75, "maximum_captures": 1}
+  ],
+  "rolling_minimum_interval_seconds": 3600,
+  "cutoffs": {"t24h": 24, "final": 0},
+  "selection": "latest originally completed and durably published capture at or before cutoff; ties use legacy stage priority",
+  "note": "At most two supplemental captures/GW to respect the existing 512MiB season cap; preserve legacy three slots. Actual observed capture times, never nominal cron times. Final means final available archived run, not a guaranteed last-minute run. Missing cutoffs stay missing."
+}

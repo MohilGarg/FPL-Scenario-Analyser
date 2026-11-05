@@ -19,6 +19,10 @@ single-transfer shortlist and conditional Bench Boost/Triple Captain comparisons
 use server-managed sessions and remain disabled until configured. See [ASSISTANT.md](ASSISTANT.md)
 for password setup, hosting, limitations and measured checks. No FPL account changes are submitted.
 
+The [prediction evidence delivery](ml/reports/PREDICTION_DELIVERY.md) includes reproducible
+benchmarks, verified external-source adapters, durable cutoff collection and the selectable
+private minutes experiment. The statistical default remains unchanged pending prospective evidence.
+
 The root URL is a neutral home page. Enter a classic league ID or paste its FPL standings URL.
 No league loads automatically, even if you have visited before. Recent leagues appear as explicit
 shortcuts showing name and ID. The site title returns home. Light mode is the default; dark mode,

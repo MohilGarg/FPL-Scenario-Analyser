@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, replace
 from statistics import fmean, pvariance
 
 from ..models import Player, Position
-from ..points import event_points
+from ..points import event_points, point_components
 from .models import (
     BENCHMARK_MODEL_VERSION,
     DEFAULT_SAMPLES,
@@ -31,6 +31,10 @@ class _Totals:
     clean_sheets: int = 0
     defensive_contribution: int = 0
     defensive_points: int = 0
+    sixty: int = 0
+    substitutes: int = 0
+    no_shows: int = 0
+    components: dict[str, int] = field(default_factory=dict)
 
 
 class ProjectionAccumulator:
@@ -63,6 +67,13 @@ class ProjectionAccumulator:
                 )
                 start, end = sample.windows[pid]
                 row.starts += start == 0 and end > 0
+                row.sixty += minutes >= 60
+                row.substitutes += start > 0 and end > start
+                row.no_shows += minutes == 0
+                for name, points in point_components(
+                    self.inputs.players[pid].position, stats
+                ).items():
+                    row.components[name] = row.components.get(name, 0) + points
                 row.goals += stats.get("goals_scored", 0)
                 row.assists += stats.get("assists", 0)
                 row.clean_sheets += stats.get("clean_sheets", 0)
@@ -121,6 +132,14 @@ class ProjectionAccumulator:
                     provenance=self.inputs.provenance,
                     expected_defensive_contribution=row.defensive_contribution / n if n else None,
                     expected_defensive_points=row.defensive_points / n if n else None,
+                    probability_60_minutes=row.sixty / n if n else None,
+                    substitute_probability=row.substitutes / n if n else None,
+                    no_show_probability=row.no_shows / n if n else None,
+                    blank_probability=sum(p <= 2 for p in row.points) / n if n else None,
+                    haul_probability=sum(p >= 10 for p in row.points) / n if n else None,
+                    expected_points_components={k: v / n for k, v in row.components.items()}
+                    if n
+                    else None,
                 )
             )
         return tuple(projections)

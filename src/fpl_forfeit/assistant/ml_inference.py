@@ -180,6 +180,8 @@ class LiveML:
         self.raw_histories: dict[int, dict] = {}
         self.component_forecast: HorizonForecast | None = None
         self.component_metadata: dict | None = None
+        self.minutes_forecast: HorizonForecast | None = None
+        self.minutes_metadata: dict | None = None
         self.stopped = Event()
 
     def request(self, forecast: HorizonForecast, snapshot: dict | None) -> dict:
@@ -190,6 +192,7 @@ class LiveML:
             if generation != self.generation:
                 self.generation, self.rows = generation, {}
                 self.component_forecast = self.component_metadata = None
+                self.minutes_forecast = self.minutes_metadata = None
                 self.status = {
                     "state": "loading",
                     "completed": 0,
@@ -264,6 +267,16 @@ class LiveML:
             except Exception as exc:
                 logger.exception("Private fixture component inference failed")
                 component_error = f"component_failed:{type(exc).__name__}"
+            minutes, minutes_metadata, minutes_error = None, None, None
+            try:
+                from .playing_time import build_minutes_forecast
+
+                minutes, minutes_metadata = build_minutes_forecast(
+                    forecast, snapshot, histories, asof
+                )
+            except Exception as exc:
+                logger.exception("Private minutes state inference failed")
+                minutes_error = f"minutes_failed:{type(exc).__name__}"
             generated = self.now()
             with self.lock:
                 if self.stopped.is_set():
@@ -272,6 +285,7 @@ class LiveML:
                     return  # explicit refresh superseded this immutable source generation
                 self.rows, self.raw_histories = rows, histories
                 self.component_forecast, self.component_metadata = component, component_metadata
+                self.minutes_forecast, self.minutes_metadata = minutes, minutes_metadata
                 self.status = {
                     "state": "ready",
                     "completed": len(rows),
@@ -282,6 +296,9 @@ class LiveML:
                     "generated_at": generated.isoformat(),
                     "component_state": "ready" if component else "unavailable",
                     "component_error": component_error,
+                    "minutes_state": "ready" if minutes else "unavailable",
+                    "minutes_error": minutes_error,
+                    "minutes_version": minutes.inputs.model_version if minutes else None,
                     "component_version": component_metadata["version"]
                     if component_metadata
                     else None,
@@ -304,6 +321,8 @@ class LiveML:
                     component=component,
                     component_metadata=component_metadata,
                     component_error=component_error,
+                    minutes_forecast=minutes,
+                    minutes_metadata=minutes_metadata,
                 )
                 archive.finalize(snapshot["bootstrap"], self.client)
                 self.last_archive_error = ""
@@ -367,6 +386,7 @@ class LiveML:
         with self.lock:
             self.rows, self.history_cache = {}, {}
             self.component_forecast = self.component_metadata = None
+            self.minutes_forecast = self.minutes_metadata = None
             self.generation = None
 
     def components(self, forecast: HorizonForecast) -> HorizonForecast | None:
@@ -375,6 +395,18 @@ class LiveML:
             first = next(g for g in forecast.catalogue.gameweeks if g.id == forecast.gameweeks[0])
             return (
                 self.component_forecast
+                if (
+                    generation == self.generation and first.deadline and self.now() < first.deadline
+                )
+                else None
+            )
+
+    def minutes(self, forecast: HorizonForecast) -> HorizonForecast | None:
+        with self.lock:
+            generation = (forecast.catalogue.fetched_at.isoformat(), forecast.gameweeks)
+            first = next(g for g in forecast.catalogue.gameweeks if g.id == forecast.gameweeks[0])
+            return (
+                self.minutes_forecast
                 if (
                     generation == self.generation and first.deadline and self.now() < first.deadline
                 )

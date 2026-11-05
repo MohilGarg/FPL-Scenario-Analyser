@@ -92,7 +92,11 @@ def load_population(data_dir: Path, seasons: list[str], expected: dict[str, int]
     metadata = json.loads((data_dir / "preparation_metadata.json").read_text(encoding="utf-8"))
     if not metadata["verified_archive"]:
         raise ValueError("Experiments require the verified archive calendar")
-    deadline_file = Path(metadata["deadline_file"])
+    # Prepared artifacts can move with a checkout. Trust the pinned bytes, not an
+    # absolute workstation path embedded when preparation originally ran.
+    deadline_file = data_dir / "deadlines.csv"
+    if not deadline_file.exists():
+        deadline_file = Path(metadata["deadline_file"])
     if digest(deadline_file.read_bytes()) != metadata["deadline_sha256"]:
         raise ValueError("Deadline checksum mismatch")
     raw_dir = data_dir.parent / "raw"

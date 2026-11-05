@@ -1,5 +1,58 @@
 # Private FPL Assistant
 
+## Prediction evidence update — 5 November 2026
+
+The statistical default is retained. [The paired benchmark](ml/reports/PREDICTION_BENCHMARK.md)
+reproduces the original models, tunes Ridge chronologically, includes cold starts and reports
+minutes ablations. Tuned Ridge did not improve points RMSE. The new private **Minutes states**
+experiment improves all-source-population minutes RMSE from 30.89 to 27.86 minutes, but regular
+starters barely improve and their appearance calibration worsens. This is not evidence of better
+captaincy or transfers. The predeclared prospective promotion gate is in that report.
+
+**Minutes states** is selectable for predictions and simulated planning. It uses official
+zero-inclusive match histories, recency weights, shrunk selection priors and empirical starter/
+substitute durations. Recent selection evidence fades over the six-GW horizon. Current official
+availability for modelled players is sampled once per player/GW and shared across double fixtures; no injury return
+dates, press-conference claims or cross-competition schedules are invented. Missing/invalid or
+transferred histories use explicit statistical fallbacks. Training and history enrichment run
+outside HTTP requests. Existing legal lineups, captain/vice, autosubs, transfers and chips use
+the same joint outcomes and scorer. Selecting an unavailable model fails visibly.
+
+Predictions also compare locally captured **official FPL, FPL Cat and Sideline Quant**, individual
+sources, their mean and an experimental internal/external mean. See the
+[source register](ml/reports/EXTERNAL_SOURCES.md) for semantics, rights and manual imports.
+Current automatic sources cover the next GW; later GWs remain explicitly missing or use labelled
+internal ensemble fallback. External point means have **no simulated distribution** and cannot
+drive planning, captaincy or uncertainty ranges. No external accuracy improvement is claimed.
+
+On an authenticated configured backend, the existing background recorder collects sources every
+30 minutes into `FPL_EXTERNAL_FORECAST_DIR` (default `snapshots/ml/external`). HTTP requests only
+read existing validated local captures, with a five-minute comparison cache. A restart starts a
+fresh collection; it cannot recover a missed deadline by backdating a new download. Personal CSV
+imports require a mounted/private directory if they must survive a free-host restart. Raw payloads,
+external news, restricted forecasts and personal results are excluded from public release bundles. The
+separate GitHub recorder preserves allowlisted source forecasts and official evidence in
+immutable releases; this becomes active for the new code after merging the working branch.
+
+Per-GW metrics now include any-start and any-fixture-60-minute probabilities (unions across
+doubles), no minutes, blank (≤2 points), haul (≥10 points), quantiles, Monte Carlo mean error and
+additive expected scoring components. Point components reconcile with simulated means. The
+scorer explicitly supports 2023/24 through 2026/27; historical evaluation still targets official
+recorded points. Goalkeepers scored six per goal in 2023/24 and ten from 2024/25;
+[the official 2024 change](https://www.premierleague.com/en/news/4059044) and
+[current scoring guidance](https://www.premierleague.com/en/news/2174909/) verify this.
+Defensive contributions are enabled from 2025/26. Unsupported seasons fail explicitly.
+
+Lineup comparisons report paired Monte Carlo uncertainty and flag choices too close to
+distinguish on cached draws. These intervals exclude football-model error and the optimism from
+searching many lineups on those same draws. Automatic adaptive sampling and calibrated joint
+external distributions remain future work; a small sampled gain is not a reliable decision edge.
+
+The [prospective operations guide](ml/reports/PROSPECTIVE_RECORDING.md) documents restart recovery,
+immutable evidence, bounded supplemental cutoff captures and equivalent T−24h/final-available cutoffs.
+The [real prospective benchmark](ml/reports/PROSPECTIVE_BENCHMARK_20261105.md) reports GW7–9,
+including confidence intervals and the overly early legacy T−24h proxies.
+
 The public Pages application remains available without login. Its lock-marked FPL Assistant
 link navigates in the same browser tab to `/assistant/` on the Python backend. That backend
 serves the dashboard and every private API from one origin. This avoids relying on third-party

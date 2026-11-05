@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict
 from datetime import UTC, datetime
+from pathlib import Path
+from statistics import median
 from threading import RLock
 from time import perf_counter
 
@@ -47,6 +50,7 @@ class AssistantService:
         self.official_snapshot: dict | None = None
         self.snapshot_forecast: HorizonForecast | None = None
         self.ml = LiveML(self.client, now=self.now)
+        self.external_cache: TTLCache[tuple, dict] = TTLCache(300, max_items=6)
 
     def forecast(self) -> HorizonForecast:
         baseline = self.statistical_forecast()
@@ -58,11 +62,19 @@ class AssistantService:
                     "Fixture ML is loading or unavailable. Choose Statistical to continue planning."
                 )
             return component
+        if SELECTED_MODEL.get() == "minutes":
+            self.ml_status(baseline)
+            minutes = self.ml.minutes(baseline)
+            if minutes is None:
+                raise FPLGameweekUnavailable(
+                    "Minutes experiment is loading or unavailable. Choose Statistical to continue planning."
+                )
+            return minutes
         return baseline
 
     @contextmanager
     def using_model(self, model: str):
-        if model not in ("statistical", "components"):
+        if model not in ("statistical", "components", "minutes"):
             raise ValueError("Ridge marginals cannot be used for simulated planning.")
         token = SELECTED_MODEL.set(model)
         try:
@@ -103,12 +115,15 @@ class AssistantService:
             self.forecasts.clear()
             self.plans.clear()
             self.ml.invalidate()
+            self.external_cache.clear()
         return {"refreshed": True}
 
     def ml_status(self, forecast: HorizonForecast | None = None) -> dict:
         with self.lock:
             forecast = forecast or self.statistical_forecast()
-            if forecast is getattr(self.ml, "component_forecast", None):
+            if forecast is getattr(self.ml, "component_forecast", None) or forecast is getattr(
+                self.ml, "minutes_forecast", None
+            ):
                 forecast = self.statistical_forecast()
             snapshot = self.official_snapshot if forecast is self.snapshot_forecast else None
             return self.ml.request(forecast, snapshot)
@@ -151,6 +166,12 @@ class AssistantService:
                 if g.id in forecast.gameweeks and g.deadline
             },
             "provenance": [asdict(p) for p in forecast.inputs.provenance],
+            "probability_definitions": {
+                "probability_60_minutes": "At least one fixture with 60+ minutes; DGW union, not total minutes threshold.",
+                "no_show_probability": "Zero football minutes across the Gameweek.",
+                "blank_probability": "Gameweek points <= 2, including nonappearances and negative scores.",
+                "haul_probability": "Gameweek points >= 10.",
+            },
             "assumptions": [
                 note.replace("192-sample", f"{forecast.samples}-sample") for note in ASSUMPTIONS
             ]
@@ -159,6 +180,13 @@ class AssistantService:
                     "Fixture ML uses historical schedule proxies. Player/team form and current availability are frozen across six GWs; published opponent, venue and league rest vary. Bonus, defensive contributions and rejected or missing components remain statistical. Playing probabilities are reconciled with shared football lineup constraints."
                 ]
                 if forecast.inputs.model_version.startswith("fixture-components")
+                else []
+            )
+            + (
+                [
+                    "Minutes experiment uses zero-inclusive recent starts and empirical durations with shrunk priors. Recent selection evidence fades over future GWs. For modelled players, current official availability is shared across DGW legs; return dates and cross-competition rotation are unknown. Missing histories retain statistical fallbacks. Probabilities reflect the legal simulated lineups, not unconstrained input rates."
+                ]
+                if forecast.inputs.model_version.startswith("minutes-states")
                 else []
             ),
         }
@@ -169,7 +197,9 @@ class AssistantService:
         forecast = self.forecast()
         ml_status = self.ml_status(forecast)
         component = self.ml.components(forecast) if hasattr(self.ml, "components") else None
+        minutes = self.ml.minutes(forecast) if hasattr(self.ml, "minutes") else None
         gameweeks = forecast.gameweeks[:horizon]
+        external = self.external_comparison(forecast, gameweeks)
         rows = []
         for pid in forecast.catalogue.players:
             projected = [
@@ -177,6 +207,8 @@ class AssistantService:
                     **forecast.players[pid][gw],
                     "ml": self.ml_prediction(forecast, pid, gw),
                     "fixture_ml": component.players[pid][gw] if component else None,
+                    "minutes_model": minutes.players[pid][gw] if minutes else None,
+                    **external[gw]["players"].get(pid, {}),
                 }
                 for gw in gameweeks
             ]
@@ -190,6 +222,28 @@ class AssistantService:
                     **self.identity(forecast, pid),
                     "gameweeks": projected,
                     "total_expected_points": total,
+                    "minutes_model_total": sum(
+                        p["minutes_model"]["expected_points"] for p in projected
+                    )
+                    if minutes
+                    and all(p["minutes_model"]["expected_points"] is not None for p in projected)
+                    else None,
+                    "ensemble_total": sum(p["ensemble"]["expected_points"] for p in projected)
+                    if all(p["ensemble"]["expected_points"] is not None for p in projected)
+                    else None,
+                    "external_mean_total": sum(
+                        p["external_mean"]["expected_points"] for p in projected
+                    )
+                    if all(p["external_mean"] is not None for p in projected)
+                    else None,
+                    "external_source_totals": {
+                        source: sum(
+                            p["external_sources"][source]["expected_points"] for p in projected
+                        )
+                        if all(source in p["external_sources"] for p in projected)
+                        else None
+                        for source in {s for p in projected for s in p["external_sources"]}
+                    },
                     "fixture_ml_total": sum(p["fixture_ml"]["expected_points"] for p in projected)
                     if component
                     and all(p["fixture_ml"]["expected_points"] is not None for p in projected)
@@ -218,12 +272,89 @@ class AssistantService:
             "gameweeks": list(gameweeks),
             "players": rows,
             "ml_status": ml_status,
+            "external_status": {gw: external[gw]["status"] for gw in gameweeks},
+            "external_collection_status": getattr(
+                self, "external_collection_status", {"state": "not_started"}
+            ),
+            "external_note": "Only locally captured fresh pre-deadline sources are compared. Missing forecasts are unknown. Live source and cached internal input vintages can differ; only the recorded benchmark enforces equivalent cutoffs. The experimental ensemble equally averages the internal mean and available external source means; source correlations are not calibrated. It has no joint distribution and cannot drive planning or simulated ranges. Current statistical default is retained.",
             "component_note": "Fixture ML uses shared simulated outcomes. Historical schedules are mostly retrospective proxies; observed form is frozen over six GWs. Bonus/defensive contributions, cold starts, transfers and unavailable components use statistical fallbacks. Experimental, not prospectively calibrated.",
             "ml_note": "Ridge estimates only the next Gameweek from eligible current-season history. Later GWs, blanks, doubles, transfers and availability changes use labelled statistical fallback. ML has no simulated ranges or lineup optimiser adapter.",
             "horizon_note": f"Only {len(gameweeks)} Gameweeks remain in the published season."
             if len(gameweeks) < horizon
             else "",
         }
+
+    def external_comparison(self, forecast: HorizonForecast, gameweeks: tuple[int, ...]) -> dict:
+        from .external_forecasts import load_available_forecasts, season_of
+
+        baseline = self.statistical_forecast()
+        snapshot = self.official_snapshot or {}
+        bootstrap = snapshot.get("bootstrap")
+        season = season_of(bootstrap) if bootstrap else None
+        output = {}
+        for gw in gameweeks:
+            key = (forecast.catalogue.fetched_at.isoformat(), gw)
+            cached = self.external_cache.get(key)
+            if cached is not None:
+                output[gw] = cached
+                continue
+            data = (
+                load_available_forecasts(
+                    Path(os.getenv("FPL_EXTERNAL_FORECAST_DIR", "snapshots/ml/external")),
+                    season,
+                    gw,
+                    self.now(),
+                    bootstrap=bootstrap,
+                    fixtures=snapshot.get("fixtures"),
+                )
+                if season
+                else {
+                    "sources": {},
+                    "status": {},
+                    "ensemble_mean": {},
+                    "fallback": "Official source generation unavailable",
+                }
+            )
+            players = {}
+            for pid in forecast.catalogue.players:
+                internal = baseline.players[pid][gw]["expected_points"]
+                sources = {
+                    s: asdict(rows[pid]) for s, rows in data["sources"].items() if pid in rows
+                }
+                members = {s: row["expected_points"] for s, row in sources.items()}
+                if internal is not None:
+                    members["internal_statistical"] = internal
+                players[pid] = {
+                    "external_sources": sources,
+                    "external_mean": data["ensemble_mean"].get(pid),
+                    "ensemble": {
+                        "expected_points": sum(members.values()) / len(members)
+                        if members and internal is not None
+                        else None,
+                        "median_expected_points": median(members.values())
+                        if members and internal is not None
+                        else None,
+                        "members": members,
+                        "external_coverage_count": len(sources),
+                        "fallback": not bool(sources),
+                        "experimental": True,
+                        "distribution_available": False,
+                    },
+                }
+            cached = {
+                "players": players,
+                "status": {
+                    "sources": data["status"],
+                    "fallback": data["fallback"],
+                    "coverage_count": sum(bool(r["external_sources"]) for r in players.values()),
+                    "eligible_players": len(players),
+                    "comparison_cutoff": self.now().isoformat(),
+                    "internal_input_timestamp": baseline.catalogue.fetched_at.isoformat(),
+                },
+            }
+            self.external_cache.set(key, cached)
+            output[gw] = cached
+        return output
 
     def player(self, pid: int) -> dict:
         forecast = self.forecast()
@@ -374,6 +505,7 @@ class AssistantService:
                 forecast, current["starting_ids"], gw
             ),
             "expected_gain": optimal["expected_points"] - current["expected_points"],
+            "paired_comparison": optimiser.compare(optimal, current),
             "comparison_note": "Same shared outcomes and FPL scoring for both lineups; scores are gross of any already-incurred account hits, which public data cannot verify for the next deadline.",
         }
 
