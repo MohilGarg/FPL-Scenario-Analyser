@@ -16,6 +16,10 @@ on:
       - "src/fpl_forfeit/assistant/prospective.py"
       - "src/fpl_forfeit/assistant/external_forecasts.py"
       - "src/fpl_forfeit/assistant/playing_time.py"
+      - "src/fpl_forfeit/assistant/fitted_forecast.py"
+      - "src/fpl_forfeit/assistant/minutes_model.py"
+      - "src/fpl_forfeit/assistant/minutes*v2.json"
+      - "src/fpl_forfeit/assistant/selection_inputs.py"
   workflow_dispatch:
     inputs:
       mode:
@@ -46,13 +50,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           # Capture code is pinned independently of the production application.
-          ref: cffb0b6d43471775ed54aa0e6ed087c7c418752f
+          ref: c9fe62487ff44b927d7364bb72c58a906253c5f0
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Test deadline gating, storage, evaluation and existing inference
-        run: python -m unittest tests.test_prospective_recording tests.test_live_ridge tests.test_fixture_components tests.test_external_forecasts -v
+        run: python -m unittest tests.test_prospective_recording tests.test_live_ridge tests.test_fixture_components tests.test_external_forecasts tests.test_minutes_model tests.test_selection_inputs -v
       - name: Record or check eligible captures
         env:
           GH_TOKEN: ${{ github.token }}
