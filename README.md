@@ -396,8 +396,9 @@ score; otherwise they stay unavailable with a manager/GW warning.
 - *Rank:* competition ranking (60, 50, 40, 40 -> 1, 2, 3, 3). All tied lowest scores count as last; the
   bottom three includes every tie at the third-lowest score. These descriptive rules are separate from the
   live tie setting.
-- *Coverage:* a week gets last-place/rank statistics only if every current member has a score. Partial
-  weeks show known scores, hits and an available-score mean, but no invented loser.
+- *Coverage:* each week ranks only the managers who have a score that week (late joiners and missing records
+  are not ranked for weeks they lack); last place is the lowest of those, with all ties counted. A week needs at
+  least two scored managers, and the number ranked is shown per week.
 - *Last-place margin:* second-lowest minus lowest score; a bottom tie has margin zero.
 - *Bench:* final bench-slot points with multiplier zero; autosubbed points do not count. Bench Boost
   slots 12-15 are recorded separately as its direct contribution.

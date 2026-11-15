@@ -30,7 +30,10 @@ def distribution(values: list[int]) -> dict[str, Any]:
 def season_summary(
     members: list[dict], histories: dict[int, dict], completed: list[int]
 ) -> dict[str, Any]:
-    """Only fully covered weeks get league ranks. Ties share competition rank.
+    """Each week ranks the managers who have a score that week. Ties share competition rank.
+
+    Late joiners and missing records simply do not take part in the weeks they lack; the
+    number ranked is reported per week. A week needs at least two scored managers to have a last place.
 
     Every tied lowest scorer counts as last. Bottom three includes ties at the
     third-lowest score (so it can contain more than three managers).
@@ -73,7 +76,8 @@ def season_summary(
         ordered = sorted(rows[gw], key=lambda r: (-r["score"], r["entry_id"]))
         scores = sorted(r["score"] for r in ordered)
         full = len(ordered) == len(members)
-        if full:
+        ranked = len(ordered) >= 2
+        if ranked:
             for row in ordered:
                 row["rank"] = 1 + sum(score > row["score"] for score in scores)
                 row["last"] = row["score"] == scores[0]
@@ -84,17 +88,19 @@ def season_summary(
                 "gameweek": gw,
                 "coverage": len(ordered),
                 "complete": full,
+                "ranked": ranked,
+                "ranked_managers": len(ordered) if ranked else 0,
                 "rows": ordered,
                 "unavailable_members": [
                     m for m in members if m["entry_id"] not in {r["entry_id"] for r in ordered}
                 ],
                 "average": average(scores),
-                "bottom": scores[0] if scores and full else None,
-                "second_last": scores[1] if len(scores) > 1 and full else None,
-                "margin": scores[1] - scores[0] if len(scores) > 1 and full else None,
-                "top": scores[-1] if scores and full else None,
+                "bottom": scores[0] if ranked else None,
+                "second_last": scores[1] if ranked else None,
+                "margin": scores[1] - scores[0] if ranked else None,
+                "top": scores[-1] if ranked else None,
                 "last_names": [r["name"] for r in ordered if r["last"]],
-                "top_names": [r["name"] for r in ordered if full and r["score"] == scores[-1]],
+                "top_names": [r["name"] for r in ordered if ranked and r["score"] == scores[-1]],
                 "hits": sum(r["hits"] for r in ordered) if ordered else None,
                 "chips": [c for c in chips if c["event"] == gw],
             }
@@ -109,7 +115,7 @@ def season_summary(
         escapes = [
             r["score"] - w["bottom"]
             for w in weeks
-            if w["complete"]
+            if w["ranked"]
             for r in w["rows"]
             if r["entry_id"] == member["entry_id"] and not r["last"]
         ]
@@ -180,7 +186,8 @@ def season_summary(
         "coverage": {
             "scores": len(all_scores),
             "expected": len(completed) * len(members),
-            "ranked_gameweeks": sum(w["complete"] for w in weeks),
+            "ranked_gameweeks": sum(w["ranked"] for w in weeks),
+            "fully_covered_gameweeks": sum(w["complete"] for w in weeks),
         },
         "totals": {
             "average": average(all_scores),
