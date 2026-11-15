@@ -57,7 +57,7 @@ The separately positioned Analytics tab stays inside the same website, with **Su
 Charts support hover/tap/focus and a data table; tables are sortable and current players searchable.
 Detailed totals display the number of verified squads, not silently assumed zeroes for missing data.
 Historical rank counts include all ties and do not change with the live scenario tie setting.
-See [ANALYTICS.md](ANALYTICS.md) for definitions, public source fields, caching and limitations.
+Definitions, sources, caching and limits are in [Analytics reference](#analytics-reference).
 
 Share a specific section, for example:
 
@@ -140,11 +140,9 @@ The league summary loads before scenarios. At-risk managers are searched individ
 **Show more scenarios** only extends that manager's search, up to twelve examples. `NO MODELLED PATH`
 means the bounded vocabulary was exhausted; `UNRESOLVED` means it was deferred or search-limited.
 
-See [FORECASTING.md](FORECASTING.md) for the projection/simulation assumptions, tie convention,
-API contract, caching, known limitations and real-snapshot evaluation commands. These are initial
+See [Forecast model](#forecast-model) for the assumptions, tie convention and API contract. These are
 uncalibrated estimates: a sampled zero chance is never a safety proof. Official awarded points,
 chips, captaincy, legal autosubs and hits remain the scoring foundation for every layer.
-See [VALIDATION.md](VALIDATION.md) for the measured audit, fixes, data coverage and remaining gaps.
 
 ## Architecture
 
@@ -169,10 +167,7 @@ duplicated in JavaScript.
 
 Player forecasts and joint fixture outcomes are reusable through `fpl_forfeit.forecasting`,
 independently of mini-leagues. The public analyser consumes the same shared model.
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the typed multi-Gameweek projection interface and
-the implemented server-side authentication boundary for the private assistant.
-The private assistant's forecasting, optimisation and secure setup are documented in
-[ASSISTANT.md](ASSISTANT.md).
+The private assistant's forecasting, optimisation and secure setup are in [ASSISTANT.md](ASSISTANT.md).
 
 ## Run locally
 
@@ -285,8 +280,33 @@ python fpl.py --snapshot snapshots/gw07.json
 
 ## Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md). The static frontend deploys through GitHub Actions and the Render
-Blueprint deploys the separate FastAPI service. Neither deployment contains a secret.
+Frontend and backend deploy separately; deploy the backend first so its URL can go into the Pages build.
+Nothing needs a database, persistent disk, FPL login or secret (the optional private assistant needs a password hash).
+
+**Backend (Render).** *New -> Blueprint*, connect the repository and apply the root `render.yaml`. It installs the
+package, runs `uvicorn fpl_forfeit.web:app --host 0.0.0.0 --port $PORT`, health-checks `/api/health`, allows the
+Pages origin through CORS, caches FPL results for 90 s and sets `FPL_TRUSTED_PROXY=1` so login rate limits use the
+real client IP. Keep the single Uvicorn worker (caches and sessions are in-process). The free plan sleeps when idle;
+the first request after sleep takes about a minute. A paid always-on instance removes that delay without code changes.
+Any Python host works if it runs the same command and sets `FPL_ALLOWED_ORIGINS`.
+
+**Frontend (GitHub Pages).** Set *Settings -> Pages -> Source* to GitHub Actions and run *Deploy frontend to GitHub
+Pages*. It builds with `API_BASE_URL` (default `https://fpl-scenario-analyser-api.onrender.com`; override with a
+repository variable, public configuration only). Re-run it manually after changing the variable.
+
+**Smoke check.** `/api/health`, `/api/league/188263`, `/api/league/188263/analytics/summary`; the root site must
+show the neutral input, never a remembered league.
+
+**Local rehearsal.**
+```powershell
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[test]"
+uvicorn fpl_forfeit.web:app --reload --port 8000
+# second terminal
+$env:API_BASE_URL="http://localhost:8000"; python frontend/build.py
+python -m http.server 8080 --directory frontend/dist
+```
+Windows uses the system `curl.exe` transport automatically; override with `FPL_HTTP_TRANSPORT=urllib|curl`.
 
 ## Tests and build
 
@@ -358,3 +378,70 @@ both themes. It makes public FPL requests through the backend. Screenshots go to
 build. Playwright is not a production dependency.
 `--scenario-league` additionally checks live candidate loading, displayed example counts and playing-time
 context. All browser runs check that early-Gameweek generation searches only the selected manager.
+
+## Analytics reference
+
+Analytics is descriptive and separate from live scenario solving. Calculations live in
+`src/fpl_forfeit/analytics/calculations.py`; retrieval and caching in `analytics/service.py`.
+
+**Sources** (server-side, no FPL login): `bootstrap-static` (events, players), `leagues-classic/{id}/standings`
+(membership, at most 50 managers), `entry/{id}/history` (event points, transfer costs, every chip event),
+`entry/{id}/event/{gw}/picks` (final multipliers, captain/vice, chip, raw score) and `event/{gw}/live`
+(official player totals, already aggregated across Double Gameweeks). Detailed contributions are published
+only when all 15 player totals/multipliers exist and their counted sum matches the official raw event
+score; otherwise they stay unavailable with a manager/GW warning.
+
+**Accounting**
+- *Weekly score:* official raw GW points minus that week's transfer cost, once.
+- *Rank:* competition ranking (60, 50, 40, 40 -> 1, 2, 3, 3). All tied lowest scores count as last; the
+  bottom three includes every tie at the third-lowest score. These descriptive rules are separate from the
+  live tie setting.
+- *Coverage:* a week gets last-place/rank statistics only if every current member has a score. Partial
+  weeks show known scores, hits and an available-score mean, but no invented loser.
+- *Last-place margin:* second-lowest minus lowest score; a bottom tie has margin zero.
+- *Bench:* final bench-slot points with multiplier zero; autosubbed points do not count. Bench Boost
+  slots 12-15 are recorded separately as its direct contribution.
+- *Captain:* total multiplied contribution is separate from additional multiplier points (8 base doubled is
+  16 total, +8 additional). Vice takeover receives its actual points. Every chip use is recorded.
+- *Ownership:* owners / league managers; effective ownership sums current effective multipliers over
+  manager count and may exceed 100%. Live substitutions and vice takeover remain provisional.
+- *Head-to-head, consistency, trends:* use only weeks recorded for the managers concerned; unknown squads
+  are never treated as non-owners.
+
+**Retrieval and caching.** The summary fetches score histories only; one shared background job then verifies
+final squads, with lazy section payloads and progress (`analytics/details`: loading / busy / ready).
+Defaults: live snapshots 90 s, score histories 15 min, final picks and player totals 24 h, partial retry
+5 min, two background league jobs, four concurrent upstream requests, 240 s fetch budget. Requests and jobs
+are coalesced; caches are bounded, per-process and lost on restart (single-worker free Render).
+
+**Limits.** Current league members and current season only; completed Gameweeks only; dashes mean unknown,
+not zero; no transfer, captain or chip recommendations.
+
+## Forecast model
+
+The live analysis has three layers: a cheap summary (confirmed effective points, bounded safety, 96-sample
+mean scores), a separate 1,600-sample reproducible shared-fixture risk run, and a forced-event What-if that
+recalculates that model for every manager. The constraint-guided exact solver remains a separate,
+candidate-specific late-Gameweek tool. Outputs are **uncalibrated internal estimates**, not verified
+probabilities or player advice.
+
+- **Code boundaries:** `api.py` parses official data; `forecasting/` holds the shared football model
+  (statistics, joint fixture simulation, typed player projections); `points.py`, `scoring.py` and
+  `substitutions.py` score fixtures, multipliers, chips, hits and legal autosubs; `forecast.py` adds
+  official-score reconciliation and league risk; the private assistant reuses the same model. One fixture
+  draw is shared by all managers.
+- **Model:** independent home/away Poisson goals from season rates shrunk towards the league mean (home 1.1 /
+  away 0.9); player goal/assist shares blend 65% official xG/xA with 35% observed returns, shrunk towards
+  position priors; appearance and duration come from recent starts/minutes and FPL availability; shared goal
+  times; clean sheets for players on the pitch; approximate 3/2/1 bonus (not Opta BPS); saves, defensive
+  contributions and yellow cards from season rates. Future reds, penalties and own goals are not simulated.
+  Missing live breakdowns are frozen and counted in `coverage`; unknown data is never read as a football blank.
+- **Ties:** `ties=include` counts every tied-bottom manager as last (probabilities may sum above 100%);
+  `ties=strict` counts only outright last. Wilson 95% intervals describe sampling error only. A zero sampled
+  frequency never changes SAFE / AT RISK / NO MODELLED PATH / UNRESOLVED.
+- **API:** `GET /api/league/{id}?detail=summary` (cheap), `GET /api/league/{id}/outlook?source={fetched_at}&ties=include`,
+  `POST /api/league/{id}/what-if` with `{"source": fetched_at, "conditions": [{"fixture_id", "kind", "player_id", "value"}]}`.
+  The source generation is mandatory; sources are kept at least ten minutes and expired ones return 409. Forecast
+  caches hold at most 64 payloads and coalesce identical requests.
+- **Boundary:** public routes never carry personal squads. Private planning lives only under `/api/assistant/*`
+  behind server-side authentication (see ASSISTANT.md).

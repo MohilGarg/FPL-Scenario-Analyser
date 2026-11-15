@@ -10,7 +10,6 @@ dist/
 build/
 *.egg-info/
 snapshots/*.json
-snapshots/ml/
 !snapshots/.gitkeep
 .browser-artifacts/
 *.sqlite3
@@ -18,8 +17,4 @@ snapshots/ml/
 *.sqlite3-shm
 lineup-mappings.local.json
 assistant-password-hash.local.txt
-# Isolated ML research: data, environments and generated audits stay local.
-ml/data/raw/
-ml/data/processed/
-ml/reports/generated/
-ml/.venv/
+snapshots/ml/

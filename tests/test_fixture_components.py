@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import gzip
-import json
 import random
-import tempfile
 import unittest
 from copy import deepcopy
 from dataclasses import replace
 from datetime import timedelta
-from pathlib import Path
 
 from fpl_forfeit.api import FPLGameweekUnavailable, parse_ml_history
 from fpl_forfeit.assistant.component_features import (
@@ -18,14 +14,10 @@ from fpl_forfeit.assistant.component_features import (
 )
 from fpl_forfeit.assistant.component_forecast import ComponentSimulator, build_component_forecast
 from fpl_forfeit.assistant.component_model import ComponentModel
-from fpl_forfeit.assistant.ml_inference import RidgeModel, predict_player
-from fpl_forfeit.assistant.prospective import ForecastArchive, canonical
 from fpl_forfeit.assistant.service import AssistantService
 from fpl_forfeit.forecasting.horizon import forecast_horizon
 from fpl_forfeit.forecasting.statistics import player_rates
 from fpl_forfeit.models import Fixture
-from ml.recording.archive import create_bundle, read_bundle
-from ml.recording.evaluate import evaluate
 from tests.assistant_fixtures import NOW, FixtureClient, catalogue
 from tests.test_live_ridge import source
 
@@ -206,64 +198,6 @@ class FixtureComponentsTests(unittest.TestCase):
         with service.using_model("components"):
             self.assertIs(service.forecast(), component)
         self.assertIs(service.forecast(), stat)
-
-    def test_archive_extension_immutable_and_paired_evaluation(self):
-        baseline, snapshot, histories = context()
-        component, meta = build_component_forecast(baseline, snapshot, histories, NOW)
-        ridge = RidgeModel()
-        rows = {
-            pid: predict_player(ridge, baseline, snapshot, pid, histories.get(pid), NOW)
-            for pid in baseline.players
-        }
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            archive = ForecastArchive(root)
-            old = archive.record(baseline, snapshot, histories, rows, NOW, ridge)
-            raw = old.read_bytes()
-            archive.record(
-                baseline,
-                snapshot,
-                histories,
-                rows,
-                NOW,
-                ridge,
-                component=component,
-                component_metadata=meta,
-            )
-            self.assertEqual(raw, old.read_bytes())
-            later = NOW + timedelta(hours=6)
-            new = archive.record(
-                baseline,
-                snapshot,
-                histories,
-                rows,
-                later,
-                ridge,
-                feature_asof=NOW,
-                component=component,
-                component_metadata=meta,
-            )
-            bundle = create_bundle(new, "advance", 7, {}, root / "capture.zip")
-            manifest, record = read_bundle(bundle)
-            actuals = {
-                7: {
-                    "official_final_event": {
-                        "finished": True,
-                        "data_checked": True,
-                        "deadline_time": manifest["deadline_utc"],
-                    },
-                    "actual_points": {str(pid): 0 for pid in rows},
-                }
-            }
-            scored = evaluate([(manifest, record)], actuals)
-            self.assertEqual(
-                scored["metrics"]["fixture_component_paired"]["fixture_components"]["n"], len(rows)
-            )
-            self.assertNotIn("fixture_component", json.loads(gzip.decompress(raw)))
-            self.assertEqual(
-                record["fixture_component"]["prediction_sha256"],
-                __import__("hashlib").sha256(canonical(component.players)).hexdigest(),
-            )
 
 
 if __name__ == "__main__":

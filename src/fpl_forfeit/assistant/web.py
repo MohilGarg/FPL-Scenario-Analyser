@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from ..api import FPLAPIError, FPLClient, FPLGameweekUnavailable, FPLNotFoundError
+from ..api import FPLAPIError, FPLGameweekUnavailable, FPLNotFoundError
 from .auth import SessionStore
 from .service import AssistantService
 
@@ -64,35 +64,17 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
     application.state.assistant_service = service
     application.state.assistant_auth = auth
 
-    def startup_recording() -> None:
-        import os
-
-        if (
-            auth.settings.enabled
-            and isinstance(service.client, FPLClient)
-            and os.getenv("FPL_ML_AUTORECORD", "1") == "1"
-        ):
-            from .prospective import start_recording
-
-            start_recording(service)
-
-    def stop_recording() -> None:
-        service.ml.stopped.set()
-        if stop := getattr(service, "ml_recording_stop", None):
-            stop.set()
-
     previous_lifespan = application.router.lifespan_context
 
     @asynccontextmanager
-    async def recording_lifespan(app):
+    async def ml_lifespan(app):
         async with previous_lifespan(app) as state:
-            startup_recording()
             try:
                 yield state
             finally:
-                stop_recording()
+                service.ml.stopped.set()
 
-    application.router.lifespan_context = recording_lifespan
+    application.router.lifespan_context = ml_lifespan
     public_auth = {("GET", "/api/assistant/session"), ("POST", "/api/assistant/login")}
 
     @application.middleware("http")

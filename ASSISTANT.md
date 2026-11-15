@@ -169,19 +169,6 @@ Render. `FPL_RIDGE_MODEL` can point to a reviewed replacement with the identical
 Invalid or missing models leave statistical planning available. The new status route remains
 behind the same server-side authentication as all Assistant data routes.
 
-When private access is configured, a process-local recorder runs every 30 minutes. It writes
-immutable public-football inputs, both forecasts and provenance to ignored `snapshots/ml/`,
-and records actual player points after official `finished` and `data_checked` flags. It saves
-no personal squads, entry IDs, passwords or sessions. Set `FPL_ML_AUTORECORD=0` to disable the
-background scheduler and `FPL_ML_ARCHIVE_DIR` to choose a writable archive location. The
-recording CLI works independently of private login and can run on an existing scheduled runner.
-
-**Free Render recording is best effort:** sleeping instances do not run the timer, and local
-files disappear on spin-down/restart/redeploy. Durable unattended evaluation requires a runner
-and archive outside that ephemeral instance. No paid storage or new external service has been
-enabled. See [the live inference guide](ml/reports/LIVE_INFERENCE.md) for recording/replay
-commands, storage limits and the verified live run.
-
 Transfer screening ignores autosub/vice effects and can omit the best replacement; exact refinement
 then includes them. Manual multi-transfer plans are evaluated, but automatic multi-transfer search,
 sequential future transfers, saved free-transfer value and risk preferences are not implemented.
@@ -209,9 +196,17 @@ The packaged portable model needs no new production dependency or manual configu
 Historical schedules are mostly explicitly labelled retrospective proxies, observed form/current
 availability are frozen across six GWs, and bonus/defensive contributions remain statistical.
 Accuracy is not established prospectively; regular starters worsened in historical diagnostics.
-See [FIXTURE_ML.md](ml/reports/FIXTURE_ML.md) for validation, limitations and reproducible commands.
-The existing GitHub recorder includes the new model in future captures while preserving every
-old immutable capture and the original statistical/Ridge evaluation groups.
+The model JSONs (`ridge_v1.json`, `component_v1.json`, `minutes_v2.json`, `attacking_v2.json`, ...) ship in
+`src/fpl_forfeit/assistant/`. The research and training code that produced them was removed from this repository.
+
+## Shared model and security boundary
+
+The public analyser and the assistant use one football model (`fpl_forfeit.forecasting`) and one FPL scorer. The
+model accepts no user identity. Public routes never receive private squads or optimisation output; private work
+carries its owner's identity and every `/api/assistant/*` data route authenticates before validation or computation.
+Credentials live only in server environment variables. Sessions are opaque Secure/HttpOnly/Strict cookies with
+CSRF/origin checks, held in memory by a single worker (a restart revokes them). Joint fixture draws, not independent
+per-player marginals, are used when comparing correlated squad choices.
 
 ```powershell
 $env:PYTHONPATH = (Join-Path (Get-Location).Path 'src')
