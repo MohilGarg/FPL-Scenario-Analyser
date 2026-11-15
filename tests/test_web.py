@@ -12,25 +12,16 @@ class _FakeService:
     def __init__(self) -> None:
         self.last_settings = None
 
-    def analyse_league(self, league_id: int, settings: object = None) -> dict[str, object]:
+    def analyse_league(
+        self, league_id: int, settings: object = None, gameweek: int | None = None
+    ) -> dict[str, object]:
         self.last_settings = settings
+        self.last_gameweek = gameweek
         if league_id == 404:
             raise FPLNotFoundError("League not found")
         return {
             "api_version": "1",
             "league": {"id": league_id, "name": "Friends", "gameweek": 1},
-            "summary": {"current_last_entry_ids": [1]},
-            "managers": [],
-            "differentials": [],
-            "model": {},
-        }
-
-    def analyse_demo(self, mode: str, settings: object = None) -> dict[str, object]:
-        self.last_settings = settings
-        return {
-            "api_version": "2",
-            "demo": {"active": True, "mode": mode},
-            "league": {"id": 900001, "name": "Demo", "gameweek": 1},
             "summary": {"current_last_entry_ids": [1]},
             "managers": [],
             "differentials": [],
@@ -54,7 +45,7 @@ class WebAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("forecast_model", response.json())
 
     async def test_serialises_processed_league_result(self) -> None:
-        response = await self.client.get("/api/league/188263?scenarios=6")
+        response = await self.client.get("/api/league/188263")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["league"]["id"], 188263)
         self.assertIn("summary", response.json())
@@ -72,16 +63,22 @@ class WebAPITests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.get("/api/league/404")
         self.assertEqual(response.status_code, 404)
 
-    async def test_demo_endpoint_and_strict_tie_setting(self) -> None:
-        response = await self.client.get("/api/demo/live?ties=strict&scenarios=6")
+    async def test_strict_tie_setting_and_gameweek_are_passed_through(self) -> None:
+        response = await self.client.get("/api/league/188263?ties=strict&gameweek=4")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["demo"]["mode"], "live")
         self.assertFalse(self.service.last_settings.allow_tied_last)
-        self.assertEqual(self.service.last_settings.scenario_count, 6)
+        self.assertEqual(self.service.last_gameweek, 4)
 
-    async def test_invalid_demo_mode_is_rejected(self) -> None:
-        response = await self.client.get("/api/demo/not-real")
-        self.assertEqual(response.status_code, 422)
+    async def test_retired_routes_are_gone(self) -> None:
+        for path in (
+            "/api/demo/live",
+            "/api/league/1/outlook?source=x",
+            "/api/league/1/compare?a=1&b=2",
+            "/api/league/1/managers/1/scenarios",
+            "/api/league/1/risk-history?gameweek=1",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual((await self.client.get(path)).status_code, 404)
 
 
 if __name__ == "__main__":
@@ -93,7 +90,9 @@ class _BrokenService(_FakeService):
         super().__init__()
         self.error = error
 
-    def analyse_league(self, league_id: int, settings: object = None) -> dict[str, object]:
+    def analyse_league(
+        self, league_id: int, settings: object = None, gameweek: int | None = None
+    ) -> dict[str, object]:
         raise self.error
 
 

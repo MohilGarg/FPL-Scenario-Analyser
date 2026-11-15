@@ -13,12 +13,15 @@ Do not add predictive advice, transfer/captain recommendations or optimisation t
 Do not add model research, training pipelines, forecast-capture/recording infrastructure, archives,
 releases of captured data, or scheduled evidence-collection workflows. The assistant ships its small
 portable model JSON files in `src/fpl_forfeit/assistant/`; replacing one is a reviewed code change.
-Keep documentation in `README.md` (public app, analytics, forecast model, deployment) and
+Keep documentation in `README.md` (public app, safety envelope, analytics, deployment) and
 `ASSISTANT.md` (private assistant); do not add further top-level docs.
 
-The target navigation is Live, Season (analytics) and Assistant in one SPA. Demo states and the
-Monte Carlo / exact-scenario UI are being retired; do not extend them. Prefer removing complexity over
-adding it, and never hard-code analysed results in JavaScript.
+Navigation is Live, Season (analytics) and Assistant in one SPA. Live is a single page: bottom standings
+with live points, SAFE / AT RISK per manager with the stated envelope, the players that separate the
+managers at risk, and a click-through to each squad; a completed Gameweek shows only the final result.
+Do not reintroduce public Monte Carlo simulation, exact-scenario enumeration, what-if explorers, pairwise
+comparison or demo states. Prefer removing complexity over adding it, and never hard-code analysed
+results in JavaScript.
 
 ## Correctness priorities
 
@@ -27,7 +30,7 @@ adding it, and never hard-code analysed results in JavaScript.
 3. Zero-minute handling and legal automatic substitutions.
 4. Shared-player effective exposure.
 5. Conservative safe-manager pruning.
-6. One tie-for-last rule applied consistently across safety, solving and display.
+6. One tie-for-last rule applied consistently across safety, the final result and display.
 
 Keep API parsing in `api.py` (raise `FPLDataError` for unexpected FPL data; internal bugs must not be
 reported as FPL failures). Domain code must be testable with synthetic data or saved snapshots and no
@@ -39,9 +42,10 @@ still apply.
 Football scores have no literal finite bound. Never call a manager mathematically safe without naming
 the configured event envelope. The default practical envelope is -10 to +35 for each player's total
 remaining contribution across the current Gameweek (including a Double Gameweek); it is conservative about
-bench players and autosubs and is not a theoretical or historical limit. Keep SAFE / AT RISK /
-NO MODELLED PATH / UNRESOLVED distinct; `UNRESOLVED` must never be shown as `SAFE`. Safety bounds must allow
-already-scored bench and vice-captain points to become effective after a pending absence.
+bench players and autosubs and is not a theoretical or historical limit. SAFE means some opponent cannot
+catch the manager under that envelope; AT RISK only means last place cannot be ruled out, never a
+probability. Safety bounds must allow already-scored bench and vice-captain points to become effective after
+a pending absence.
 
 ## Analytics rules
 
@@ -71,11 +75,11 @@ shared football model and FPL scorer.
 - Target Python 3.12+ with type hints; prefer the standard library.
 - Run `python -m unittest discover -s tests -v`, `ruff check .`, `ruff format --check .` and the frontend
   build (`python frontend/build.py`) before finishing; CI enforces the same. Use `frontend/check.py` for the
-  optional real-browser check. Keep screenshots outside `frontend/dist`.
+  optional real-browser check (`--live-payload` replays a saved in-progress state). Keep screenshots
+  outside `frontend/dist`.
 - Add a regression test for every scoring-rule fix.
 - Preserve raw FPL snapshots outside Git (`snapshots/*.json` is ignored).
 - The site is light-first with an accessible optional dark theme. The root website stays neutral: never
   load a default or remembered league automatically; league IDs/URLs and query routing remain supported.
-- Serve a cheap league summary first; deeper work is request- and candidate-specific.
 - Commit completed work on a branch, push, open a PR, and verify local and remote are in sync before
   reporting completion.

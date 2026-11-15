@@ -10,11 +10,8 @@ from .analysis import analyse_state, analysis_to_dict
 from .api import FPLAPIError, FPLClient, load_snapshot, save_snapshot, state_from_snapshot
 from .formatting import render_report
 from .settings import (
-    DEFAULT_MAX_RELEVANT_PLAYERS,
     DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION,
-    DEFAULT_MAX_SEARCH_NODES,
     DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION,
-    DEFAULT_SCENARIO_COUNT,
     AnalysisSettings,
 )
 
@@ -48,24 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=12,
         help="Refuse a surprising league size; use 0 to allow any size (default: 12)",
-    )
-    parser.add_argument(
-        "--scenarios",
-        type=int,
-        default=DEFAULT_SCENARIO_COUNT,
-        help="Distinct examples per at-risk manager",
-    )
-    parser.add_argument(
-        "--max-relevant",
-        type=int,
-        default=DEFAULT_MAX_RELEVANT_PLAYERS,
-        help="Maximum player-fixture variables in scenario search (default: 8)",
-    )
-    parser.add_argument(
-        "--max-nodes",
-        type=int,
-        default=DEFAULT_MAX_SEARCH_NODES,
-        help="Search effort per manager",
     )
     parser.add_argument(
         "--min-remaining-contribution",
@@ -127,9 +106,6 @@ def run(args: argparse.Namespace) -> int:
     settings = AnalysisSettings(
         min_remaining_player_contribution=args.min_remaining_contribution,
         max_remaining_player_contribution=args.max_remaining_contribution,
-        scenario_count=args.scenarios,
-        max_relevant_players=args.max_relevant,
-        max_search_nodes=args.max_nodes,
         allow_tied_last=not args.strict_last,
     )
     result = analyse_state(state, settings)
@@ -141,7 +117,6 @@ def run(args: argparse.Namespace) -> int:
                 state,
                 result.standings,
                 result.safety,
-                result.searches,
                 min_remaining_player_contribution=(settings.min_remaining_player_contribution),
                 max_remaining_player_contribution=(settings.max_remaining_player_contribution),
                 allow_tied_last=settings.allow_tied_last,

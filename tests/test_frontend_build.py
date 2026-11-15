@@ -36,17 +36,14 @@ class FrontendBuildTests(unittest.TestCase):
             private_js = (output / "assistant.js").read_text(encoding="utf-8")
             self.assertIn('credentials:"same-origin"', private_js)
             self.assertNotIn("FPL_ASSISTANT_PASSWORD_HASH", private_js)
-            self.assertTrue((output / "simulations.js").exists())
-            self.assertIn('src="./simulations.js"', html)
-            for view in (
-                "overview",
-                "scenarios",
-                "differentials",
-                "simulations",
-                "managers",
-                "analytics",
-            ):
+            for retired in ("simulations.js", "outlook.js"):
+                self.assertFalse((output / retired).exists())
+            for view in ("live", "season"):
                 self.assertIn(f'data-view="{view}"', html)
+            for retired in ("overview", "scenarios", "differentials", "simulations", "managers"):
+                self.assertNotIn(f'data-view="{retired}"', html)
+            self.assertIn('id="assistant-tab"', html)
+            self.assertNotIn("demo-select", html)
             self.assertIn(':root[data-theme="dark"]', css)
             self.assertIn("fpl-theme", javascript)
             self.assertIn("parseLeagueId", javascript)

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f4f6f8" />
     <meta
       name="description"
-      content="Live last-place scenario analysis and descriptive season analytics for your FPL mini-league."
+      content="Who can still finish last in your FPL mini-league this Gameweek, plus your league's season history."
     />
     <title>FPL Scenario Analyser</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
@@ -39,19 +39,10 @@
               <option value="include">Tied for lowest counts</option>
               <option value="strict">Strictly lowest only</option>
             </select>
-            <p>This rule applies to live analysis and scenarios. Analytics records every tied last-place finish.</p>
+            <p>This rule applies to the Live page. Season records every tied last-place finish.</p>
             <button id="theme-toggle" class="icon-button" type="button" aria-label="Use dark mode">
               <span id="theme-label">Dark mode</span>
             </button>
-            <label for="demo-select">Demo Mode</label>
-            <select id="demo-select">
-              <option value="">Off — real league</option>
-              <option value="early">Early Gameweek</option>
-              <option value="late">Late Gameweek</option>
-              <option value="live">Live match</option>
-              <option value="complete">Completed Gameweek</option>
-            </select>
-            <p>Development examples using the real analysis engine.</p>
           </div>
         </details>
       </div>
@@ -62,8 +53,8 @@
         <p class="kicker">Your mini-league. The whole story.</p>
         <h1 id="page-title">Last place, explained.</h1>
         <p class="landing-copy">
-          See the live bottom contest, projected final scores and estimated forfeit risks.
-          Explore football outcomes, or inspect your league’s separate season analytics.
+          See who can still finish last this Gameweek, which players separate them, and your
+          league’s season so far.
         </p>
 
         <form id="league-form" class="league-form">
@@ -87,10 +78,9 @@
           <div id="recent-list"></div>
         </div>
         <div class="capabilities">
-          <article><span class="capability-number">01</span><h2>Live forfeit outlook</h2><p>Confirmed scores, estimated risks and projected standings throughout the Gameweek.</p></article>
-          <article><span class="capability-number">02</span><h2>Scenario exploration</h2><p>Test goals, blanks and clean sheets together, then inspect exact routes late in the week.</p></article>
-          <article><span class="capability-number">03</span><h2>League differentials</h2><p>Shared players, captaincy and the exposure that separates managers.</p></article>
-          <article><span class="capability-number">04</span><h2>League analytics</h2><p>Gameweek history, captaincy, bench points, hits and your season in context.</p></article>
+          <article><span class="capability-number">01</span><h2>Live</h2><p>Bottom standings with live points, SAFE or AT RISK for every manager, and the players that still separate them.</p></article>
+          <article><span class="capability-number">02</span><h2>Season</h2><p>Completed Gameweeks: last places, captaincy, bench points, hits and head-to-head records.</p></article>
+          <article><span class="capability-number">03</span><h2>Assistant</h2><p>Private squad planning for the owner, behind a password.</p></article>
         </div>
       </section>
 
@@ -121,7 +111,6 @@
             <div class="status-line">
               <span id="gameweek-status" class="status-dot"></span>
               <span id="gameweek-label"></span>
-              <span id="demo-label" class="demo-badge hidden">Demo</span>
             </div>
             <h1 id="league-name"></h1>
             <p id="updated-at"></p>
@@ -135,76 +124,19 @@
           </div>
         </section>
 
-        <nav class="view-tabs" role="tablist" aria-label="Analysis views">
-          <button id="tab-overview" role="tab" aria-selected="true" aria-controls="view-overview" data-view="overview">Overview</button>
-          <button id="tab-scenarios" role="tab" aria-selected="false" aria-controls="view-scenarios" data-view="scenarios">Scenarios</button>
-          <button id="tab-differentials" role="tab" aria-selected="false" aria-controls="view-differentials" data-view="differentials">Differentials</button>
-          <button id="tab-simulations" role="tab" aria-selected="false" aria-controls="view-simulations" data-view="simulations">Simulations</button>
-          <button id="tab-managers" role="tab" aria-selected="false" aria-controls="view-managers" data-view="managers">Managers</button>
-          <button id="tab-analytics" class="analytics-tab" role="tab" aria-selected="false" aria-controls="view-analytics" data-view="analytics">Analytics</button>
+        <nav class="view-tabs" aria-label="Sections">
+          <div role="tablist" class="view-tablist">
+            <button id="tab-live" role="tab" aria-selected="true" aria-controls="view-live" data-view="live">Live</button>
+            <button id="tab-season" role="tab" aria-selected="false" aria-controls="view-season" data-view="season">Season</button>
+          </div>
+          <a id="assistant-tab" class="assistant-tab" href="#"><span aria-hidden="true">&#128274;</span> Assistant</a>
         </nav>
 
-        <section id="view-overview" class="view-panel" role="tabpanel" aria-labelledby="tab-overview">
-          <div id="phase-note" class="phase-note"></div>
-          <div id="overview-content"></div>
+        <section id="view-live" class="view-panel" role="tabpanel" aria-labelledby="tab-live">
+          <div id="live-content"></div>
         </section>
 
-        <section id="view-scenarios" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-scenarios">
-          <div id="explorer-content"></div>
-          <div id="exact-heading" class="view-heading exact-heading">
-            <div>
-              <p class="kicker">Detailed routes to last</p>
-              <h2>Exact Scenarios</h2>
-              <p>Verified sufficient examples under listed assumptions. Most useful with one or two fixtures left.</p>
-            </div>
-            <label class="select-field" for="scenario-manager">
-              Manager
-              <select id="scenario-manager"></select>
-            </label>
-          </div>
-          <div id="scenario-detail"></div>
-          <details id="comparison-panel" class="comparison-panel">
-            <summary>Compare two managers</summary>
-            <div class="comparison-controls">
-              <label for="compare-a">Manager A<select id="compare-a"></select></label>
-              <span aria-hidden="true">against</span>
-              <label for="compare-b">Manager B<select id="compare-b"></select></label>
-            </div>
-            <div id="comparison-result"></div>
-          </details>
-        </section>
-
-        <section id="view-differentials" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-differentials">
-          <div class="view-heading">
-            <div>
-              <p class="kicker">What can still move the gaps</p>
-              <h2>Effective differentials</h2>
-              <p>Captaincy, chips and confirmed substitutions are reflected. Identical exposure is omitted.</p>
-            </div>
-            <label class="select-field" for="differential-scope">Compare exposure
-              <select id="differential-scope"><option value="risk">Bottom-place battle</option><option value="all">All league managers</option></select>
-            </label>
-          </div>
-          <div id="differential-content"></div>
-        </section>
-
-        <section id="view-simulations" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-simulations">
-          <div class="view-heading"><div><p class="kicker">Explore the uncertainty</p><h2>Simulations</h2><p>The existing shared Monte Carlo forecast, viewed from different angles.</p></div></div>
-          <div id="simulations-content"></div>
-        </section>
-
-        <section id="view-managers" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-managers">
-          <div class="view-heading">
-            <div>
-              <p class="kicker">Calculation transparency</p>
-              <h2>Managers</h2>
-              <p>Open a manager to inspect the Gameweek squad state used by the analyser.</p>
-            </div>
-          </div>
-          <div id="manager-list" class="manager-list"></div>
-        </section>
-
-        <section id="view-analytics" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-analytics">
+        <section id="view-season" class="view-panel hidden" role="tabpanel" aria-labelledby="tab-season">
           <div class="view-heading"><div><p class="kicker">Your season, in context</p><h2>League analytics</h2><p>What has happened in this mini-league. Completed Gameweeks, not predictions.</p></div></div>
           <nav id="analytics-nav" class="analytics-nav" aria-label="Analytics sections">
             <button type="button" data-section="summary">Summary</button>
@@ -219,17 +151,13 @@
           <details id="analytics-definitions" class="analytics-help"><summary>Definitions &amp; data coverage</summary><div></div></details>
         </section>
 
-        <details class="model-note">
-          <summary>How “safe” and scenarios are calculated</summary>
-          <p id="model-note"></p>
-        </details>
       </div>
     </main>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
     <footer>
-      <span>Last-place analysis. Your league’s season, explained.</span>
+      <span>Live last place. Your league’s season, explained.</span>
       <a href="https://github.com/MohilGarg/FPL-Scenario-Analyser">Source code</a>
     </footer>
 
@@ -237,8 +165,6 @@
     <script src="./input.js"></script>
     <script src="./charts.js"></script>
     <script src="./analytics.js"></script>
-    <script src="./outlook.js"></script>
-    <script src="./simulations.js"></script>
     <script src="./app.js" defer></script>
   </body>
 </html>
