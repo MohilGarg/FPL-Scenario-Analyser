@@ -18,8 +18,10 @@ page and HTTP 503 on private operations; public league analysis continues to wor
    `FPL_ASSISTANT_PASSWORD_HASH` to that complete hash (including its dollar signs).
    The HTTPS origin is automatically taken from Render's `RENDER_EXTERNAL_URL` unless
    `FPL_ASSISTANT_ORIGIN` is explicitly configured (for example, for a custom backend domain).
-   The blueprint also supplies this non-secret origin; the password hash must be added manually as an environment
-   secret. Do not enable `FPL_ASSISTANT_DEV_HTTP` in production.
+   The blueprint also supplies this non-secret origin and generates `FPL_ASSISTANT_SESSION_SECRET` (the cookie
+   signing key) automatically; the password hash must be added manually as an environment secret. For another
+   host, set `FPL_ASSISTANT_SESSION_SECRET` to a random string of at least 32 characters
+   (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Do not enable `FPL_ASSISTANT_DEV_HTTP` in production.
    Set `FPL_TRUSTED_PROXY=1` (already in `render.yaml`) so the login rate limit keys on the real
    client: the *rightmost* `X-Forwarded-For` entry, which Render appends. Never enable it where
    the app is directly reachable, and do not use the leftmost entry or `--forwarded-allow-ips=*`:
@@ -30,8 +32,8 @@ page and HTTP 503 on private operations; public league analysis continues to wor
    You never supply your FPL account password. Enter current bank/free transfers/actual selling
    prices before comparing transfers, and verify that the public squad still matches your account.
 
-Change the password by replacing the hash and restarting the service; the restart revokes all
-existing sessions. Removing the hash disables private access. A cold Render instance may take
+Change the password by replacing the hash. Existing sessions stay valid until they expire, so also change
+`FPL_ASSISTANT_SESSION_SECRET` to sign everyone out. Removing the hash or the secret disables private access. A cold Render instance may take
 time to wake up; the public analyser's hosting arrangements are unchanged.
 
 For the prepared one-time setup, copy the entire contents of the ignored local
@@ -54,9 +56,16 @@ The public static build can include these presentation files; they grant no priv
 - Passwords use stdlib PBKDF2-HMAC-SHA256, 600,000 iterations, a random 16-byte salt and
   constant-time digest comparison. There is no default password/hash and no committed credential.
   The work factor follows [OWASP's password-storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
-- A random 256-bit opaque session token is sent only in a `__Host-fpl-assistant` cookie:
-  HttpOnly, Secure, SameSite=Strict, Path=/, no Domain. The server retains only its SHA-256 lookup
-  key and a random session subject. Cookies/tokens never appear in API JSON, URLs or localStorage.
+- The session is a signed, expiring cookie, `__Host-fpl-assistant`: HttpOnly, Secure, SameSite=Strict,
+  Path=/, no Domain. Its value is `v1.<payload>.<HMAC-SHA256>` over a random session subject, the absolute
+  expiry (8 hours) and the last activity time, keyed by `FPL_ASSISTANT_SESSION_SECRET` (at least 32
+  characters; private access stays disabled without it). The server keeps no session table, so sessions
+  survive restarts and Render sleep. Authenticated activity re-issues the cookie, which gives the one-hour
+  idle timeout; passive status checks do not extend it. The CSRF nonce is derived from the secret and the
+  subject. Cookies/tokens never appear in API JSON, URLs or localStorage.
+- Logout clears the cookie and adds the subject to a small in-memory deny list. A restart empties that list,
+  so a cookie copied before logout could work again until its expiry (at most eight hours). Rotating the
+  secret signs everyone out at once.
 - Every `/api/assistant/*` operation/data request is authorised by middleware **before** request
   validation or computation, including unknown future routes. Only exact GET session status and
   POST login are public. All private responses and dashboard assets use `Cache-Control: no-store`.
@@ -81,7 +90,7 @@ The public static build can include these presentation files; they grant no priv
   The dashboard shell is public; protected data and computations are authorised on the server.
 
 For local development only, set `FPL_ASSISTANT_DEV_HTTP=1` and
-`FPL_ASSISTANT_ORIGIN=http://127.0.0.1:8000`, plus your locally generated hash. HTTP is accepted
+`FPL_ASSISTANT_ORIGIN=http://127.0.0.1:8000`, plus your locally generated hash and a random `FPL_ASSISTANT_SESSION_SECRET`. HTTP is accepted
 only for loopback hosts under this explicit flag and uses a separately named development cookie.
 Open `http://127.0.0.1:8000/assistant/`; a different localhost spelling is a different origin.
 
@@ -204,8 +213,9 @@ The model JSONs (`ridge_v1.json`, `component_v1.json`, `minutes_v2.json`, `attac
 The public analyser and the assistant use one football model (`fpl_forfeit.forecasting`) and one FPL scorer. The
 model accepts no user identity. Public routes never receive private squads or optimisation output; private work
 carries its owner's identity and every `/api/assistant/*` data route authenticates before validation or computation.
-Credentials live only in server environment variables. Sessions are opaque Secure/HttpOnly/Strict cookies with
-CSRF/origin checks, held in memory by a single worker (a restart revokes them). Joint fixture draws, not independent
+Credentials and the cookie signing secret live only in server environment variables. Sessions are signed,
+expiring Secure/HttpOnly/Strict cookies with CSRF/origin checks, so they survive restarts; the private
+forecast and squad caches remain in memory, per worker, and are rebuilt after a restart. Joint fixture draws, not independent
 per-player marginals, are used when comparing correlated squad choices.
 
 ```powershell

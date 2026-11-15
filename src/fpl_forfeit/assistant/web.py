@@ -97,6 +97,18 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
                 current = auth.get(request.cookies.get(auth.settings.cookie_name), touch=False)
                 if current is None or current.subject != request.state.assistant_session.subject:
                     raise HTTPException(401, "Sign in to use the private assistant.")
+            renewed = getattr(request.state, "assistant_cookie", None)
+            if renewed and response.status_code < 400:
+                # Sliding idle timeout: the signed cookie records this activity.
+                response.set_cookie(
+                    auth.settings.cookie_name,
+                    renewed,
+                    max_age=max(1, int(request.state.assistant_cookie_expires - auth.clock())),
+                    path="/",
+                    secure=auth.settings.secure,
+                    httponly=True,
+                    samesite="strict",
+                )
         except HTTPException as error:
             response = JSONResponse(
                 {"detail": error.detail}, status_code=error.status_code, headers=error.headers

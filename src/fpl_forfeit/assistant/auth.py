@@ -1,11 +1,17 @@
-"""Single-user, server-held opaque sessions. No password or signing key defaults."""
+"""Single-user sessions in signed, expiring cookies. No password or signing key defaults.
+
+A session is a stateless HMAC-signed token, so it survives a backend restart (free Render
+hosts restart and sleep often). The signing secret comes only from the environment.
+"""
 
 from __future__ import annotations
 
+import base64
 import getpass
 import hashlib
 import hmac
 import ipaddress
+import json
 import os
 import secrets
 import time
@@ -17,6 +23,10 @@ from urllib.parse import urlsplit
 from fastapi import HTTPException, Request
 
 ITERATIONS = 600_000
+MIN_SECRET_LENGTH = 32
+TOKEN_VERSION = "v1"
+RENEW_AFTER_SECONDS = 15
+MAX_REVOKED = 64
 
 
 def password_hash(password: str) -> str:
@@ -49,6 +59,8 @@ class AuthSettings:
     # Only enable behind a proxy that appends the real peer address to X-Forwarded-For
     # (Render). Without a trusted proxy the header is attacker-controlled and ignored.
     trusted_proxy: bool = False
+    # HMAC key for session cookies (FPL_ASSISTANT_SESSION_SECRET). Rotating it signs everyone out.
+    session_secret: str = field(default="", repr=False)
 
     @classmethod
     def from_environment(cls) -> AuthSettings:
@@ -59,12 +71,15 @@ class AuthSettings:
             encoded_password=os.getenv("FPL_ASSISTANT_PASSWORD_HASH", ""),
             development_http=os.getenv("FPL_ASSISTANT_DEV_HTTP", "") == "1",
             trusted_proxy=os.getenv("FPL_TRUSTED_PROXY", "") == "1",
+            session_secret=os.getenv("FPL_ASSISTANT_SESSION_SECRET", ""),
         )
 
     @property
     def enabled(self) -> bool:
         try:
             _parse_hash(self.encoded_password)
+            if len(self.session_secret.encode()) < MIN_SECRET_LENGTH:
+                return False
             url = urlsplit(self.origin)
             secure = url.scheme == "https"
             local = (
@@ -102,17 +117,69 @@ class Session:
     last_seen: float
 
 
+def _b64(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _unb64(text: str) -> bytes:
+    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+
+
 class SessionStore:
-    """One process, bounded in-memory sessions. Restarts revoke all sessions."""
+    """Stateless signed-cookie sessions: HMAC-SHA256 over subject, absolute expiry and last activity.
+
+    The idle timeout is enforced by re-issuing the cookie on authenticated activity. Logout adds the
+    subject to a small in-memory deny list; a restart clears that list, so a cookie copied before
+    logout could work again until its absolute expiry (at most eight hours).
+    """
 
     def __init__(self, settings: AuthSettings | None = None, *, clock=time.time) -> None:
         self.settings = settings or AuthSettings.from_environment()
         self.clock = clock
         self.lock = Lock()
         self.hash_slots = BoundedSemaphore(2)
-        self.sessions: dict[str, Session] = {}
+        self.revoked: dict[str, float] = {}
         self.attempts: dict[str, deque[float]] = {}
         self.global_attempts: deque[float] = deque()
+
+    # --- token handling ---------------------------------------------------------------------
+
+    def _mac(self, message: str) -> str:
+        key = self.settings.session_secret.encode()
+        return _b64(hmac.new(key, message.encode(), hashlib.sha256).digest())
+
+    def _sign(self, payload: str) -> str:
+        return self._mac(f"{TOKEN_VERSION}.{payload}")
+
+    def _csrf(self, subject: str) -> str:
+        return self._mac(f"csrf.{subject}")
+
+    def _encode(self, session: Session) -> str:
+        body = json.dumps(
+            {"s": session.subject, "e": session.expires_at, "u": session.last_seen},
+            separators=(",", ":"),
+        )
+        payload = _b64(body.encode())
+        return f"{TOKEN_VERSION}.{payload}.{self._sign(payload)}"
+
+    def _decode(self, token: str) -> Session | None:
+        try:
+            version, payload, signature = token.split(".")
+            if version != TOKEN_VERSION or not hmac.compare_digest(
+                signature.encode(), self._sign(payload).encode()
+            ):
+                return None
+            values = json.loads(_unb64(payload))
+            subject = str(values["s"])
+            expires_at, last_seen = float(values["e"]), float(values["u"])
+        except (ValueError, KeyError, TypeError, UnicodeError):
+            return None
+        return Session(subject, self._csrf(subject), expires_at, last_seen)
+
+    def _purge(self, now: float) -> None:
+        for subject, expires_at in list(self.revoked.items()):
+            if expires_at <= now:
+                del self.revoked[subject]
 
     def check_origin(self, request: Request, *, write: bool = False) -> None:
         origin = request.headers.get("origin")
@@ -185,39 +252,32 @@ class SessionStore:
         finally:
             self.hash_slots.release()
         now = self.clock()
-        token = secrets.token_urlsafe(32)
-        session = Session(
-            secrets.token_urlsafe(24),
-            secrets.token_urlsafe(32),
-            now + self.settings.session_seconds,
-            now,
-        )
-        with self.lock:
-            self._purge(now)
-            if len(self.sessions) >= 16:
-                del self.sessions[next(iter(self.sessions))]
-            self.sessions[self._token_key(token)] = session
-        return token, session
-
-    @staticmethod
-    def _token_key(token: str) -> str:
-        return hashlib.sha256(token.encode()).hexdigest()
-
-    def _purge(self, now: float) -> None:
-        for key, session in list(self.sessions.items()):
-            if session.expires_at <= now or session.last_seen + self.settings.idle_seconds <= now:
-                del self.sessions[key]
+        subject = secrets.token_urlsafe(24)
+        session = Session(subject, self._csrf(subject), now + self.settings.session_seconds, now)
+        return self._encode(session), session
 
     def get(self, token: str | None, *, touch: bool = True) -> Session | None:
-        if not self.settings.enabled or not token or len(token) > 128:
+        """Validate a cookie. Renewal on activity is done separately by ``renewed``."""
+        if not self.settings.enabled or not token or len(token) > 512:
+            return None
+        session = self._decode(token)
+        if session is None:
             return None
         now = self.clock()
         with self.lock:
             self._purge(now)
-            session = self.sessions.get(self._token_key(token))
-            if session and touch:
-                session.last_seen = now
-            return session
+            if session.subject in self.revoked:
+                return None
+        if session.expires_at <= now or session.last_seen + self.settings.idle_seconds <= now:
+            return None
+        return session
+
+    def renewed(self, session: Session) -> str | None:
+        """A cookie re-issued with activity recorded now, or None if refreshed very recently."""
+        now = self.clock()
+        if now - session.last_seen < RENEW_AFTER_SECONDS:
+            return None
+        return self._encode(Session(session.subject, session.csrf, session.expires_at, now))
 
     def require(self, request: Request) -> Session:
         if not self.settings.enabled:
@@ -230,12 +290,19 @@ class SessionStore:
             request.headers.get("x-csrf-token", "").encode(), session.csrf.encode()
         ):
             raise HTTPException(403, "Refresh private access and try again.")
+        request.state.assistant_cookie = self.renewed(session)
+        request.state.assistant_cookie_expires = session.expires_at
         return session
 
     def logout(self, token: str | None) -> None:
-        if token:
-            with self.lock:
-                self.sessions.pop(self._token_key(token), None)
+        session = self._decode(token) if token and len(token) <= 512 else None
+        if session is None:
+            return
+        with self.lock:
+            self._purge(self.clock())
+            if len(self.revoked) >= MAX_REVOKED:
+                del self.revoked[min(self.revoked, key=self.revoked.get)]
+            self.revoked[session.subject] = session.expires_at
 
 
 def main() -> None:
