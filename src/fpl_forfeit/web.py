@@ -12,6 +12,7 @@ from .analytics.service import AnalyticsService
 from .api import (
     FPLAccessError,
     FPLAPIError,
+    FPLDataError,
     FPLGameweekUnavailable,
     FPLLeagueSizeError,
     FPLNotFoundError,
@@ -277,12 +278,12 @@ def _api_response(call: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         raise HTTPException(403, str(exc)) from exc
     except FPLLeagueSizeError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except FPLDataError as exc:
+        raise HTTPException(502, "FPL returned data the analyser could not process.") from exc
     except FPLAPIError as exc:
         raise HTTPException(
             502, "FPL data is temporarily unavailable. Please try again shortly."
         ) from exc
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(502, "FPL returned data the analyser could not process.") from exc
 
 
 def _forecast_response(call: Callable[[], dict[str, Any]]) -> dict[str, Any]:
