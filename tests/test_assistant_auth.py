@@ -5,12 +5,15 @@ import unittest
 from unittest.mock import patch
 
 import httpx
+from fastapi import HTTPException
 
 from fpl_forfeit.assistant.auth import AuthSettings, SessionStore, password_hash
 from fpl_forfeit.assistant.service import AssistantService
 from fpl_forfeit.web import create_app
 from tests.assistant_fixtures import NOW, FixtureClient
 from tests.test_web import _FakeService
+
+SECRET = "test-session-secret-" + "x" * 32
 
 
 class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
@@ -22,7 +25,7 @@ class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.time = 1_000.0
         self.store = SessionStore(
-            AuthSettings("https://assistant.example", self.encoded, 120, 60),
+            AuthSettings("https://assistant.example", self.encoded, 120, 60, session_secret=SECRET),
             clock=lambda: self.time,
         )
         self.fpl = FixtureClient()
@@ -72,7 +75,9 @@ class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_eight_digit_passcode_unlocks_with_same_secure_session(self):
         passcode = f"{secrets.randbelow(100_000_000):08d}"
-        self.store.settings = AuthSettings("https://assistant.example", password_hash(passcode))
+        self.store.settings = AuthSettings(
+            "https://assistant.example", password_hash(passcode), session_secret=SECRET
+        )
         response = await self.client.post(
             "/api/assistant/login",
             json={"password": passcode},
@@ -94,12 +99,15 @@ class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
             {
                 "RENDER_EXTERNAL_URL": "https://assistant.example/",
                 "FPL_ASSISTANT_PASSWORD_HASH": self.encoded,
+                "FPL_ASSISTANT_SESSION_SECRET": SECRET,
             },
             clear=True,
         ):
             settings = AuthSettings.from_environment()
             self.assertEqual(settings.origin, "https://assistant.example")
             self.assertTrue(settings.enabled)
+            with patch.dict("os.environ", {"FPL_ASSISTANT_SESSION_SECRET": ""}):
+                self.assertFalse(AuthSettings.from_environment().enabled)  # no secret: fail closed
             with patch.dict("os.environ", {"FPL_ASSISTANT_ORIGIN": "https://custom.example"}):
                 self.assertEqual(AuthSettings.from_environment().origin, "https://custom.example")
         with patch.dict(
@@ -217,6 +225,31 @@ class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["detail"], "Unable to sign in.")
 
+    async def test_session_cookie_survives_a_backend_restart(self):
+        await self.sign_in()
+        cookie = self.client.cookies.get("__Host-fpl-assistant")
+        self.assertTrue(cookie.startswith("v1."))
+        restarted = SessionStore(self.store.settings, clock=lambda: self.time)  # fresh process
+        app = create_app(_FakeService(), assistant=self.service, auth=restarted)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="https://assistant.example"
+        ) as client:
+            client.cookies.set("__Host-fpl-assistant", cookie, domain="assistant.example", path="/")
+            status = (await client.get("/api/assistant/session")).json()
+            self.assertTrue(status["authenticated"])
+            self.assertEqual(
+                (await client.get("/api/assistant/predictions?horizon=1")).status_code, 200
+            )
+
+    async def test_authenticated_activity_reissues_a_secure_http_only_cookie(self):
+        await self.sign_in()
+        self.time += 30
+        response = await self.client.get("/api/assistant/predictions?horizon=1")
+        header = response.headers["set-cookie"].lower()
+        for flag in ("httponly", "secure", "samesite=strict", "path=/"):
+            self.assertIn(flag, header)
+        self.assertIn("__host-fpl-assistant=v1.", header)
+
     async def test_logout_revokes_cookie_and_clears_personal_cache(self):
         csrf = await self.sign_in()
         headers = {"Origin": "https://assistant.example", "X-CSRF-Token": csrf}
@@ -226,7 +259,7 @@ class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.client.cookies.set("__Host-fpl-assistant", old, domain="assistant.example", path="/")
         self.assertEqual((await self.client.get("/api/assistant/squad")).status_code, 401)
-        self.assertEqual(len(self.store.sessions), 0)
+        self.assertEqual(len(self.store.revoked), 1)
         self.client.cookies.clear()
         await self.sign_in()
         self.assertEqual((await self.client.get("/api/assistant/squad")).status_code, 422)
@@ -276,8 +309,10 @@ class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
     async def test_disabled_or_invalid_auth_never_breaks_public_api(self):
         for settings in (
             AuthSettings(),
-            AuthSettings("http://example.com", self.encoded),
-            AuthSettings("https://assistant.example", "malformed"),
+            AuthSettings("http://example.com", self.encoded, session_secret=SECRET),
+            AuthSettings("https://assistant.example", "malformed", session_secret=SECRET),
+            AuthSettings("https://assistant.example", self.encoded, session_secret="too-short"),
+            AuthSettings("https://assistant.example", self.encoded),
         ):
             app = create_app(_FakeService(), auth=SessionStore(settings))
             async with httpx.AsyncClient(
@@ -343,3 +378,77 @@ class ClientAddressTests(unittest.TestCase):
             store.client_address(self.request([f"192.0.2.{n}, 203.0.113.9"])) for n in range(1, 6)
         }
         self.assertEqual(keys, {"203.0.113.9"})
+
+
+class SignedCookieTests(unittest.TestCase):
+    """The cookie is the session: HMAC-signed, expiring, and valid across a process restart."""
+
+    password = "correct horse battery staple"
+
+    def store(self, secret: str = SECRET, clock=lambda: 1_000.0) -> SessionStore:
+        settings = AuthSettings(
+            "https://assistant.example",
+            password_hash(self.password),
+            600,
+            120,
+            session_secret=secret,
+        )
+        return SessionStore(settings, clock=clock)
+
+    def test_session_survives_a_restart_with_the_same_secret(self):
+        token, session = self.store().login(self.password, "10.0.0.1")
+        restarted = self.store()  # a new process: no shared memory
+        again = restarted.get(token)
+        self.assertEqual((again.subject, again.csrf), (session.subject, session.csrf))
+
+    def test_rotating_the_secret_signs_everyone_out(self):
+        token, _ = self.store().login(self.password, "10.0.0.1")
+        self.assertIsNone(self.store("another-secret-" + "y" * 32).get(token))
+
+    def test_tampered_or_forged_tokens_are_rejected(self):
+        store = self.store()
+        token, _ = store.login(self.password, "10.0.0.1")
+        version, payload, signature = token.split(".")
+        for bad in (
+            f"{version}.{payload}.{signature[:-2]}AA",
+            f"{version}.{payload[:-1]}A.{signature}",
+            f"v0.{payload}.{signature}",
+            f"{version}.{payload}",
+            "",
+            "not-a-token",
+            token + "." + token,
+        ):
+            with self.subTest(bad=bad[:30]):
+                self.assertIsNone(store.get(bad))
+
+    def test_cookie_contains_no_password_or_csrf_secret(self):
+        token, session = self.store().login(self.password, "10.0.0.1")
+        self.assertNotIn(self.password, token)
+        self.assertNotIn(session.csrf, token)
+
+    def test_expiry_is_absolute_and_idle_and_renewal_extends_idle_only(self):
+        now = [1_000.0]
+        store = self.store(clock=lambda: now[0])
+        token, session = store.login(self.password, "10.0.0.1")
+        now[0] += 100
+        self.assertIsNotNone(store.get(token))
+        renewed = store.renewed(session)
+        self.assertIsNotNone(renewed)
+        now[0] += 100  # 200s after login: idle limit (120s) would have lapsed on the old cookie
+        self.assertIsNone(store.get(token))
+        self.assertIsNotNone(store.get(renewed))
+        now[0] += 450  # past the 600s absolute limit, regardless of activity
+        self.assertIsNone(store.get(renewed))
+
+    def test_csrf_is_per_session_and_logout_revokes_the_subject(self):
+        store = self.store()
+        first, a = store.login(self.password, "10.0.0.1")
+        second, b = store.login(self.password, "10.0.0.2")
+        self.assertNotEqual(a.csrf, b.csrf)
+        store.logout(first)
+        self.assertIsNone(store.get(first))
+        self.assertIsNotNone(store.get(second))
+
+    def test_wrong_password_never_issues_a_cookie(self):
+        with self.assertRaises(HTTPException):
+            self.store().login("wrong password entirely", "10.0.0.1")
