@@ -9,30 +9,67 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ml.dataset import (
-    FEATURE_COLUMNS, CsvData, feature_values, gameweek_dataset, load_deadlines,
-    normalise_matches, number, read_csv, timestamp,
+    FEATURE_COLUMNS,
+    CsvData,
+    feature_values,
+    gameweek_dataset,
+    load_deadlines,
+    normalise_matches,
+    number,
+    read_csv,
+    timestamp,
 )
 from ml.prepare import write_parquet
 from ml.sources import digest, verify_cache
 
 
 def synthetic_tables(rows: list[dict[str, str]] | None = None) -> dict[str, CsvData]:
-    raw = {"element": "1", "GW": "1", "round": "1", "fixture": "101", "name": "Player",
-           "team": "Home", "position": "MID", "was_home": "True", "opponent_team": "2",
-           "total_points": "5", "minutes": "90", "starts": "1", "expected_goals": "0.25",
-           "expected_assists": "", "kickoff_time": "2024-08-01T15:00:00Z", "xP": "999"}
+    raw = {
+        "element": "1",
+        "GW": "1",
+        "round": "1",
+        "fixture": "101",
+        "name": "Player",
+        "team": "Home",
+        "position": "MID",
+        "was_home": "True",
+        "opponent_team": "2",
+        "total_points": "5",
+        "minutes": "90",
+        "starts": "1",
+        "expected_goals": "0.25",
+        "expected_assists": "",
+        "kickoff_time": "2024-08-01T15:00:00Z",
+        "xP": "999",
+    }
     rows = rows if rows is not None else [raw]
-    players = [{"id": "1", "code": "900", "element_type": "3", "team": "2",
-                "first_name": "A", "second_name": "Player", "total_points": "99999"},
-               {"id": "2", "code": "901", "element_type": "5", "team": "1"}]
-    fixtures = [{"id": str(100 + g), "event": str(g), "team_h": "1", "team_a": "2",
-                 "finished": "True"} for g in (1, 2, 9, 10)]
-    teams = [{"id": "1", "name": "Home", "code": "10"},
-             {"id": "2", "name": "Away", "code": "20"}]
+    players = [
+        {
+            "id": "1",
+            "code": "900",
+            "element_type": "3",
+            "team": "2",
+            "first_name": "A",
+            "second_name": "Player",
+            "total_points": "99999",
+        },
+        {"id": "2", "code": "901", "element_type": "5", "team": "1"},
+    ]
+    fixtures = [
+        {"id": str(100 + g), "event": str(g), "team_h": "1", "team_a": "2", "finished": "True"}
+        for g in (1, 2, 9, 10)
+    ]
+    teams = [{"id": "1", "name": "Home", "code": "10"}, {"id": "2", "name": "Away", "code": "20"}]
+
     def table(r):
         return CsvData(list(r[0]), r)
-    return {"history": table(rows), "players": table(players),
-            "fixtures": table(fixtures), "teams": table(teams)}
+
+    return {
+        "history": table(rows),
+        "players": table(players),
+        "fixtures": table(fixtures),
+        "teams": table(teams),
+    }
 
 
 def matches(rows=None, season="2024-25"):
@@ -43,8 +80,16 @@ def history_rows() -> list[dict[str, str]]:
     base = synthetic_tables()["history"].rows[0]
     rows = []
     for gw in (10, 2, 1, 9):
-        rows.append({**base, "GW": str(gw), "round": str(gw), "fixture": str(100 + gw),
-                     "kickoff_time": f"2024-08-{gw:02d}T15:00:00Z", "total_points": str(gw)})
+        rows.append(
+            {
+                **base,
+                "GW": str(gw),
+                "round": str(gw),
+                "fixture": str(100 + gw),
+                "kickoff_time": f"2024-08-{gw:02d}T15:00:00Z",
+                "total_points": str(gw),
+            }
+        )
     return rows
 
 
@@ -96,8 +141,13 @@ class IngestionTests(unittest.TestCase):
     def test_double_gameweek_sum_and_missing_target(self):
         first = matches()[0]
         first["team_gw_fixture_ids"] = [101, 102]
-        second = {**first, "fixture_id": 102, "total_points": 7, "minutes": 60,
-                  "kickoff_utc": timestamp("2024-08-04T15:00:00Z")}
+        second = {
+            **first,
+            "fixture_id": 102,
+            "total_points": 7,
+            "minutes": 60,
+            "kickoff_utc": timestamp("2024-08-04T15:00:00Z"),
+        }
         row = gameweek_dataset([second, first])[0]
         self.assertEqual(row["fixture_ids"], [101, 102])
         self.assertEqual(row["target_points"], 12)
@@ -114,14 +164,23 @@ class IngestionTests(unittest.TestCase):
         self.assertIsNone(gameweek_dataset(data)[0]["target_points"])
 
     def test_corrupted_cache_fails_before_processing(self):
-        lock = {"revision": "a" * 40, "repository": "test/repo", "seasons": ["2024-25"],
-                "files": ["data.csv"]}
-        with tempfile.TemporaryDirectory() as folder, patch("ml.sources.source_lock", return_value=lock):
+        lock = {
+            "revision": "a" * 40,
+            "repository": "test/repo",
+            "seasons": ["2024-25"],
+            "files": ["data.csv"],
+        }
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch("ml.sources.source_lock", return_value=lock),
+        ):
             root = Path(folder)
             (root / "2024-25").mkdir()
             (root / "2024-25/data.csv").write_bytes(b"corrupt")
-            manifest = {**lock, "files": {"2024-25/data.csv": {"sha256": digest(b"expected"),
-                                                               "bytes": 8}}}
+            manifest = {
+                **lock,
+                "files": {"2024-25/data.csv": {"sha256": digest(b"expected"), "bytes": 8}},
+            }
             (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "checksum"):
                 verify_cache(root, ["2024-25"])
@@ -164,8 +223,14 @@ class LeakageTests(unittest.TestCase):
         data = matches(history_rows())
         first = next(m for m in data if m["gameweek"] == 2)
         first["team_gw_fixture_ids"] = [102, 202]
-        data.append({**first, "fixture_id": 202, "kickoff_utc": timestamp("2024-08-06T15:00:00Z"),
-                     "total_points": 1000})
+        data.append(
+            {
+                **first,
+                "fixture_id": 202,
+                "kickoff_utc": timestamp("2024-08-06T15:00:00Z"),
+                "total_points": 1000,
+            }
+        )
         cutoff = timestamp("2024-08-02T10:00:00Z")
         rows = gameweek_dataset(data, {("2024-25", 2): cutoff})
         row = next(r for r in rows if r["gameweek"] == 2)
@@ -178,14 +243,29 @@ class LeakageTests(unittest.TestCase):
         previous = matches(season="2023-24")
         previous[0]["total_points"] = 5000
         cutoff = timestamp("2024-08-09T10:00:00Z")
-        row = next(r for r in gameweek_dataset(current + previous, {("2024-25", 9): cutoff})
-                   if r["season"] == "2024-25" and r["gameweek"] == 9)
+        row = next(
+            r
+            for r in gameweek_dataset(current + previous, {("2024-25", 9): cutoff})
+            if r["season"] == "2024-25" and r["gameweek"] == 9
+        )
         self.assertEqual(row["pre_gw_total_points_sum"], 2)
 
     def test_end_season_fields_and_xp_never_enter_whitelist(self):
         allowed = set(FEATURE_COLUMNS)
-        self.assertFalse(allowed & {"xP", "form", "now_cost", "total_points", "team_a_score",
-                                   "status", "fixture_records", "observed_points", "player_code"})
+        self.assertFalse(
+            allowed
+            & {
+                "xP",
+                "form",
+                "now_cost",
+                "total_points",
+                "team_a_score",
+                "status",
+                "fixture_records",
+                "observed_points",
+                "player_code",
+            }
+        )
         raw = history_rows()
         deadlines = {("2024-25", 9): timestamp("2024-08-09T10:00:00Z")}
         before = feature_values(gameweek_dataset(matches(raw), deadlines)[2])
@@ -200,19 +280,25 @@ class LeakageTests(unittest.TestCase):
             timestamp("2024-08-01T12:00:00")
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "deadlines.csv"
-            path.write_text("season,gameweek,deadline_utc,source_url\n"
-                            "2024-25,1,2024-08-10T10:00:00Z,https://example.test/a\n"
-                            "2024-25,2,2024-08-01T10:00:00Z,https://example.test/b\n", encoding="utf-8")
+            path.write_text(
+                "season,gameweek,deadline_utc,source_url\n"
+                "2024-25,1,2024-08-10T10:00:00Z,https://example.test/a\n"
+                "2024-25,2,2024-08-01T10:00:00Z,https://example.test/b\n",
+                encoding="utf-8",
+            )
             with self.assertRaisesRegex(ValueError, "increase"):
                 load_deadlines(path)
         with self.assertRaisesRegex(ValueError, "after"):
             gameweek_dataset(matches(), {("2024-25", 1): timestamp("2024-08-01T16:00:00Z")})
 
 
-@unittest.skipUnless(importlib.util.find_spec("pyarrow"), "Install ml/requirements.txt for Parquet check")
+@unittest.skipUnless(
+    importlib.util.find_spec("pyarrow"), "Install ml/requirements.txt for Parquet check"
+)
 class ParquetTests(unittest.TestCase):
     def test_source_tokens_and_null_features_round_trip(self):
         import pyarrow.parquet as pq
+
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             source = synthetic_tables()["history"]
@@ -226,8 +312,9 @@ class ParquetTests(unittest.TestCase):
             self.assertEqual(rows, recovered)
             self.assertTrue(all(recovered[0][c] is None for c in FEATURE_COLUMNS))
             write_parquet(path, matches())
-            self.assertEqual(pq.read_table(path).to_pylist()[0]["kickoff_utc"],
-                             timestamp("2024-08-01T15:00:00Z"))
+            self.assertEqual(
+                pq.read_table(path).to_pylist()[0]["kickoff_utc"], timestamp("2024-08-01T15:00:00Z")
+            )
 
 
 if __name__ == "__main__":

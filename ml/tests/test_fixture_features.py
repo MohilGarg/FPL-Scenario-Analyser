@@ -9,39 +9,78 @@ from datetime import timedelta
 from pathlib import Path
 
 from ml.dataset import FEATURE_COLUMNS, timestamp
-from ml.fixture_features import (PLAYER_TEAM_FEATURE_COLUMNS, TEAM_FEATURE_COLUMNS, club_proxy_audit,
-    normalise_fixtures, player_club_features, retrospective_context, schema_document,
-    team_deadline_features, team_index, validate_config, validate_match_links, xg_coverage_audit)
+from ml.fixture_features import (
+    PLAYER_TEAM_FEATURE_COLUMNS,
+    TEAM_FEATURE_COLUMNS,
+    club_proxy_audit,
+    normalise_fixtures,
+    player_club_features,
+    retrospective_context,
+    schema_document,
+    team_deadline_features,
+    team_index,
+    validate_config,
+    validate_match_links,
+    xg_coverage_audit,
+)
 from ml.sources import ROOT
-
 
 CONFIG = json.loads((ROOT / "fixture-config.json").read_text(encoding="utf-8"))
 START = timestamp("2024-08-01T15:00:00Z")
 
 
 def fixture(gw=1, *, identity=None, home=1, away=2, h=2, a=0, season="2024-25", kickoff=None):
-    raw = {"id": str(identity or gw), "event": str(gw), "team_h": str(home), "team_a": str(away),
-           "team_h_score": str(h), "team_a_score": str(a), "finished": "True",
-           "kickoff_time": (kickoff or START + timedelta(days=7 * (gw - 1))).isoformat(),
-           "team_h_difficulty": "99999"}
+    raw = {
+        "id": str(identity or gw),
+        "event": str(gw),
+        "team_h": str(home),
+        "team_a": str(away),
+        "team_h_score": str(h),
+        "team_a_score": str(a),
+        "finished": "True",
+        "kickoff_time": (kickoff or START + timedelta(days=7 * (gw - 1))).isoformat(),
+        "team_h_difficulty": "99999",
+    }
     return normalise_fixtures(season, [raw], roster(season))[0]
 
 
 def roster(season="2024-25"):
-    return team_index(season, [{"id": str(i), "code": str(i * 10), "name": f"Team {i}",
-                               "strength_attack_home": "99999"} for i in (1, 2, 3)])
+    return team_index(
+        season,
+        [
+            {
+                "id": str(i),
+                "code": str(i * 10),
+                "name": f"Team {i}",
+                "strength_attack_home": "99999",
+            }
+            for i in (1, 2, 3)
+        ],
+    )
 
 
 def team_row(fixtures, gw=3, team=1, cutoff=None, season="2024-25"):
     cutoff = cutoff or START + timedelta(days=7 * (gw - 1), hours=-2)
-    rows = team_deadline_features(fixtures, {season: roster(season)}, {(season, gw): cutoff}, CONFIG)
+    rows = team_deadline_features(
+        fixtures, {season: roster(season)}, {(season, gw): cutoff}, CONFIG
+    )
     return next(r for r in rows if r["team_id"] == team and r["gameweek"] == gw)
 
 
 def player_match(gw=1, team=1, season="2024-25"):
-    return {"season": season, "player_key": f"{season}:1", "element": 1, "gameweek": gw,
-            "fixture_id": gw, "team_id": team, "finished": True,
-            "kickoff_utc": START + timedelta(days=7 * (gw - 1)), "starts": 1, "minutes": 90, "expected_goals": .25}
+    return {
+        "season": season,
+        "player_key": f"{season}:1",
+        "element": 1,
+        "gameweek": gw,
+        "fixture_id": gw,
+        "team_id": team,
+        "finished": True,
+        "kickoff_utc": START + timedelta(days=7 * (gw - 1)),
+        "starts": 1,
+        "minutes": 90,
+        "expected_goals": 0.25,
+    }
 
 
 class FixtureFeatureTests(unittest.TestCase):
@@ -50,7 +89,10 @@ class FixtureFeatureTests(unittest.TestCase):
         self.assertEqual(doc["frozen_player_v1"], list(FEATURE_COLUMNS))
         self.assertEqual(doc["upcoming_fixture_inputs"], [])
         self.assertEqual(doc["team_xg_inputs"], [])
-        self.assertEqual(len(set(doc["approved_player_v2_inputs"])), len(FEATURE_COLUMNS) + len(PLAYER_TEAM_FEATURE_COLUMNS))
+        self.assertEqual(
+            len(set(doc["approved_player_v2_inputs"])),
+            len(FEATURE_COLUMNS) + len(PLAYER_TEAM_FEATURE_COLUMNS),
+        )
         for c in doc["approved_player_v2_inputs"]:
             self.assertTrue(c.startswith("pre_gw_"))
         validate_config(CONFIG)
@@ -70,8 +112,11 @@ class FixtureFeatureTests(unittest.TestCase):
 
     def test_strict_buffer_and_same_gameweek_exclusion(self):
         cutoff = START + timedelta(days=14)
-        data = [fixture(1, kickoff=cutoff - timedelta(hours=24)), fixture(2, kickoff=cutoff - timedelta(hours=24, seconds=1)),
-                fixture(3, kickoff=cutoff - timedelta(days=3))]
+        data = [
+            fixture(1, kickoff=cutoff - timedelta(hours=24)),
+            fixture(2, kickoff=cutoff - timedelta(hours=24, seconds=1)),
+            fixture(3, kickoff=cutoff - timedelta(days=3)),
+        ]
         row = team_row(data, cutoff=cutoff)
         self.assertEqual(row["pre_team_overall_season_match_count"], 1)
         self.assertEqual(row["pre_team_league_history_matches"], 1)
@@ -105,37 +150,56 @@ class FixtureFeatureTests(unittest.TestCase):
 
     def test_congestion_and_match_age_use_only_buffered_past_pl_results(self):
         cutoff = START + timedelta(days=14)
-        data = [fixture(1, kickoff=cutoff - timedelta(days=13)), fixture(2, kickoff=cutoff - timedelta(days=5)),
-                fixture(3, kickoff=cutoff + timedelta(days=2))]
+        data = [
+            fixture(1, kickoff=cutoff - timedelta(days=13)),
+            fixture(2, kickoff=cutoff - timedelta(days=5)),
+            fixture(3, kickoff=cutoff + timedelta(days=2)),
+        ]
         row = team_row(data, cutoff=cutoff)
         self.assertEqual(row["pre_team_matches_past7_days"], 1)
         self.assertEqual(row["pre_team_matches_past14_days"], 2)
-        self.assertEqual(row["pre_team_last_match_age_days"], 5.)
+        self.assertEqual(row["pre_team_last_match_age_days"], 5.0)
 
     def test_prior_dgw_eligible_leg_only_and_target_double_kept_in_research(self):
         prior = fixture(1)
         late_leg = fixture(1, identity=11, kickoff=START + timedelta(days=16))
-        target = [fixture(3, identity=30), fixture(3, identity=31, home=2, away=1, kickoff=START + timedelta(days=17))]
+        target = [
+            fixture(3, identity=30),
+            fixture(3, identity=31, home=2, away=1, kickoff=START + timedelta(days=17)),
+        ]
         cutoff = START + timedelta(days=14, hours=-2)
         data = [prior, late_leg, *target]
         rows = team_deadline_features(data, {"2024-25": roster()}, {("2024-25", 3): cutoff}, CONFIG)
         own = next(r for r in rows if r["team_id"] == 1 and r["gameweek"] == 3)
         self.assertEqual(own["pre_team_overall_season_match_count"], 1)
-        research, gws = retrospective_context(data, rows, {("2024-25", 3): cutoff}, {"2024-25": roster()})
+        research, gws = retrospective_context(
+            data, rows, {("2024-25", 3): cutoff}, {"2024-25": roster()}
+        )
         legs = [r for r in research if r["team_id"] == 1 and r["gameweek"] == 3]
         self.assertEqual(len(legs), 2)
         self.assertEqual([r["retro_was_home"] for r in legs], [True, False])
-        self.assertAlmostEqual(legs[1]["retro_pl_rest_days"], 3.)
-        self.assertTrue(next(r for r in gws if r["team_id"] == 1 and r["gameweek"] == 3)["retro_double"])
+        self.assertAlmostEqual(legs[1]["retro_pl_rest_days"], 3.0)
+        self.assertTrue(
+            next(r for r in gws if r["team_id"] == 1 and r["gameweek"] == 3)["retro_double"]
+        )
         self.assertTrue(all(r["schedule_status"] == "research_only_final_assignment" for r in legs))
 
     def test_blank_does_not_zero_team_form_or_create_player_target(self):
         data = [fixture(1), fixture(3, home=2, away=3)]
-        rows = team_deadline_features(data, {"2024-25": roster()}, {("2024-25", 3): START + timedelta(days=14, hours=-2)}, CONFIG)
+        rows = team_deadline_features(
+            data,
+            {"2024-25": roster()},
+            {("2024-25", 3): START + timedelta(days=14, hours=-2)},
+            CONFIG,
+        )
         own = next(r for r in rows if r["team_id"] == 1 and r["gameweek"] == 3)
-        self.assertEqual(own["pre_team_overall_season_goals_scored_mean"], 2.)
-        _, gws = retrospective_context(data, rows, {("2024-25", 3): own["feature_cutoff_utc"]}, {"2024-25": roster()})
-        self.assertTrue(next(r for r in gws if r["team_id"] == 1 and r["gameweek"] == 3)["retro_blank"])
+        self.assertEqual(own["pre_team_overall_season_goals_scored_mean"], 2.0)
+        _, gws = retrospective_context(
+            data, rows, {("2024-25", 3): own["feature_cutoff_utc"]}, {"2024-25": roster()}
+        )
+        self.assertTrue(
+            next(r for r in gws if r["team_id"] == 1 and r["gameweek"] == 3)["retro_blank"]
+        )
         self.assertNotIn("pre_gw_fixture_count", schema_document()["approved_player_v2_inputs"])
 
     def test_promoted_and_opening_teams_use_explicit_neutral_prior_without_carryover(self):
@@ -144,8 +208,8 @@ class FixtureFeatureTests(unittest.TestCase):
         self.assertTrue(row["pre_team_no_history"])
         self.assertIsNone(row["pre_team_overall_season_goals_scored_mean"])
         self.assertEqual(row["pre_team_overall_season_goals_scored_smoothed"], 1.35)
-        self.assertEqual(row["pre_team_overall_season_attack_ratio"], 1.)
-        self.assertEqual(row["pre_team_overall_season_clean_sheet_frequency_smoothed"], .25)
+        self.assertEqual(row["pre_team_overall_season_attack_ratio"], 1.0)
+        self.assertEqual(row["pre_team_overall_season_clean_sheet_frequency_smoothed"], 0.25)
 
     def test_short_history_smoothing_uses_only_prior_league_and_correct_venue(self):
         data = [fixture(1, h=3, a=1), fixture(2, home=2, away=1, h=1, a=2)]
@@ -169,7 +233,16 @@ class FixtureFeatureTests(unittest.TestCase):
         self.assertIsNone(empty["pre_team_overall_season_goals_conceded_sum"])
 
     def test_missing_source_fields_remain_unknown_and_ambiguous_blank_not_asserted(self):
-        raw = {"id": "9", "team_h": "1", "team_a": "999", "team_h_score": "", "team_a_score": "0", "event": "", "kickoff_time": "", "finished": ""}
+        raw = {
+            "id": "9",
+            "team_h": "1",
+            "team_a": "999",
+            "team_h_score": "",
+            "team_a_score": "0",
+            "event": "",
+            "kickoff_time": "",
+            "finished": "",
+        }
         data = normalise_fixtures("2024-25", [raw], roster())
         self.assertFalse(data[0]["result_complete"])
         self.assertIsNone(data[0]["kickoff_utc"])
@@ -185,28 +258,49 @@ class FixtureFeatureTests(unittest.TestCase):
 
     def test_team_ids_are_season_scoped_even_when_codes_change(self):
         current = roster()
-        other = team_index("2023-24", [{"id": "1", "code": "555", "name": "Different club"},
-                                      {"id": "2", "code": "666", "name": "Other club"}])
+        other = team_index(
+            "2023-24",
+            [
+                {"id": "1", "code": "555", "name": "Different club"},
+                {"id": "2", "code": "666", "name": "Other club"},
+            ],
+        )
         rosters = {"2024-25": current, "2023-24": other}
         old = fixture(1, season="2023-24", h=10)
-        rows = team_deadline_features([old], rosters, {("2024-25", 3): START + timedelta(days=14)}, CONFIG)
-        row = next(r for r in rows if r["season"] == "2024-25" and r["team_id"] == 1 and r["gameweek"] == 3)
+        rows = team_deadline_features(
+            [old], rosters, {("2024-25", 3): START + timedelta(days=14)}, CONFIG
+        )
+        row = next(
+            r for r in rows if r["season"] == "2024-25" and r["team_id"] == 1 and r["gameweek"] == 3
+        )
         self.assertEqual(row["team_code"], 10)
         self.assertEqual(row["pre_team_overall_season_match_count"], 0)
 
     def test_player_club_proxy_never_uses_target_or_final_team(self):
         deadlines = {("2024-25", 3): START + timedelta(days=14, hours=-2)}
-        teams = team_deadline_features([fixture(1), fixture(2)], {"2024-25": roster()}, deadlines, CONFIG)
-        player = {"season": "2024-25", "player_key": "2024-25:1", "gameweek": 3, "team_id": 3, "final_team": 3}
+        teams = team_deadline_features(
+            [fixture(1), fixture(2)], {"2024-25": roster()}, deadlines, CONFIG
+        )
+        player = {
+            "season": "2024-25",
+            "player_key": "2024-25:1",
+            "gameweek": 3,
+            "team_id": 3,
+            "final_team": 3,
+        }
         history = [player_match(1), player_match(3, team=3)]
-        before = list(player_club_features([player], history, teams, deadlines))[0]
+        before = next(iter(player_club_features([player], history, teams, deadlines)))
         self.assertEqual(before["last_observed_team_id"], 1)
         history[1]["team_id"] = 2
         player["final_team"] = 2
-        self.assertEqual(before, list(player_club_features([player], history, teams, deadlines))[0])
-        new = list(player_club_features([player], [], teams, deadlines))[0]
+        self.assertEqual(
+            before, next(iter(player_club_features([player], history, teams, deadlines)))
+        )
+        new = next(iter(player_club_features([player], [], teams, deadlines)))
         self.assertTrue(new["pre_gw_last_observed_club_missing"])
-        self.assertTrue(all(new[c] is None for c in PLAYER_TEAM_FEATURE_COLUMNS if not c.endswith("_missing")))
+        self.assertTrue(
+            all(new[c] is None for c in PLAYER_TEAM_FEATURE_COLUMNS if not c.endswith("_missing"))
+        )
 
     def test_conflicting_duplicate_ids_and_invalid_scores_fail(self):
         raw = {"id": "1", "team_h": "1", "team_a": "2", "event": "1"}
@@ -215,7 +309,10 @@ class FixtureFeatureTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             normalise_fixtures("2024-25", [{**raw, "team_h_score": "-1"}], roster())
         with self.assertRaises(ValueError):
-            team_index("2024-25", [{"id": "1", "code": "10", "name": "A"}, {"id": "2", "code": "10", "name": "B"}])
+            team_index(
+                "2024-25",
+                [{"id": "1", "code": "10", "name": "A"}, {"id": "2", "code": "10", "name": "B"}],
+            )
 
     def test_prepared_match_cannot_use_a_contradictory_earlier_kickoff(self):
         f, m = fixture(1), player_match(1)
@@ -227,10 +324,19 @@ class FixtureFeatureTests(unittest.TestCase):
             validate_match_links([], [m])
 
     def test_club_proxy_disagreement_is_quality_metadata_not_a_predictor(self):
-        ids = [{"season": "2024-25", "player_key": "2024-25:1", "gameweek": 3, "last_observed_team_id": 1}]
+        ids = [
+            {
+                "season": "2024-25",
+                "player_key": "2024-25:1",
+                "gameweek": 3,
+                "last_observed_team_id": 1,
+            }
+        ]
         audit = club_proxy_audit(ids, [player_match(3, team=2)])[0]
         self.assertFalse(audit["quality_proxy_matches_target_club"])
-        self.assertNotIn("quality_proxy_matches_target_club", schema_document()["approved_player_v2_inputs"])
+        self.assertNotIn(
+            "quality_proxy_matches_target_club", schema_document()["approved_player_v2_inputs"]
+        )
 
     def test_team_xg_player_sums_are_audit_only_even_with_known_starters(self):
         rows = [player_match(1) for _ in range(11)]
@@ -249,26 +355,49 @@ class FixtureParquetTests(unittest.TestCase):
     def test_sidecar_types_missing_club_and_explicit_predictive_join(self):
         import pyarrow as pa
         import pyarrow.parquet as pq
+
         from ml.prepare_fixtures import approved_player_inputs, write_player_sidecar
+
         deadline = START + timedelta(days=14)
-        keys = {"season": "2024-25", "player_key": "2024-25:1", "gameweek": 3, "feature_cutoff_utc": deadline}
-        teams = team_deadline_features([fixture(1)], {"2024-25": roster()}, {("2024-25", 3): deadline}, CONFIG)
+        keys = {
+            "season": "2024-25",
+            "player_key": "2024-25:1",
+            "gameweek": 3,
+            "feature_cutoff_utc": deadline,
+        }
+        teams = team_deadline_features(
+            [fixture(1)], {"2024-25": roster()}, {("2024-25", 3): deadline}, CONFIG
+        )
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "sidecar.parquet"
-            write_player_sidecar(path, player_club_features([keys], [], teams, {("2024-25", 3): deadline}))
+            write_player_sidecar(
+                path, player_club_features([keys], [], teams, {("2024-25", 3): deadline})
+            )
             sidecar = pq.read_table(path)
-        self.assertEqual(sidecar.schema.field("pre_gw_last_observed_club_overall_last5_match_count").type, pa.int64())
+        self.assertEqual(
+            sidecar.schema.field("pre_gw_last_observed_club_overall_last5_match_count").type,
+            pa.int64(),
+        )
         self.assertEqual(sidecar.schema.field("pre_gw_last_observed_club_missing").type, pa.bool_())
-        base = pa.Table.from_pylist([{**keys, **dict.fromkeys(FEATURE_COLUMNS, 0), "target_points": 999, "xP": 999}])
+        base = pa.Table.from_pylist(
+            [{**keys, **dict.fromkeys(FEATURE_COLUMNS, 0), "target_points": 999, "xP": 999}]
+        )
         # Match the existing fixed-offset cutoff representation.
-        base = base.set_column(base.schema.get_field_index("feature_cutoff_utc"), "feature_cutoff_utc",
-                               base["feature_cutoff_utc"].cast(pa.timestamp("us", tz="+00:00")))
+        base = base.set_column(
+            base.schema.get_field_index("feature_cutoff_utc"),
+            "feature_cutoff_utc",
+            base["feature_cutoff_utc"].cast(pa.timestamp("us", tz="+00:00")),
+        )
         joined = approved_player_inputs(base, sidecar)
         self.assertNotIn("target_points", joined.column_names)
         self.assertNotIn("last_observed_team_id", joined.column_names)
         self.assertNotIn("xP", joined.column_names)
-        self.assertEqual(joined.num_columns, 4 + len(FEATURE_COLUMNS) + len(PLAYER_TEAM_FEATURE_COLUMNS))
-        bad = sidecar.set_column(sidecar.schema.get_field_index("gameweek"), "gameweek", pa.array([4], type=pa.int64()))
+        self.assertEqual(
+            joined.num_columns, 4 + len(FEATURE_COLUMNS) + len(PLAYER_TEAM_FEATURE_COLUMNS)
+        )
+        bad = sidecar.set_column(
+            sidecar.schema.get_field_index("gameweek"), "gameweek", pa.array([4], type=pa.int64())
+        )
         with self.assertRaises(ValueError):
             approved_player_inputs(base, bad)
 

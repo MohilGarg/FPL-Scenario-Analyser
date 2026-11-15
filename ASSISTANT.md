@@ -20,6 +20,10 @@ page and HTTP 503 on private operations; public league analysis continues to wor
    `FPL_ASSISTANT_ORIGIN` is explicitly configured (for example, for a custom backend domain).
    The blueprint also supplies this non-secret origin; the password hash must be added manually as an environment
    secret. Do not enable `FPL_ASSISTANT_DEV_HTTP` in production.
+   Set `FPL_TRUSTED_PROXY=1` (already in `render.yaml`) so the login rate limit keys on the real
+   client: the *rightmost* `X-Forwarded-For` entry, which Render appends. Never enable it where
+   the app is directly reachable, and do not use the leftmost entry or `--forwarded-allow-ips=*`:
+   both are visitor-controllable.
 3. Save/redeploy. Keep the existing single-process `uvicorn fpl_forfeit.web:app` command.
    No paid database, identity provider, signing key or new runtime dependency is needed.
 4. Open **FPL Assistant** from the public site, sign in, then enter your public FPL entry ID.

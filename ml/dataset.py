@@ -9,7 +9,8 @@ import csv
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -17,33 +18,79 @@ Row = dict[str, Any]
 MISSING = {"", "none", "null", "nan", "na", "n/a"}
 POSITIONS = {"1": "GK", "2": "DEF", "3": "MID", "4": "FWD", "5": "AM"}
 INT_STATS = (
-    "total_points", "minutes", "starts", "goals_scored", "assists", "clean_sheets",
-    "goals_conceded", "saves", "bonus", "bps", "yellow_cards", "red_cards",
-    "own_goals", "penalties_saved", "penalties_missed", "defensive_contribution",
-    "clearances_blocks_interceptions", "recoveries", "tackles",
+    "total_points",
+    "minutes",
+    "starts",
+    "goals_scored",
+    "assists",
+    "clean_sheets",
+    "goals_conceded",
+    "saves",
+    "bonus",
+    "bps",
+    "yellow_cards",
+    "red_cards",
+    "own_goals",
+    "penalties_saved",
+    "penalties_missed",
+    "defensive_contribution",
+    "clearances_blocks_interceptions",
+    "recoveries",
+    "tackles",
 )
 FLOAT_STATS = (
-    "expected_goals", "expected_assists", "expected_goals_conceded",
-    "expected_goal_involvements", "influence", "creativity", "threat", "ict_index",
+    "expected_goals",
+    "expected_assists",
+    "expected_goals_conceded",
+    "expected_goal_involvements",
+    "influence",
+    "creativity",
+    "threat",
+    "ict_index",
 )
 STATS = INT_STATS + FLOAT_STATS
-ROLLING_STATS = ("expected_goals", "expected_assists", "minutes", "starts", "goals_scored",
-                 "assists", "total_points")
+ROLLING_STATS = (
+    "expected_goals",
+    "expected_assists",
+    "minutes",
+    "starts",
+    "goals_scored",
+    "assists",
+    "total_points",
+)
 WINDOWS = (3, 5, 10)
 ROLLING_PREFIXES = tuple(f"pre_gw_last{n}_{unit}" for unit in ("matches", "gws") for n in WINDOWS)
-ROLLING_COLUMNS = tuple(c for prefix in ROLLING_PREFIXES for c in (
-    *(f"{prefix}_{stat}_{metric}" for stat in ROLLING_STATS for metric in ("sum", "mean", "missing_count")),
-    f"{prefix}_count", f"{prefix}_fixture_count", f"{prefix}_short_history",
-    f"{prefix}_appearance_rate", f"{prefix}_start_rate",
-))
+ROLLING_COLUMNS = tuple(
+    c
+    for prefix in ROLLING_PREFIXES
+    for c in (
+        *(
+            f"{prefix}_{stat}_{metric}"
+            for stat in ROLLING_STATS
+            for metric in ("sum", "mean", "missing_count")
+        ),
+        f"{prefix}_count",
+        f"{prefix}_fixture_count",
+        f"{prefix}_short_history",
+        f"{prefix}_appearance_rate",
+        f"{prefix}_start_rate",
+    )
+)
 # Explicit whitelist: neither source columns nor current-GW outcomes are features.
 FEATURE_COLUMNS = (
-    "pre_gw_history_fixtures", "pre_gw_history_gameweeks",
+    "pre_gw_history_fixtures",
+    "pre_gw_history_gameweeks",
     "pre_gw_points_mean_last3_observed_gws",
 ) + tuple(f"pre_gw_{stat}_sum" for stat in STATS)
 FEATURE_COLUMNS += (
-    "pre_gw_no_history", "pre_gw_appearance_rate", "pre_gw_start_rate",
-) + tuple(f"pre_gw_{s}_missing_count" for s in STATS) + ROLLING_COLUMNS
+    (
+        "pre_gw_no_history",
+        "pre_gw_appearance_rate",
+        "pre_gw_start_rate",
+    )
+    + tuple(f"pre_gw_{s}_missing_count" for s in STATS)
+    + ROLLING_COLUMNS
+)
 # A conservative readiness proxy, NOT a recorded publication/finalisation time.
 RESULT_LAG = timedelta(hours=24)
 
@@ -90,10 +137,10 @@ def required_int(value: Any, label: str) -> int:
 def timestamp(value: Any) -> datetime | None:
     if missing(value):
         return None
-    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(str(value))
     if parsed.tzinfo is None:
         raise ValueError(f"Timestamp needs a UTC offset: {value!r}")
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def boolean(value: Any) -> bool | None:
@@ -121,7 +168,11 @@ def index_unique(rows: list[dict[str, str]], label: str) -> dict[int, dict[str, 
 
 
 def normalise_matches(
-    season: str, history: CsvData, players: CsvData, fixtures: CsvData, teams: CsvData,
+    season: str,
+    history: CsvData,
+    players: CsvData,
+    fixtures: CsvData,
+    teams: CsvData,
 ) -> tuple[list[Row], dict[str, Any]]:
     """Deduplicate identical fixture rows; conflicting duplicates fail explicitly."""
     player_index = index_unique(players.rows, "player")
@@ -136,9 +187,12 @@ def normalise_matches(
     seen: dict[tuple[int, int], dict[str, str]] = {}
     matches: list[Row] = []
     diagnostics: dict[str, Any] = {
-        "exact_duplicate_rows": 0, "assistant_manager_rows": 0,
-        "reported_team_mismatches": 0, "fixture_event_mismatches": 0,
-        "player_position_mismatches": 0, "unfinished_fixture_rows": 0,
+        "exact_duplicate_rows": 0,
+        "assistant_manager_rows": 0,
+        "reported_team_mismatches": 0,
+        "fixture_event_mismatches": 0,
+        "player_position_mismatches": 0,
+        "unfinished_fixture_rows": 0,
     }
     for source_row, raw in enumerate(history.rows, start=2):
         element = required_int(raw.get("element"), "element")
@@ -183,17 +237,27 @@ def normalise_matches(
             raise ValueError(f"Invalid starts: {season}/{key}")
         if not finished:
             stats = dict.fromkeys(STATS)  # unplayed/partial outcomes remain unknown
-        matches.append({
-            "season": season, "player_key": f"{season}:{element}", "element": element,
-            "player_code": number(player.get("code"), integer=True),
-            "name": raw.get("name"), "position": position, "gameweek": gw,
-            "fixture_id": fixture_id, "source_row": source_row, "team_id": team_id,
-            "team_code": number(team_index[team_id].get("code"), integer=True),
-            "opponent_id": opponent, "was_home": home,
-            "team_gw_fixture_ids": sorted(team_gw_fixtures[team_id, gw]),
-            "kickoff_utc": timestamp(raw.get("kickoff_time")), "finished": finished,
-            **stats,
-        })
+        matches.append(
+            {
+                "season": season,
+                "player_key": f"{season}:{element}",
+                "element": element,
+                "player_code": number(player.get("code"), integer=True),
+                "name": raw.get("name"),
+                "position": position,
+                "gameweek": gw,
+                "fixture_id": fixture_id,
+                "source_row": source_row,
+                "team_id": team_id,
+                "team_code": number(team_index[team_id].get("code"), integer=True),
+                "opponent_id": opponent,
+                "was_home": home,
+                "team_gw_fixture_ids": sorted(team_gw_fixtures[team_id, gw]),
+                "kickoff_utc": timestamp(raw.get("kickoff_time")),
+                "finished": finished,
+                **stats,
+            }
+        )
     matches.sort(key=lambda r: (r["season"], r["element"], r["gameweek"], r["fixture_id"]))
     return matches, diagnostics
 
@@ -209,7 +273,10 @@ def load_deadlines(path: Path | None) -> dict[tuple[str, int], datetime]:
     deadlines: dict[tuple[str, int], datetime] = {}
     for row in data.rows:
         key = (row["season"], required_int(row["gameweek"], "deadline gameweek"))
-        if "verification_status" in row and row["verification_status"] != "verified_archived_official_api":
+        if (
+            "verification_status" in row
+            and row["verification_status"] != "verified_archived_official_api"
+        ):
             if not missing(row["deadline_utc"]):
                 raise ValueError("Unverified deadline must not contain a usable cutoff")
             continue
@@ -221,7 +288,7 @@ def load_deadlines(path: Path | None) -> dict[tuple[str, int], datetime]:
         deadlines[key] = deadline
     for season in {s for s, _ in deadlines}:
         ordered = sorted((g, d) for (s, g), d in deadlines.items() if s == season)
-        if any(b[1] <= a[1] for a, b in zip(ordered, ordered[1:])):
+        if any(b[1] <= a[1] for a, b in pairwise(ordered)):
             raise ValueError(f"Deadlines must increase with numeric GW: {season}")
     return deadlines
 
@@ -243,11 +310,17 @@ def historical_features(prior: list[Row]) -> Row:
     grouped: dict[int, list[Row]] = defaultdict(list)
     for record in prior:
         grouped[record["gameweek"]].append(record)
-    gws = [{"gameweek": g, "fixture_count": len(group),
-            **{s: strict_sum([r[s] for r in group]) for s in ROLLING_STATS}}
-           for g, group in sorted(grouped.items())]
+    gws = [
+        {
+            "gameweek": g,
+            "fixture_count": len(group),
+            **{s: strict_sum([r[s] for r in group]) for s in ROLLING_STATS},
+        }
+        for g, group in sorted(grouped.items())
+    ]
     values: Row = {
-        "pre_gw_history_fixtures": len(prior), "pre_gw_history_gameweeks": len(gws),
+        "pre_gw_history_fixtures": len(prior),
+        "pre_gw_history_gameweeks": len(gws),
         "pre_gw_no_history": not prior,
         "pre_gw_appearance_rate": appearance_rate(prior, "minutes"),
         "pre_gw_start_rate": appearance_rate(prior, "starts"),
@@ -274,7 +347,8 @@ def historical_features(prior: list[Row]) -> Row:
 
 
 def gameweek_dataset(
-    matches: list[Row], deadlines: dict[tuple[str, int], datetime] | None = None,
+    matches: list[Row],
+    deadlines: dict[tuple[str, int], datetime] | None = None,
 ) -> list[Row]:
     deadlines = deadlines or {}
     players: dict[str, list[Row]] = defaultdict(list)
@@ -284,9 +358,13 @@ def gameweek_dataset(
         groups[match["player_key"], match["gameweek"]].append(match)
     result: list[Row] = []
     for (player_key, gw), group in sorted(groups.items()):
-        group.sort(key=lambda r: (r["kickoff_utc"] is None,
-                                  r["kickoff_utc"] or datetime.max.replace(tzinfo=timezone.utc),
-                                  r["fixture_id"]))
+        group.sort(
+            key=lambda r: (
+                r["kickoff_utc"] is None,
+                r["kickoff_utc"] or datetime.max.replace(tzinfo=UTC),
+                r["fixture_id"],
+            )
+        )
         first = group[0]
         cutoff = deadlines.get((first["season"], gw))
         known_kickoffs = [m["kickoff_utc"] for m in group if m["kickoff_utc"] is not None]
@@ -299,29 +377,42 @@ def gameweek_dataset(
         }
         target = observed_points if fixture_coverage else None
         row: Row = {
-            "season": first["season"], "player_key": player_key, "element": first["element"],
-            "player_code": first["player_code"], "name": first["name"],
-            "position": first["position"], "gameweek": gw,
+            "season": first["season"],
+            "player_key": player_key,
+            "element": first["element"],
+            "player_code": first["player_code"],
+            "name": first["name"],
+            "position": first["position"],
+            "gameweek": gw,
             "fixture_ids": [m["fixture_id"] for m in group],
             "team_ids": [m["team_id"] for m in group],
             "opponent_ids": [m["opponent_id"] for m in group],
             "was_home": [m["was_home"] for m in group],
-            "fixture_records": len(group), "target_points": target,
+            "fixture_records": len(group),
+            "target_points": target,
             "target_complete": target is not None,
             "observed_points": observed_points,
             "fixture_coverage": "complete_final_schedule" if fixture_coverage else "unknown",
             "feature_cutoff_utc": cutoff,
             "feature_status": "deadline_supplied_results_lag_24h" if cutoff else "no_deadline",
-            **{f"observed_{s}": strict_sum([m[s] for m in group]) for s in STATS
-               if s != "total_points"},
+            **{
+                f"observed_{s}": strict_sum([m[s] for m in group])
+                for s in STATS
+                if s != "total_points"
+            },
             **dict.fromkeys(FEATURE_COLUMNS),
         }
         if cutoff:
             # No same-GW fixture (including an earlier DGW leg), later GW, other season,
             # missing kickoff or result too close to the supplied deadline can enter.
-            prior = [m for m in players[player_key]
-                     if m["gameweek"] < gw and m["finished"] and m["kickoff_utc"] is not None
-                     and m["kickoff_utc"] + RESULT_LAG < cutoff]
+            prior = [
+                m
+                for m in players[player_key]
+                if m["gameweek"] < gw
+                and m["finished"]
+                and m["kickoff_utc"] is not None
+                and m["kickoff_utc"] + RESULT_LAG < cutoff
+            ]
             row.update(historical_features(prior))
         result.append(row)
     result.sort(key=lambda r: (r["season"], r["element"], r["gameweek"]))

@@ -33,12 +33,19 @@ def verify(directory: Path, data_dir: Path, config_path: Path) -> dict:
             # Chart layout may be corrected after scoring; the original rendering
             # source is retained. Fit/data/metrics code may not change silently.
             original = directory / "report_source_at_selection.py"
-            if name.replace("\\", "/") != "evaluation/report.py" or not original.exists() or digest(original.read_bytes()) != expected:
+            if (
+                name.replace("\\", "/") != "evaluation/report.py"
+                or not original.exists()
+                or digest(original.read_bytes()) != expected
+            ):
                 raise ValueError(f"Fitting/data/metric source changed: {name}")
             report_only_changes.append(name)
-    if (selection["selected_approach"] != choose_model(selection["metrics"])
-            or result["selected_before_test"] != selection["selected_approach"]
-            or result["test_used_for_selection"] or not frozen["models_frozen_before_holdout_read"]):
+    if (
+        selection["selected_approach"] != choose_model(selection["metrics"])
+        or result["selected_before_test"] != selection["selected_approach"]
+        or result["test_used_for_selection"]
+        or not frozen["models_frozen_before_holdout_read"]
+    ):
         raise ValueError("Chronological selection/freeze protocol mismatch")
     for name, expected in frozen["fitted_model_hashes"].items():
         if digest((directory / "final_models" / name).read_bytes()) != expected:
@@ -51,13 +58,20 @@ def verify(directory: Path, data_dir: Path, config_path: Path) -> dict:
     ):
         population = load_population(data_dir, [season], config["expected_candidates"])
         saved = pq.read_table(directory / f"{phase}_predictions.parquet")
-        if (saved["player_key"].to_pylist() != population.player_key.tolist()
-                or saved["gameweek"].to_pylist() != population.gameweek.tolist()):
+        if (
+            saved["player_key"].to_pylist() != population.player_key.tolist()
+            or saved["gameweek"].to_pylist() != population.gameweek.tolist()
+        ):
             raise ValueError("Prediction row identity mismatch")
         np.testing.assert_array_equal(saved["actual_points"].to_numpy(), population.y)
-        bundle = joblib.load(directory / model_dir / "ridge.joblib")  # own locally generated artifact
-        models = {"recent_average": None, "ridge": bundle["model"],
-                  "lightgbm": lgb.Booster(model_file=str(directory / model_dir / "lightgbm.txt"))}
+        bundle = joblib.load(
+            directory / model_dir / "ridge.joblib"
+        )  # own locally generated artifact
+        models = {
+            "recent_average": None,
+            "ridge": bundle["model"],
+            "lightgbm": lgb.Booster(model_file=str(directory / model_dir / "lightgbm.txt")),
+        }
         predictions, _ = predict_models(bundle["preprocessor"], models, population.x, config)
         for name, values in predictions.items():
             np.testing.assert_allclose(saved[name].to_numpy(), values, rtol=0, atol=1e-12)
@@ -68,10 +82,19 @@ def verify(directory: Path, data_dir: Path, config_path: Path) -> dict:
                     raise ValueError("Metric group population mismatch")
                 if values["n"]:
                     for metric in ("mae", "rmse", "bias"):
-                        np.testing.assert_allclose(values[metric], expected_metrics[name][group][metric], rtol=0, atol=1e-12)
+                        np.testing.assert_allclose(
+                            values[metric],
+                            expected_metrics[name][group][metric],
+                            rtol=0,
+                            atol=1e-12,
+                        )
         checks[phase] = len(population.y)
-    return {"prediction_rows_reproduced": checks, "selected": selection["selected_approach"],
-            "training_performed": False, "report_only_layout_changes": report_only_changes}
+    return {
+        "prediction_rows_reproduced": checks,
+        "selected": selection["selected_approach"],
+        "training_performed": False,
+        "report_only_layout_changes": report_only_changes,
+    }
 
 
 def main() -> None:

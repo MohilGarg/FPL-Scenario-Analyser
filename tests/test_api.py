@@ -140,3 +140,31 @@ class NativeHTTPTransportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FPLDataErrorTests(unittest.TestCase):
+    def test_malformed_payloads_raise_the_dedicated_error(self) -> None:
+        from fpl_forfeit.api import (
+            FPLAPIError,
+            FPLDataError,
+            parse_final_event_points,
+            parse_forecast_catalogue,
+            state_from_snapshot,
+        )
+
+        for call in (
+            lambda: state_from_snapshot({}),
+            lambda: parse_forecast_catalogue({"elements": [{}]}, []),
+            lambda: parse_final_event_points({"elements": "nope"}),
+        ):
+            with self.subTest(), self.assertRaises(FPLDataError) as caught:
+                call()
+            self.assertIsInstance(caught.exception, FPLAPIError)
+            self.assertIsInstance(caught.exception, ValueError)
+
+    def test_argument_validation_is_not_relabelled_as_fpl_data(self) -> None:
+        from fpl_forfeit.api import FPLClient, FPLDataError
+
+        with self.assertRaises(ValueError) as caught:
+            FPLClient().public_squad(0, None)  # type: ignore[arg-type]
+        self.assertNotIsInstance(caught.exception, FPLDataError)

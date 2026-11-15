@@ -304,3 +304,42 @@ class AssistantAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         second = await self.sign_in()
         self.assertNotEqual(first, second)
         self.assertEqual((await self.client.get("/api/assistant/squad")).status_code, 422)
+
+
+class ClientAddressTests(unittest.TestCase):
+    @staticmethod
+    def request(forwarded: list[str], peer: str = "10.0.0.1"):
+        from starlette.requests import Request
+
+        headers = [(b"x-forwarded-for", value.encode()) for value in forwarded]
+        return Request({"type": "http", "headers": headers, "client": (peer, 1234)})
+
+    @staticmethod
+    def store(trusted: bool) -> SessionStore:
+        return SessionStore(AuthSettings("https://assistant.example", trusted_proxy=trusted))
+
+    def test_untrusted_deployment_ignores_forwarding_header(self):
+        request = self.request(["203.0.113.9"])
+        self.assertEqual(self.store(False).client_address(request), "10.0.0.1")
+
+    def test_trusted_proxy_uses_rightmost_entry_not_spoofable_leftmost(self):
+        request = self.request(["198.51.100.7, 2001:db8::1, 203.0.113.9"])
+        self.assertEqual(self.store(True).client_address(request), "203.0.113.9")
+
+    def test_repeated_header_lines_use_last_value(self):
+        request = self.request(["198.51.100.7", "203.0.113.9"])
+        self.assertEqual(self.store(True).client_address(request), "203.0.113.9")
+
+    def test_missing_or_malformed_header_falls_back_to_peer(self):
+        for forwarded in ([], ["not-an-ip"], ["203.0.113.9, "], [""]):
+            with self.subTest(forwarded=forwarded):
+                self.assertEqual(
+                    self.store(True).client_address(self.request(forwarded)), "10.0.0.1"
+                )
+
+    def test_spoofed_leftmost_values_share_one_rate_limit_bucket(self):
+        store = self.store(True)
+        keys = {
+            store.client_address(self.request([f"192.0.2.{n}, 203.0.113.9"])) for n in range(1, 6)
+        }
+        self.assertEqual(keys, {"203.0.113.9"})

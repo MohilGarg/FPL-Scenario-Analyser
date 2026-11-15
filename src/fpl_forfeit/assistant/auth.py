@@ -5,6 +5,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import hmac
+import ipaddress
 import os
 import secrets
 import time
@@ -45,6 +46,9 @@ class AuthSettings:
     session_seconds: int = 28_800
     idle_seconds: int = 3_600
     development_http: bool = False
+    # Only enable behind a proxy that appends the real peer address to X-Forwarded-For
+    # (Render). Without a trusted proxy the header is attacker-controlled and ignored.
+    trusted_proxy: bool = False
 
     @classmethod
     def from_environment(cls) -> AuthSettings:
@@ -54,6 +58,7 @@ class AuthSettings:
             ).rstrip("/"),
             encoded_password=os.getenv("FPL_ASSISTANT_PASSWORD_HASH", ""),
             development_http=os.getenv("FPL_ASSISTANT_DEV_HTTP", "") == "1",
+            trusted_proxy=os.getenv("FPL_TRUSTED_PROXY", "") == "1",
         )
 
     @property
@@ -122,6 +127,23 @@ class SessionStore:
         # Render's proxy; do not derive a trusted origin from forwarding headers.
         if request.headers.get("host", "") != urlsplit(self.settings.origin).netloc:
             raise HTTPException(403, "Private access requires the configured origin.")
+
+    def client_address(self, request: Request) -> str:
+        """Rate-limit key: the real client IP, never a visitor-controlled value.
+
+        Behind one trusted proxy (Render) the *rightmost* X-Forwarded-For entry is the
+        address that proxy observed; everything to its left was supplied by the client
+        and can be forged, so it is never used.
+        """
+        peer = request.client.host if request.client else "unknown"
+        if not self.settings.trusted_proxy:
+            return peer
+        entries = ",".join(request.headers.getlist("x-forwarded-for")).split(",")
+        candidate = entries[-1].strip()
+        try:
+            return str(ipaddress.ip_address(candidate))
+        except ValueError:
+            return peer
 
     def _rate_limit(self, address: str) -> None:
         now = self.clock()

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import functools
 import json
 import math
 import os
 import shutil
 import subprocess
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
@@ -35,6 +38,40 @@ BASE_URL = "https://fantasy.premierleague.com/api"
 USER_AGENT = "FPL-Forfeit-Analyser/0.3 (+public analysis service)"
 
 
+class FPLAPIError(RuntimeError):
+    """An FPL request succeeded badly or returned an unexpected shape."""
+
+
+class FPLDataError(FPLAPIError, ValueError):
+    """Official FPL data had an unexpected shape or contradictory content.
+
+    Raised only from FPL parsing in this module, so the web layer can tell upstream data
+    problems (502) apart from internal bugs (which must fail loudly). It is also a
+    ValueError so existing callers that treat malformed data as ValueError keep working.
+    """
+
+
+@contextmanager
+def fpl_parsing() -> Iterator[None]:
+    """Re-label shape/validation failures while reading FPL payloads as FPLDataError."""
+    try:
+        yield
+    except FPLAPIError:
+        raise
+    except (KeyError, TypeError, ValueError) as exc:
+        raise FPLDataError(f"Unexpected FPL data: {type(exc).__name__}: {exc}") from exc
+
+
+def _parses_fpl[**P, R](function: Callable[P, R]) -> Callable[P, R]:
+    @functools.wraps(function)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        with fpl_parsing():
+            return function(*args, **kwargs)
+
+    return wrapper
+
+
+@_parses_fpl
 def parse_ml_history(
     payload: dict, fixtures: list[dict], player_id: int, target_gameweek: int, cutoff: datetime
 ) -> list[dict]:
@@ -112,6 +149,7 @@ def parse_ml_history(
     return sorted(records, key=lambda r: (r["kickoff_utc"], r["fixture_id"]))
 
 
+@_parses_fpl
 def parse_final_event_points(payload: dict) -> dict[int, int | None]:
     """Keep unknown official event scores unknown, including zero-minute disciplinary scores."""
     if not isinstance(payload.get("elements"), list):
@@ -126,10 +164,6 @@ def parse_final_event_points(payload: dict) -> dict[int, int | None]:
             raise ValueError("Invalid official final points")
         points[pid] = value
     return points
-
-
-class FPLAPIError(RuntimeError):
-    """An FPL request succeeded badly or returned an unexpected shape."""
 
 
 class FPLNotFoundError(FPLAPIError):
@@ -178,6 +212,7 @@ class FPLClient:
                 self._player_histories.set(player_id, cached)
             return cached
 
+    @_parses_fpl
     def forecast_catalogue(self) -> FPLCatalogue:
         """Two public requests; callers cache the whole observed generation."""
         snapshot = self.forecast_snapshot()
@@ -219,8 +254,9 @@ class FPLClient:
         available = sorted(
             (g.id for g in catalogue.gameweeks if g.deadline and g.deadline <= now), reverse=True
         )
-        if profile.get("current_event") is not None:
-            available = [g for g in available if g <= int(profile["current_event"])]
+        with fpl_parsing():
+            if profile.get("current_event") is not None:
+                available = [g for g in available if g <= int(profile["current_event"])]
         payload = None
         for gameweek in available[:3]:
             try:
@@ -317,6 +353,7 @@ class FPLClient:
         except (ValueError, UnicodeDecodeError) as exc:
             raise FPLAPIError(f"Could not parse FPL endpoint {path}") from exc
 
+    @_parses_fpl
     def fetch_snapshot(
         self,
         league_id: int,
@@ -404,6 +441,7 @@ class FPLClient:
         }
 
 
+@_parses_fpl
 def _current_gameweek(bootstrap: dict[str, Any]) -> int:
     events = bootstrap.get("events", [])
     current = next((event for event in events if event.get("is_current")), None)
@@ -435,6 +473,7 @@ def load_snapshot(path: Path) -> dict[str, Any]:
     return value
 
 
+@_parses_fpl
 def parse_players(
     bootstrap: dict[str, Any],
     season_fixtures: list[dict[str, Any]] | None,
@@ -487,6 +526,7 @@ def parse_players(
     }
 
 
+@_parses_fpl
 def parse_fixture(
     item: dict[str, Any], teams: dict[int, str], *, gameweek: int | None = None
 ) -> Fixture:
@@ -506,6 +546,7 @@ def parse_fixture(
     )
 
 
+@_parses_fpl
 def parse_forecast_catalogue(
     bootstrap: dict[str, Any], fixtures: list[dict[str, Any]]
 ) -> FPLCatalogue:
@@ -553,6 +594,7 @@ def parse_forecast_catalogue(
     )
 
 
+@_parses_fpl
 def parse_public_squad(
     entry_id: int,
     gameweek: int,
@@ -588,6 +630,7 @@ def parse_public_squad(
     )
 
 
+@_parses_fpl
 def state_from_snapshot(snapshot: dict[str, Any]) -> LeagueState:
     bootstrap = snapshot["bootstrap"]
     teams = {int(team["id"]): str(team["name"]) for team in bootstrap["teams"]}
@@ -800,6 +843,7 @@ def _optional_float(value: Any) -> float | None:
     return parsed if math.isfinite(parsed) and parsed >= 0 else None
 
 
+@_parses_fpl
 def parse_appearance_history(
     payload: dict[str, Any], completed_ids: set[int]
 ) -> tuple[MatchAppearance, ...]:

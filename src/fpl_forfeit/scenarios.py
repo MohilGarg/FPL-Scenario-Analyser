@@ -113,8 +113,17 @@ def outcome_catalog(
         # Later team goals cannot revoke an ordinary substituted player's clean
         # sheet or cause new conceded deductions. This explicit baseline adds no
         # fixture-wide goal cap and preserves already awarded categories.
-        return (Outcome(player.id, fixture.id, "no further points; assumed off the pitch",
-                        0, 0, 0, baseline=True),)
+        return (
+            Outcome(
+                player.id,
+                fixture.id,
+                "no further points; assumed off the pitch",
+                0,
+                0,
+                0,
+                baseline=True,
+            ),
+        )
     if fixture.started:
         values = _live_outcomes(player, fixture, current)
         if remaining_minutes is not None:
