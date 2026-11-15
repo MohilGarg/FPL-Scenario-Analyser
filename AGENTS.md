@@ -1,22 +1,24 @@
-# FPL Forfeit Analyser: contributor guide
+# FPL Scenario Analyser: contributor guide
 
-## Purpose
+## Purpose and scope
 
-FPL Scenario Analyser combines live last-place scenario analysis with descriptive private
-mini-league analytics. The live workflow answers who can still finish last this Gameweek and which
-realistic remaining-match scenarios cause it. Analytics describes completed Gameweeks and current
-squad ownership in a separate area. Do not add predictive advice, transfer/captain recommendations,
-independent xG models, price predictions, optimisation or generic global-rank dashboards.
-Official FPL xG/xA and historical appearances may inform the shared experimental forecast;
-they must not become public transfer or captain recommendations.
+A finished, deliberately small product with two parts:
 
-The explicitly authorised private FPL Assistant is the exception: predictions, legal XI,
-captaincy, transfer comparisons and conditional chip values belong only in `assistant/` behind
-server-side authentication. Reuse the shared football model and FPL scorer. Every
-`/api/assistant/*` data/operation route must be protected before validation or computation;
-only session status and login are public. Never put private squads/results in public caches,
-embed credentials in assets, or enable production access without a configured password hash
-and HTTPS origin. See `ASSISTANT.md` for its setup, limits and verification.
+1. **Mini-league analysis (public).** Live last-place analysis (who can still finish last this
+   Gameweek and why) and descriptive season analytics from completed Gameweeks.
+2. **FPL Assistant (private).** Predictions, legal XI, captaincy, transfer comparisons and conditional
+   chip values, only in `assistant/` behind server-side authentication.
+
+Do not add predictive advice, transfer/captain recommendations or optimisation to the public parts.
+Do not add model research, training pipelines, forecast-capture/recording infrastructure, archives,
+releases of captured data, or scheduled evidence-collection workflows. The assistant ships its small
+portable model JSON files in `src/fpl_forfeit/assistant/`; replacing one is a reviewed code change.
+Keep documentation in `README.md` (public app, analytics, forecast model, deployment) and
+`ASSISTANT.md` (private assistant); do not add further top-level docs.
+
+The target navigation is Live, Season (analytics) and Assistant in one SPA. Demo states and the
+Monte Carlo / exact-scenario UI are being retired; do not extend them. Prefer removing complexity over
+adding it, and never hard-code analysed results in JavaScript.
 
 ## Correctness priorities
 
@@ -25,65 +27,54 @@ and HTTPS origin. See `ASSISTANT.md` for its setup, limits and verification.
 3. Zero-minute handling and legal automatic substitutions.
 4. Shared-player effective exposure.
 5. Conservative safe-manager pruning.
-6. Distinct, football-consistent, plausibility-ranked scenario examples.
-7. One tie-for-last rule applied consistently across safety, solving and final display.
+6. One tie-for-last rule applied consistently across safety, solving and display.
 
-Keep API parsing in `api.py`; domain code must remain testable with synthetic data or saved
-snapshots and no network. Never interpret a human-facing “blank” as zero points. Normal appearance
-and clean-sheet points still apply.
+Keep API parsing in `api.py` (raise `FPLDataError` for unexpected FPL data; internal bugs must not be
+reported as FPL failures). Domain code must be testable with synthetic data or saved snapshots and no
+network. Never interpret a human-facing "blank" as zero points. Normal appearance and clean-sheet points
+still apply.
 
 ## Mathematical language
 
-Football scores and negative events have no literal finite bound. Never silently call a manager
-mathematically safe without naming the configured event envelope. The default practical safety
-envelope is -10 to +35 for each player's total remaining contribution across the current Gameweek,
-including a Double Gameweek. It is intentionally conservative about bench players and autosubs and
-is not a literal theoretical or historical limit. `UNRESOLVED` must never be presented as `SAFE`.
+Football scores have no literal finite bound. Never call a manager mathematically safe without naming
+the configured event envelope. The default practical envelope is -10 to +35 for each player's total
+remaining contribution across the current Gameweek (including a Double Gameweek); it is conservative about
+bench players and autosubs and is not a theoretical or historical limit. Keep SAFE / AT RISK /
+NO MODELLED PATH / UNRESOLVED distinct; `UNRESOLVED` must never be shown as `SAFE`. Safety bounds must allow
+already-scored bench and vice-captain points to become effective after a pending absence.
+
+## Analytics rules
+
+- Calculations in `analytics/calculations.py`, retrieval/caching in `analytics/service.py`, never in route
+  handlers or JavaScript.
+- Historical scoring uses official final pick multipliers and aggregated event player points, reconciled
+  against official raw event points. Hits are deducted once. Bench Boost is not unused bench; autosubbed
+  points are not unused. Distinguish total multiplied captain points from additional multiplier points.
+  Record every chip use.
+- Unknown data is null with explicit coverage; never drop members with missing squads silently.
+- Analytics ranks use competition ranks and include all tied last / bottom-three cutoff scores, separate
+  from the live tie setting.
+- Load cheap score history first; enrich squads in bounded, coalesced background jobs with progress and
+  lazy section payloads. Do not refetch every squad on tab changes.
+
+## Assistant rules
+
+Every `/api/assistant/*` data or operation route is protected before validation or computation; only
+session status and login are public. Never put private squads/results in public caches, embed credentials in
+assets, or enable production access without a configured password hash and HTTPS origin. Login rate limiting
+keys on the real client IP via `FPL_TRUSTED_PROXY` and the rightmost `X-Forwarded-For` entry only. Reuse the
+shared football model and FPL scorer.
 
 ## Development
 
-- Commit completed task changes and push to the tracked remote branch. Fetch and reconcile
-  upstream changes when needed, then verify that the local branch and remote are synced before
-  reporting completion.
-- Target Python 3.12+ and use type hints.
-- Prefer the standard library unless a dependency creates clear value.
-- Run `python -m unittest discover -s tests -v` after domain changes.
-- Add regression tests for every scoring-rule fix.
+- Target Python 3.12+ with type hints; prefer the standard library.
+- Run `python -m unittest discover -s tests -v`, `ruff check .`, `ruff format --check .` and the frontend
+  build (`python frontend/build.py`) before finishing; CI enforces the same. Use `frontend/check.py` for the
+  optional real-browser check. Keep screenshots outside `frontend/dist`.
+- Add a regression test for every scoring-rule fix.
 - Preserve raw FPL snapshots outside Git (`snapshots/*.json` is ignored).
-- Scenario plausibility affects ranking only, never validity.
-- Keep demo states deterministic and route them through the same Python analysis pipeline as live
-  data. Do not hard-code analysed demo results in JavaScript.
-- Preserve the five live views: Overview, Scenarios, Differentials, Simulations and Managers, plus the visually
-  separate Analytics view. All six stay in the same SPA. The website is
-  light-first with an accessible optional dark theme; keep both palettes high-contrast and restrained.
-- Broad early-Gameweek states should favour effective differentials over expensive, misleadingly
-  narrow scenario enumeration.
-- Serve a cheap league summary first. Additional scenario searches are candidate-specific; never
-  increase the search limit for every manager when one user asks to see more.
-- Keep comparison maths and core conditions in Python. Shared exposure must be compared across the
-  selected managers, not inferred from the frontend's filtered differential table. Label assumptions
-  around pending autosubs/captaincy, and distinguish pairwise conditions from whole-league proofs.
-- Historical viewing is final results for current league members in the current season. Use official
-  event points less that event's hits and official pick multipliers. Do not reconstruct old live states
-  without saved snapshots or silently drop members with missing historical squads.
-- Demo Mode, tie rules and theme belong in Settings. Do not foreground demos on completed results.
-  Preserve the existing deterministic demos, but focus work on useful product features rather than
-  expanding synthetic test/demo infrastructure. Detailed real live validation is a later step.
-- Preserve SAFE / AT RISK / NO MODELLED PATH / UNRESOLVED as distinct states. Safety bounds must also
-  allow already-scored bench and vice-captain points to become effective after a pending absence.
-- Run the full Python suite and frontend build; use `frontend/check.py` for the optional actual-browser
-  check of parsing, mobile/desktop layout and interactions. Keep screenshots outside `frontend/dist`.
-- The root website must remain neutral: never load a default or remembered league automatically.
-  Recent leagues are explicit shortcuts; league IDs/URLs and query routing remain supported.
-- Analytics calculations belong in `analytics/calculations.py`, retrieval/caching in
-  `analytics/service.py`, never in route handlers or JavaScript. Preserve the tested live engine.
-- Historical scoring uses official final pick multipliers and aggregated event player points,
-  reconciled against official raw event points. Unknown data is null with explicit coverage.
-  Hits are deducted once, separately from counted positional/player contributions. Bench Boost
-  is not unused bench; autosubbed points must not be counted as unused. Distinguish total multiplied
-  captain points from additional multiplier points. Record every chip use, including repeats.
-- Historical rankings require all current members' scores. Analytics uses competition ranks and
-  includes all tied last and bottom-three cutoff scores, explicitly separate from the live tie rule.
-- Load cheap score history first; enrich historical squads with bounded/coalesced background jobs,
-  progress, long-lived resource caches and lazy section payloads. Do not refetch every squad on tab
-  changes. Cache settings and limitations are documented in `ANALYTICS.md`.
+- The site is light-first with an accessible optional dark theme. The root website stays neutral: never
+  load a default or remembered league automatically; league IDs/URLs and query routing remain supported.
+- Serve a cheap league summary first; deeper work is request- and candidate-specific.
+- Commit completed work on a branch, push, open a PR, and verify local and remote are in sync before
+  reporting completion.

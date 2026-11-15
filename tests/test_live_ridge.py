@@ -82,24 +82,6 @@ class LiveRidgeTests(unittest.TestCase):
             NOW,
         )
 
-    def test_full_historical_feature_contract_parity(self):
-        from ml.dataset import FEATURE_COLUMNS as original_schema
-        from ml.dataset import historical_features as original
-
-        rows = parse_ml_history(self.history["payload"], self.snapshot["fixtures"], 1, 7, NOW)
-        self.assertEqual(FEATURE_COLUMNS, original_schema)
-        self.assertEqual(historical_features(rows), original(rows))
-        # A second eligible DGW leg, zero minutes and unknown xA preserve denominators/nulls.
-        extra = {
-            **rows[0],
-            "fixture_id": 101,
-            "minutes": 0,
-            "starts": 0,
-            "expected_assists": None,
-            "kickoff_utc": rows[0]["kickoff_utc"] + timedelta(days=1),
-        }
-        self.assertEqual(historical_features(rows + [extra]), original(rows + [extra]))
-
     def test_next_gw_only_no_fixture_opponent_or_availability_inputs(self):
         result = self.predict()
         self.assertEqual(result[7]["source"], "ridge")
