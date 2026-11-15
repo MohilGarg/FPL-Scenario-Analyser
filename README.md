@@ -1,173 +1,107 @@
 # FPL Scenario Analyser
 
-FPL Scenario Analyser combines public last-place analysis and descriptive mini-league analytics
-with a separate password-protected FPL Assistant. The public analyser combines confirmed scores
-with labelled experimental forfeit forecasts. Personal lineup and transfer planning stay private.
+Who can still finish last in your FPL mini-league this Gameweek, what separates them, and how the
+season has gone so far. A separate password-protected FPL Assistant handles private squad planning.
 
 **Live site:** <https://mohilgarg.github.io/FPL-Scenario-Analyser/>
 
-Paste a public classic-league ID or standings URL to see who is currently bottom, who can still
-finish there, who is practically safe, and realistic football routes to the final outcome. No FPL
-login is required.
+Paste a public classic-league ID or standings URL. No FPL login is needed.
 
 ## Website
 
-The lock-marked **FPL Assistant** entry opens the Python-hosted private dashboard in the same tab.
-It offers cached all-player predictions for the next 1/3/5/6 Gameweeks, public deadline squad
-loading, exhaustive legal XI/bench/captain selection, manual transfer plans, a bounded
-single-transfer shortlist and conditional Bench Boost/Triple Captain comparisons. Private APIs
-use server-managed sessions and remain disabled until configured. See [ASSISTANT.md](ASSISTANT.md)
-for password setup, hosting, limitations and measured checks. No FPL account changes are submitted.
+Navigation is **Live**, **Season** and **Assistant**.
 
-The root URL is a neutral home page. Enter a classic league ID or paste its FPL standings URL.
-No league loads automatically, even if you have visited before. Recent leagues appear as explicit
-shortcuts showing name and ID. The site title returns home. Light mode is the default; dark mode,
-the live tie rule and secondary demos remain in Settings.
+The root URL is a neutral home page: no league loads automatically, even after a previous visit.
+Recent leagues appear as explicit shortcuts. Light mode is the default; dark mode and the tie rule
+are in **Settings**. The layout is phone-first and keyboard accessible.
 
-### Live analysis
+### Live
 
-The five live views are:
+One page for the current Gameweek:
 
-- **Overview** — current/projected bottom managers, estimated last-place risks, projected scores
-  and ranges, decisive players/fixtures and a separate bounded safe group;
-- **Scenarios** — an interactive football-event explorer with combined conditions, score/risk
-  changes and reset/removal, followed by separate exact examples and manager comparisons;
-- **Differentials** — meaningful remaining effective multipliers after captaincy, chips and current
-  substitution state;
-- **Simulations** — interactive last-place probability bars, projected scores with existing
-  10th–90th percentile ranges, projected fixture checkpoints and recorded risk trajectories.
-  Select managers to compare, with consistent colours across charts. History needs at least two
-  compatible saved observations; unavailable history is explained. Score distributions are omitted
-  because the API exposes no bins or samples. This view requests no extra simulations;
-- **Managers** — all effective scores and expandable 15-player Gameweek squads for transparency.
-  Captain/vice/Triple Captain badges are inline; there is no redundant multiplier column.
+- **Bottom standings** with live effective points (transfer deductions included), lowest first.
+  Every manager is marked **SAFE** or **AT RISK**; the manager(s) currently bottom are flagged.
+  Safe managers are grouped and collapsed.
+- **Click-through squads:** open any manager to see their 15 players, points, minutes, remaining
+  fixtures, captaincy, chips, pending autosubs and vice-captain takeover, plus the score range they can
+  still reach under the safety envelope and why they are or are not safe.
+- **What separates the bottom:** the remaining players whose effective multiplier differs between the
+  managers who can still finish last, largest differences first. Shared exposure cancels and is left out.
+- **How SAFE and AT RISK are decided:** the stated assumptions (see below).
 
-### Analytics
+When the Gameweek is complete the page shows only the final result: who finished last and the final
+standings, each still clickable for the squad. During live fixtures the page refreshes every 90 seconds
+while the tab is visible, matching the backend cache.
 
-The separately positioned Analytics tab stays inside the same website, with **Summary**, **Gameweeks**, **Managers**,
-**Players** and **Head-to-head** sections:
+Use the **Gameweek** selector to view a completed previous Gameweek of the current season. Final standings
+use FPL's official Gameweek points minus that week's transfer cost and official pick multipliers. History
+covers current league members only; player team/position labels use the current season catalogue. A member
+with no published historical squad produces an explicit error rather than being silently dropped.
 
-- weekly forfeit leaderboard, completed Gameweek ordering, score coverage and league trends;
-- manager average/median, weekly rank, consistency, cumulative scores and transfer deductions;
-- verified unused bench points, Bench Boost contribution, captaincy and repeat chip history;
-- counted positional points and player contributions across this mini-league;
-- current ownership/effective ownership, unique owners/captains and a clickable squad-overlap matrix;
-- historical head-to-head records, distributions, ownership and captaincy trends.
+League, view, Gameweek and the strict tie rule are kept in the query string, so a page can be shared, for
+example <https://mohilgarg.github.io/FPL-Scenario-Analyser/?league=188263&view=live&gw=9>. Older links
+using `view=overview` (or the other retired tabs) open Live, and `view=analytics` opens Season.
 
-Charts support hover/tap/focus and a data table; tables are sortable and current players searchable.
-Detailed totals display the number of verified squads, not silently assumed zeroes for missing data.
-Historical rank counts include all ties and do not change with the live scenario tie setting.
-Definitions, sources, caching and limits are in [Analytics reference](#analytics-reference).
+### Season
 
-Share a specific section, for example:
+Descriptive analytics from completed Gameweeks, in **Summary**, **Gameweeks**, **Managers**, **Players**
+and **Head-to-head** sections: the weekly forfeit leaderboard (each week ranks the managers who have a
+score that week), manager averages and consistency, hits, bench points, captaincy and chips, positional
+and player contributions, current ownership and squad overlap, and head-to-head records. Charts support
+hover/tap/focus; tables are sortable. See [Analytics reference](#analytics-reference).
 
-<https://mohilgarg.github.io/FPL-Scenario-Analyser/?league=188263&view=analytics&section=gameweeks>
+<https://mohilgarg.github.io/FPL-Scenario-Analyser/?league=188263&view=season&section=gameweeks>
 
-The site automatically changes emphasis for early, late, live and completed Gameweeks. During live
-fixtures it refreshes every 90 seconds while the tab is visible, matching the backend cache rather
-than repeatedly hitting FPL. A completed Gameweek shows the final loser and bottom standings instead
-of empty scenario sections.
+### Assistant
 
-Light mode is the default. **Settings** contains the persistent dark-mode option, tie rule and a
-secondary **Demo Mode** selector. The layout is designed
-for phones first and remains keyboard accessible on desktop.
-
-League, Gameweek, view, selected scenario manager and strict tie-rule state are kept in the query string, so an
-analysis can be bookmarked or shared. Recent league IDs are stored only in the browser.
-
-## Previous forfeit results
-
-Use the **Gameweek** selector beside Refresh to view a completed previous Gameweek in the current
-season. The current Gameweek is the default. Final standings use FPL's official Gameweek points,
-minus that week's transfer cost. Manager cards include the historical squad, chip and official pick
-multipliers when available. For example:
-
-<https://mohilgarg.github.io/FPL-Scenario-Analyser/?league=188263&view=overview&gw=1>
-
-History covers **current league members**, not a reconstruction of past membership. Player team and
-position labels come from the current season catalogue. If a member has no published historical
-squad, the site explains that results are unavailable rather than silently omitting them. Past live
-states/scenarios and previous seasons are not reconstructed.
+The lock-marked **Assistant** link opens the Python-hosted private dashboard in the same tab: all-player
+predictions, public deadline squad loading, legal XI/bench/captain selection, manual transfer plans, a
+bounded single-transfer shortlist and conditional Bench Boost/Triple Captain values. It is disabled until a
+password hash is configured. See [ASSISTANT.md](ASSISTANT.md).
 
 ## What counts as last?
 
-The Settings control supports:
+Settings offers **Tied for lowest counts** (default) or **Strictly lowest only**. The rule is applied
+consistently to safety, the final result and the CLI. A strict bottom tie has no sole loser. Season always
+records every tied last place, independently of this setting.
 
-- **Tied for lowest counts** — the existing/default rule;
-- **Strictly lowest only** — a tied bottom score is not a sole last-place result.
+## SAFE and AT RISK
 
-The rule is applied consistently to safety pruning, scenario validity, comparisons, CLI output and
-completed-state display. A strict bottom tie has no sole loser.
-
-## Safety and scenario model
-
-The configurable practical safety envelope remains:
+Football scores have no literal bound, so safety is stated against a named practical envelope:
 
 - minimum remaining contribution for one player: **-10**;
 - maximum remaining contribution for one player: **+35**.
 
-That range is applied once across the player's whole remaining Gameweek, including a possible Double
-Gameweek. It is a conservative pruning envelope, not a theoretical football limit. Managers proven
-safe within it are excluded from detailed scenario search. `UNRESOLVED` and `NO MODELLED PATH` are
-never presented as `SAFE`.
+Each owned player with a fixture left receives one range across the rest of the Gameweek (including a Double
+Gameweek), multiplied by the largest multiplier they could still carry (captain, vice-captain takeover, Triple
+Captain). Every bench player may count, and already-scored bench or vice-captain points are allowed to become
+effective after a pending absence. This deliberately over-states each manager's range.
 
-The bounded scenario vocabulary includes appearances, clean sheets and their loss, goals, assists,
-goal-plus-assist combinations, multiple assists, braces, hat-tricks, own goals, cards, penalty misses
-and goalkeeper penalty saves. It includes returns with clean sheets and live returns with a lost
-clean sheet. [Official FPL position-specific scoring](https://www.premierleague.com/en/news/2174909)
-is used, including ten points for a goalkeeper goal.
+A manager is **SAFE** when, even at their lowest possible score, some opponent cannot reach it at their highest
+(with the selected tie rule). Otherwise they are **AT RISK**: last place cannot be ruled out under the envelope.
+AT RISK is not a probability, and SAFE is a statement about this envelope, not a theoretical guarantee.
 
-Direct fixture consistency and the selected tie rule determine validity. A separate rarity/complexity
-heuristic ranks valid examples; it is not a probability model. Diversity groups ignore incidental
-bookings/minutes-only changes. A shared team clean sheet or loss is ranked once, not as an
-independent coincidence for every owned teammate. Distinct combinations that reach a narrow points
-condition are retained, including clean sheet plus booking and assist plus missed penalty.
-Future bonus/BPS, defensive-contribution
-awards, every goal-concession deduction and every possible multi-return combination remain outside
-the bounded vocabulary. Official points already awarded are always retained.
-
-Core conditions and comparisons describe the current effective exposures. Pending starters, autosubs
-and vice-captain takeover are explicitly conditional. A comparison against one manager alone does
-not prove last place against the whole league. **Why safe?** explains the score bound and the opponent
-who guarantees safety; already-scored bench/captaincy points are included when they may move.
-
-Broad early-Gameweek states provide mean projected standings immediately, then load a separate
-1,600-sample shared-fixture risk model. The explorer works with any number of remaining fixtures.
-Automatic exact enumeration is still reserved for narrower states; an explicit per-manager request
-can generate focused examples with disclosed baselines.
-This keeps requests bounded and avoids pretending a handful of examples explains a huge state space.
-The league summary loads before scenarios. At-risk managers are searched individually afterwards;
-**Show more scenarios** only extends that manager's search, up to twelve examples. `NO MODELLED PATH`
-means the bounded vocabulary was exhausted; `UNRESOLVED` means it was deferred or search-limited.
-
-See [Forecast model](#forecast-model) for the assumptions, tie convention and API contract. These are
-uncalibrated estimates: a sampled zero chance is never a safety proof. Official awarded points,
-chips, captaincy, legal autosubs and hits remain the scoring foundation for every layer.
+Scoring uses official live/final element points, transfer costs, captain/vice/Triple Captain/Bench Boost
+multipliers, zero-minute handling and legal automatic substitutions. A human-facing "blank" is never read as
+zero points.
 
 ## Architecture
 
 ```text
 GitHub Pages (static HTML/CSS/JavaScript)
-                |
-                | processed JSON
+                |  processed JSON
                 v
 FastAPI service on Render
-                |
-                +-- live cache (90 seconds)
+                +-- live league cache (90 seconds)
                 +-- score history (15 minutes), final squads (24 hours)
-                +-- bounded historical enrichment with progress
-                +-- public FPL API retrieval
-                +-- existing Python domain and scenario engine
-                +-- shared-fixture projections, risk and forced-event what-ifs
-                +-- separate Python descriptive analytics
+                +-- public FPL API retrieval and parsing (api.py)
+                +-- scoring, autosubs, safety and exposures (Python domain)
+                +-- descriptive season analytics (analytics/)
+                +-- private assistant under /assistant and /api/assistant/* (assistant/)
 ```
 
-FPL requests happen server-side to avoid browser CORS problems. Scoring and scenario logic is never
-duplicated in JavaScript.
-
-Player forecasts and joint fixture outcomes are reusable through `fpl_forfeit.forecasting`,
-independently of mini-leagues. The public analyser consumes the same shared model.
-The private assistant's forecasting, optimisation and secure setup are in [ASSISTANT.md](ASSISTANT.md).
+FPL requests happen server-side. Scoring and safety are never duplicated in JavaScript. The assistant's shared
+football model lives in `fpl_forfeit.forecasting`; see [ASSISTANT.md](ASSISTANT.md).
 
 ## Run locally
 
@@ -180,7 +114,7 @@ python -m pip install -e ".[test]"
 uvicorn fpl_forfeit.web:app --reload --port 8000
 ```
 
-In a second PowerShell window:
+In a second window:
 
 ```powershell
 $env:API_BASE_URL="http://localhost:8000"
@@ -190,56 +124,22 @@ python -m http.server 8080 --directory frontend/dist
 
 Open <http://localhost:8080>. API documentation is at <http://localhost:8000/docs>.
 
-Useful deterministic URLs:
-
-```text
-http://localhost:8080/?demo=early
-http://localhost:8080/?demo=late
-http://localhost:8080/?demo=live
-http://localhost:8080/?demo=complete
-```
-
-These existing development examples are accessible through **Settings → Demo Mode**. All four
-states use the real Python pipeline, not hard-coded frontend results. They are secondary to real
-league analysis and are not a substitute for mid/late-Gameweek real-world validation.
-
 ## API
 
 ### `GET /api/league/{league_id}`
 
-Query parameters:
+- `ties=include|strict` — tie rule, default `include`;
+- `gameweek=1..38` — optional completed Gameweek of the current season; omit for the current one.
 
-- `scenarios=1..12` — examples returned per at-risk manager, default `3`;
-- `ties=include|strict` — bottom-tie rule, default `include`.
-- `gameweek=1..38` — optional completed Gameweek in the current season; omit for the current one.
-- `detail=summary|full` — `summary` skips scenario solving; `full` remains the backwards-compatible default.
-
-The version 2 response contains Gameweek status/phase, fixture counts, summary status groups, manager
-score and squad details, safe bounds, core conditions, ranked scenarios with share text, and the
-focused and whole-league effective-differential matrices, conditional exposure notes and available
-Gameweeks. Caches are separated by league, Gameweek, tie rule, candidate and search settings and
-bounded in memory. Invalid/unpublished/historical-unavailable Gameweeks return a friendly 409.
-
-### `GET /api/league/{league_id}/managers/{entry_id}/scenarios`
-
-Accepts `scenarios=1..12`, `ties`, optional `gameweek` and `source=<league.fetched_at>`. Returns only
-the selected manager's result plus league/cache metadata. Safe managers and completed Gameweeks are not searched. The
-frontend retains the summary if this deeper request fails, with a separate retry control.
-
-### `GET /api/league/{league_id}/compare?a={entry_id}&b={entry_id}`
-
-Accepts `ties` and optional `gameweek`. Returns scores, gap, shared/cancelling players, multiplier
-differences and the pairwise points condition. All calculation lives in Python, including strict ties.
-For development, these two endpoints also accept `demo=early|late|live|complete`.
-
-### `GET /api/demo/{mode}`
-
-`mode` is `early`, `late`, `live` or `complete`. It accepts the same query parameters and never calls
-the external FPL API.
+The version 3 response contains Gameweek status and fixture counts; summary groups (`at_risk_entry_ids`,
+`safe_entry_ids`, `current_last_entry_ids`, `last_place_decided`); each manager's score, status
+(`safe` / `at_risk` live, `last` / `clear` once complete), score bounds, safety explanation and 15-player squad;
+the separating players among at-risk managers (`differentials`, `differential_manager_ids`); available
+Gameweeks; and the stated envelope (`model.safety_note`). Unpublished or unavailable Gameweeks return 409.
 
 ### `GET /api/health`
 
-Returns `{"status":"ok"}` for deployment health checks.
+Returns `{"status":"ok", ...}` for deployment health checks.
 
 ### Analytics API
 
@@ -255,28 +155,23 @@ All routes are under `/api/league/{league_id}/analytics/`:
 | `head-to-head?a=123&b=456` | Historical comparison over common recorded weeks |
 | `details` | Starts/reuses bounded enrichment; returns `loading`, `busy` or `ready` plus progress |
 
-Section responses never wait for all historical picks. The browser polls `details` while showing
-score history, then refreshes the selected section. Missing/reconciliation-failed detail is null;
-warnings explain which manager/GW is affected. No scenario searches are run by historical analytics.
+Section responses never wait for all historical picks; the browser polls `details` and then refreshes the
+selected section. Missing or unreconciled detail is null with a warning naming the manager/GW.
 
-## Existing CLI and snapshots
+## CLI and snapshots
 
-The website is the main product, but the tested CLI remains available. The CLI-only league `188263` is stored in
-`.fpl-forfeit.json`, so the normal command is:
+The CLI prints the same standings and SAFE / AT RISK statuses. The CLI-only default league is read from
+`.fpl-forfeit.json`:
 
 ```powershell
 python fpl.py
-```
-
-Examples:
-
-```powershell
-python fpl.py 123456 --scenarios 8
-python fpl.py --strict-last
+python fpl.py 123456 --strict-last
 python fpl.py --json
 python fpl.py --save-snapshot snapshots/gw07.json
 python fpl.py --snapshot snapshots/gw07.json
 ```
+
+Raw snapshots stay out of Git (`snapshots/*.json` is ignored).
 
 ## Deployment
 
@@ -295,7 +190,7 @@ Pages*. It builds with `API_BASE_URL` (default `https://fpl-scenario-analyser-ap
 repository variable, public configuration only). Re-run it manually after changing the variable.
 
 **Smoke check.** `/api/health`, `/api/league/188263`, `/api/league/188263/analytics/summary`; the root site must
-show the neutral input, never a remembered league.
+show the neutral input, never a remembered league. Deploy both sides together: the Live page needs API version 3.
 
 **Local rehearsal.**
 ```powershell
@@ -310,39 +205,6 @@ Windows uses the system `curl.exe` transport automatically; override with `FPL_H
 
 ## Tests and build
 
-### Scenario searches and playing-time context
-
-The summary stays cheap. Late-Gameweek candidate searches run separately and request three distinct,
-whole-league-checked examples by default. An early/broad state also supports an explicit **Generate 3
-scenarios** request for one manager; non-searched players retain disclosed baseline contributions,
-not implicit zero minutes. Fixed legal-lineup score-gap bounds prune impossible outcome combinations
-before the existing final scorer verifies every example. The search budget is bounded; fewer than
-three materially different routes can exist, and that shortfall is reported rather than filled with
-duplicates. **Can finish last** requires a verified example. **Unresolved**, **No modelled path** and
-**SAFE under the configured envelope** remain distinct.
-
-Manager scenario requests accept `source=<league.fetched_at>` so every card uses the displayed scores.
-Live snapshots still refresh on the normal 90-second cache, while source generations are retained for
-10 minutes (at most 32 in memory). An expired source returns HTTP 409 with a refresh instruction,
-not a silent mixture of scores or an endless refresh loop. Process restarts can expire sources early.
-
-Before kick-off, ranking uses public FPL `status`, injury/news text, `chance_of_playing_this_round`,
-season `starts` and `minutes`. Season fixtures provide a team-match denominator, including doubles;
-that optional feed is cached for an hour and never replaces the fresher current-Gameweek score feed.
-counts can differ after a club transfer or while FPL updates. Unknown values remain unknown. A price
-adjustment is capped at 0.3 heuristic cost units and only supports existing minutes evidence; it cannot
-make an expensive substitute a reliable starter. Healthy regulars' absence/cameo routes rank lower,
-and injury flags lower the cost of no-appearance assumptions. Live observed minutes take precedence
-over pre-match availability heuristics. None of this changes scoring, the safety envelope or route
-validity, and it is not a trained probability model or a confirmed starting lineup.
-
-Expand **Playing-time context** on a scenario, or the availability label in Managers/Differentials,
-to inspect season starts, minutes, price and FPL news. FPL's chance of playing is **not** a chance of
-starting. A no-appearance route requires **zero minutes**, not simply starting on the bench. Historical
-views label this metadata as current, not reconstructed availability at a past deadline.
-
-### Verification commands
-
 ```powershell
 python -m unittest discover -s tests -v
 ruff check .
@@ -351,37 +213,30 @@ $env:API_BASE_URL="http://localhost:8000"
 python frontend/build.py
 ```
 
-The suite covers scoring and autosub edge cases, hits and chips, Double Gameweeks, whole-Gameweek
-safety bounds, tie rules, multi-return scenarios, diversity, manager comparisons, historical data,
-all four existing demo phases, API structure, caching and frontend structure.
-Analytics tests cover historical ties/ranks/coverage, averages, hits, bench/autosubs/Bench Boost,
-captain/Triple Captain/vice takeover, repeat chips, positions, ownership, overlap, head-to-head,
-league-player contribution, caching, API serialisation and invalid IDs.
+The suite covers scoring and autosub edge cases, hits and chips, Double Gameweeks, safety bounds and
+SAFE / AT RISK, separating players, tie rules, historical results, API structure, caching, frontend structure,
+the season analytics and the private assistant (authentication, forecasts, optimisation and the shared
+football simulator's invariants).
 
-Optional browser checks (with the local API and frontend running):
+Optional real-browser check (local API and site running; Playwright is a developer-only dependency):
 
 ```powershell
 python -m pip install playwright
-python frontend/check.py
-python frontend/check.py --simulations-only
-python frontend/check.py --league 188263
-python frontend/check.py --scenario-league 188263
+python frontend/check.py --league 188263 --final-gameweek 9
+python frontend/check.py --live-payload payload.json
 python -m frontend.check_assistant --browser-executable 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 ```
 
-On Windows this uses installed Microsoft Edge; otherwise install a Playwright Chromium browser
-(`python -m playwright install chromium`) or supply `--browser-executable`. Checks include real JS
-league-ID/URL parsing, neutral home with and without recent leagues, six views at 320/390/1440px,
-theme persistence, comparison, manager-only Show more and completed-state UX. The optional `--league`
-checks real historical Analytics sections, shared URLs, charts, ownership search and overlap in
-both themes. It makes public FPL requests through the backend. Screenshots go to a temporary directory, never the Pages
-build. Playwright is not a production dependency.
-`--scenario-league` additionally checks live candidate loading, displayed example counts and playing-time
-context. All browser runs check that early-Gameweek generation searches only the selected manager.
+It checks the neutral home page, league-ID parsing, the Live page (standings, statuses, squad click-through,
+separating players or final result), Season sections and old shared links at 320/390/1440px in both themes.
+`--live-payload` replays a saved in-progress API response (produced by the Python analysis from a saved
+snapshot) so the live layout can be checked when no Gameweek is in progress. Screenshots go to a temporary
+directory. On Windows it uses installed Microsoft Edge; otherwise install Chromium with
+`python -m playwright install chromium` or pass `--browser-executable`.
 
 ## Analytics reference
 
-Analytics is descriptive and separate from live scenario solving. Calculations live in
+Analytics (the Season view) is descriptive and separate from the Live page. Calculations live in
 `src/fpl_forfeit/analytics/calculations.py`; retrieval and caching in `analytics/service.py`.
 
 **Sources** (server-side, no FPL login): `bootstrap-static` (events, players), `leagues-classic/{id}/standings`
@@ -417,32 +272,3 @@ are coalesced; caches are bounded, per-process and lost on restart (single-worke
 
 **Limits.** Current league members and current season only; completed Gameweeks only; dashes mean unknown,
 not zero; no transfer, captain or chip recommendations.
-
-## Forecast model
-
-The live analysis has three layers: a cheap summary (confirmed effective points, bounded safety, 96-sample
-mean scores), a separate 1,600-sample reproducible shared-fixture risk run, and a forced-event What-if that
-recalculates that model for every manager. The constraint-guided exact solver remains a separate,
-candidate-specific late-Gameweek tool. Outputs are **uncalibrated internal estimates**, not verified
-probabilities or player advice.
-
-- **Code boundaries:** `api.py` parses official data; `forecasting/` holds the shared football model
-  (statistics, joint fixture simulation, typed player projections); `points.py`, `scoring.py` and
-  `substitutions.py` score fixtures, multipliers, chips, hits and legal autosubs; `forecast.py` adds
-  official-score reconciliation and league risk; the private assistant reuses the same model. One fixture
-  draw is shared by all managers.
-- **Model:** independent home/away Poisson goals from season rates shrunk towards the league mean (home 1.1 /
-  away 0.9); player goal/assist shares blend 65% official xG/xA with 35% observed returns, shrunk towards
-  position priors; appearance and duration come from recent starts/minutes and FPL availability; shared goal
-  times; clean sheets for players on the pitch; approximate 3/2/1 bonus (not Opta BPS); saves, defensive
-  contributions and yellow cards from season rates. Future reds, penalties and own goals are not simulated.
-  Missing live breakdowns are frozen and counted in `coverage`; unknown data is never read as a football blank.
-- **Ties:** `ties=include` counts every tied-bottom manager as last (probabilities may sum above 100%);
-  `ties=strict` counts only outright last. Wilson 95% intervals describe sampling error only. A zero sampled
-  frequency never changes SAFE / AT RISK / NO MODELLED PATH / UNRESOLVED.
-- **API:** `GET /api/league/{id}?detail=summary` (cheap), `GET /api/league/{id}/outlook?source={fetched_at}&ties=include`,
-  `POST /api/league/{id}/what-if` with `{"source": fetched_at, "conditions": [{"fixture_id", "kind", "player_id", "value"}]}`.
-  The source generation is mandatory; sources are kept at least ten minutes and expired ones return 409. Forecast
-  caches hold at most 64 payloads and coalesce identical requests.
-- **Boundary:** public routes never carry personal squads. Private planning lives only under `/api/assistant/*`
-  behind server-side authentication (see ASSISTANT.md).

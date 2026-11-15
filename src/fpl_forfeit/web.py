@@ -6,7 +6,6 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field
 
 from .analytics.service import AnalyticsService
 from .api import (
@@ -20,42 +19,9 @@ from .api import (
 from .assistant.auth import SessionStore
 from .assistant.service import AssistantService
 from .assistant.web import register_assistant
-from .demo import DEMO_MODES, DemoMode
-from .forecast import Condition, ScenarioConflict
 from .forecasting.models import MODEL_VERSION
 from .service import AnalysisService
-from .settings import (
-    DEFAULT_MAX_RELEVANT_PLAYERS,
-    DEFAULT_MAX_SEARCH_NODES,
-    AnalysisSettings,
-)
-
-
-class FootballCondition(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    fixture_id: int = Field(gt=0)
-    kind: Literal[
-        "goal",
-        "assist",
-        "blank",
-        "dnp",
-        "minutes",
-        "substitute",
-        "clean_sheet",
-        "lose_clean_sheet",
-        "score",
-    ]
-    player_id: int | None = Field(default=None, gt=0)
-    team_id: int | None = Field(default=None, gt=0)
-    value: int = Field(default=1, ge=1, le=90)
-    home_goals: int | None = Field(default=None, ge=0, le=15)
-    away_goals: int | None = Field(default=None, ge=0, le=15)
-
-
-class WhatIfRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    source: str = Field(min_length=1, max_length=80)
-    conditions: list[FootballCondition] = Field(default_factory=list, max_length=12)
+from .settings import AnalysisSettings
 
 
 def create_app(
@@ -77,7 +43,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=_allowed_origins(),
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET"],
         allow_headers=["*"],
     )
 
@@ -85,142 +51,17 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok", "forecast_model": MODEL_VERSION}
 
-    @application.get("/api/league/{league_id}/risk-history", tags=["analysis"])
-    def risk_history(
-        league_id: int,
-        gameweek: int = Query(ge=1, le=38),
-        source: str | None = Query(default=None, max_length=80),
-    ) -> dict[str, Any]:
-        if league_id <= 0:
-            raise HTTPException(400, "League ID must be positive")
-        return analysis_service.history.read(league_id, gameweek, source=source)
-
     @application.get("/api/league/{league_id}", tags=["analysis"])
     def league_analysis(
         league_id: int,
-        scenarios: int = Query(default=3, ge=1, le=12),
         ties: Literal["include", "strict"] = Query(default="include"),
         gameweek: int | None = Query(default=None, ge=1, le=38),
-        detail: Literal["full", "summary"] = Query(default="full"),
     ) -> dict[str, Any]:
         if league_id <= 0:
             raise HTTPException(status_code=400, detail="League ID must be a positive integer")
-        settings = AnalysisSettings(
-            scenario_count=scenarios,
-            max_relevant_players=DEFAULT_MAX_RELEVANT_PLAYERS,
-            max_search_nodes=DEFAULT_MAX_SEARCH_NODES,
-            allow_tied_last=ties == "include",
-        )
-        options = (
-            {}
-            if gameweek is None and detail == "full"
-            else {"gameweek": gameweek, "include_scenarios": detail == "full"}
-        )
+        settings = AnalysisSettings(allow_tied_last=ties == "include")
         return _api_response(
-            lambda: analysis_service.analyse_league(league_id, settings, **options)
-        )
-
-    @application.get("/api/demo/{mode}", tags=["analysis"])
-    def demo_analysis(
-        mode: DemoMode,
-        scenarios: int = Query(default=3, ge=1, le=12),
-        ties: Literal["include", "strict"] = Query(default="include"),
-        detail: Literal["full", "summary"] = Query(default="full"),
-    ) -> dict[str, Any]:
-        if mode not in DEMO_MODES:
-            raise HTTPException(status_code=404, detail="That demo state does not exist")
-        settings = AnalysisSettings(
-            scenario_count=scenarios,
-            max_relevant_players=DEFAULT_MAX_RELEVANT_PLAYERS,
-            max_search_nodes=DEFAULT_MAX_SEARCH_NODES,
-            allow_tied_last=ties == "include",
-        )
-        options = {} if detail == "full" else {"include_scenarios": False}
-        return _api_response(lambda: analysis_service.analyse_demo(mode, settings, **options))
-
-    @application.get("/api/league/{league_id}/managers/{entry_id}/scenarios", tags=["analysis"])
-    def manager_scenarios(
-        league_id: int,
-        entry_id: int,
-        scenarios: int = Query(default=6, ge=1, le=12),
-        ties: Literal["include", "strict"] = Query(default="include"),
-        gameweek: int | None = Query(default=None, ge=1, le=38),
-        demo: DemoMode | None = None,
-        source: str | None = Query(default=None, min_length=1, max_length=80),
-    ) -> dict[str, Any]:
-        if league_id <= 0 or entry_id <= 0:
-            raise HTTPException(400, "League and manager IDs must be positive integers")
-        settings = AnalysisSettings(scenario_count=scenarios, allow_tied_last=ties == "include")
-        payload = _api_response(
-            lambda: (
-                analysis_service.analyse_demo(demo, settings, candidate_id=entry_id)
-                if demo
-                else analysis_service.analyse_league(
-                    league_id, settings, gameweek=gameweek, candidate_id=entry_id, source=source
-                )
-            )
-        )
-        manager = next((m for m in payload["managers"] if m["entry_id"] == entry_id), None)
-        if manager is None:
-            raise HTTPException(404, "That manager is not in this league")
-        return {"manager": manager, "league": payload["league"], "cache": payload["cache"]}
-
-    @application.get("/api/league/{league_id}/compare", tags=["analysis"])
-    def comparison(
-        league_id: int,
-        a: int = Query(ge=1),
-        b: int = Query(ge=1),
-        ties: Literal["include", "strict"] = Query(default="include"),
-        gameweek: int | None = Query(default=None, ge=1, le=38),
-        demo: DemoMode | None = None,
-    ) -> dict[str, Any]:
-        if league_id <= 0 or a == b:
-            raise HTTPException(400, "Choose a valid league and two different managers")
-        return _api_response(
-            lambda: analysis_service.compare(
-                league_id, a, b, gameweek=gameweek, demo=demo, allow_tied_last=ties == "include"
-            )
-        )
-
-    @application.get("/api/league/{league_id}/outlook", tags=["analysis"])
-    def simulation_outlook(
-        league_id: int,
-        source: str = Query(min_length=1, max_length=80),
-        ties: Literal["include", "strict"] = "include",
-        gameweek: int | None = Query(default=None, ge=1, le=38),
-        demo: DemoMode | None = None,
-    ) -> dict[str, Any]:
-        if league_id <= 0:
-            raise HTTPException(400, "League ID must be positive")
-        return _forecast_response(
-            lambda: analysis_service.forecast(
-                league_id,
-                source=source,
-                gameweek=gameweek,
-                demo=demo,
-                allow_tied_last=ties == "include",
-            )
-        )
-
-    @application.post("/api/league/{league_id}/what-if", tags=["analysis"])
-    def what_if(
-        league_id: int,
-        request: WhatIfRequest,
-        ties: Literal["include", "strict"] = "include",
-        gameweek: int | None = Query(default=None, ge=1, le=38),
-        demo: DemoMode | None = None,
-    ) -> dict[str, Any]:
-        if league_id <= 0:
-            raise HTTPException(400, "League ID must be positive")
-        return _forecast_response(
-            lambda: analysis_service.forecast(
-                league_id,
-                source=request.source,
-                gameweek=gameweek,
-                demo=demo,
-                allow_tied_last=ties == "include",
-                conditions=tuple(Condition(**c.model_dump()) for c in request.conditions),
-            )
+            lambda: analysis_service.analyse_league(league_id, settings, gameweek=gameweek)
         )
 
     @application.get("/api/league/{league_id}/analytics/details", tags=["analytics"])
@@ -268,8 +109,6 @@ def create_app(
 def _api_response(call: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     try:
         return call()
-    except ScenarioConflict as exc:
-        raise HTTPException(422, str(exc)) from exc
     except FPLGameweekUnavailable as exc:
         raise HTTPException(409, str(exc)) from exc
     except FPLNotFoundError as exc:
@@ -284,10 +123,6 @@ def _api_response(call: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         raise HTTPException(
             502, "FPL data is temporarily unavailable. Please try again shortly."
         ) from exc
-
-
-def _forecast_response(call: Callable[[], dict[str, Any]]) -> dict[str, Any]:
-    return _api_response(call)
 
 
 def _allowed_origins() -> list[str]:

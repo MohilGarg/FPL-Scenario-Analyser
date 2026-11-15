@@ -420,7 +420,7 @@ class AnalyticsService:
 
     def current(self, league_id: int) -> dict:
         try:
-            self.analysis.analyse_league(league_id, include_scenarios=False)
+            self.analysis.analyse_league(league_id)
             snapshot = self.analysis.cached_snapshot(league_id)
             if snapshot is None:
                 raise FPLAPIError("Current snapshot expired; retry")

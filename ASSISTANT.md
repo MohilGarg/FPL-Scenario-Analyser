@@ -221,19 +221,13 @@ It verifies protected access, login/CSRF/logout, horizons/search/details, legal/
 draft scoring, actual-price transfer budget/hits, shortlist/chip results and one cached forecast
 across all sections. It checks all four private views at 320/390/1440px in light/dark modes.
 Screenshots go to ignored `.browser-artifacts/assistant`, never the frontend build.
-Public browser checks remain `frontend/check.py` with its existing deterministic demos.
+The public site's browser check is `frontend/check.py` (see README).
 
 Domain tests cover analytically known XI optima, brute-force legal-XI agreement, bench order,
 captain takeover/Triple Captain/Bench Boost/zero-minute cards, unknown fields, doubles/blanks and
 missing schedules, exact shared-projection consistency, selling vs buying, budgets/hits/club limits,
 chip windows and private cache isolation. Auth tests cover all private routes, malformed requests,
 disabled settings, cookies/CSP, CORS/CSRF/origin, rate limiting, passive/active expiry and revoked sessions.
-
-Implementation validation on 2026-10-11: **258 Python tests passed**, the production frontend
-build passed, repository lint passed and all changed Python files passed formatting checks.
-Private browser checks and the full existing public browser check passed; the public check
-covered the neutral homepage, all six views, desktop/mobile themes, scenarios/combined what-ifs,
-comparison, manager-specific loading and completed results. Screenshots remain outside Git/build.
 
 A saved official 2026-10-11 data generation (kept outside Git) covered 667 players and sixty
 fixtures across GW7–12. At 192 joint draws, offline forecasting took **6.525 seconds** and one

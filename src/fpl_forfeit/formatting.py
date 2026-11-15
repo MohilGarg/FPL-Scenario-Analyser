@@ -9,7 +9,6 @@ from .settings import (
     DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION,
     DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION,
 )
-from .solver import SearchResult, core_condition
 from .state import CurrentStanding
 
 
@@ -17,7 +16,6 @@ def render_report(
     state: LeagueState,
     standings: Sequence[CurrentStanding],
     safety: Mapping[int, SafetyAssessment],
-    searches: Mapping[int, SearchResult],
     *,
     min_remaining_player_contribution: int = (DEFAULT_MIN_REMAINING_PLAYER_CONTRIBUTION),
     max_remaining_player_contribution: int = (DEFAULT_MAX_REMAINING_PLAYER_CONTRIBUTION),
@@ -46,21 +44,16 @@ def render_report(
         chip = f", {row.manager.active_chip}" if row.manager.active_chip else ""
         lines.append(f"  {row.effective_score:>3}  {row.manager.display_name}{hit}{chip}{suffix}")
 
-    score_by_entry = {row.manager.entry_id: row.effective_score for row in standings}
     lines.extend(["", "LAST-PLACE STATUS"])
     for row in standings:
         assessment = safety[row.manager.entry_id]
-        search = searches.get(row.manager.entry_id)
-        if assessment.safe:
+        is_last = row.effective_score == lowest and (allow_tied_last or bottom_count == 1)
+        if complete:
+            status = "FINISHED LAST" if is_last else "CLEAR"
+        elif assessment.safe:
             status = "SAFE"
-        elif complete and row.effective_score == lowest and (allow_tied_last or bottom_count == 1):
-            status = "FINISHED LAST"
-        elif search and search.scenarios:
-            status = "CAN FINISH LAST"
-        elif search and search.exhausted and not search.truncated_players:
-            status = "NO MODELLED PATH"
         else:
-            status = "UNRESOLVED"
+            status = "AT RISK"
         lines.append(
             f"  {status:<15} {row.manager.display_name} "
             f"[{assessment.bounds.lower}, {assessment.bounds.upper}]"
@@ -91,50 +84,6 @@ def render_report(
             ]
             lines.append(f"  {player.name}: {', '.join(owners) if owners else 'bench only'}")
 
-    for row in standings:
-        search = searches.get(row.manager.entry_id)
-        if not search or not search.scenarios:
-            continue
-        lines.extend(
-            [
-                "",
-                f"FOR {row.manager.manager_name.upper()} TO FINISH LAST",
-                f"  Core condition: {core_condition(state, row.manager, score_by_entry, allow_tied_last=allow_tied_last)}",
-            ]
-        )
-        for number, scenario in enumerate(search.scenarios, start=1):
-            meaningful = [outcome for outcome in scenario.outcomes if not outcome.baseline]
-            baseline_differentials = [
-                outcome
-                for outcome in scenario.outcomes
-                if outcome.baseline and outcome.player_id in differentials
-            ]
-            shown = meaningful + baseline_differentials
-            if shown:
-                description = "; ".join(
-                    f"{state.players[outcome.player_id].name} {outcome.label}" for outcome in shown
-                )
-            else:
-                description = "No special swing is needed; baseline outcomes leave them last"
-            final = scenario.final_scores[row.manager.entry_id]
-            other_low = min(
-                (
-                    value
-                    for entry_id, value in scenario.final_scores.items()
-                    if entry_id != row.manager.entry_id
-                ),
-                default=final,
-            )
-            lines.append(
-                f"  Scenario {number} (rank {scenario.plausibility_cost:g}): "
-                f"{description}. Final: {final} vs next-lowest {other_low}."
-            )
-        if search.truncated_players:
-            lines.append(
-                f"  Search note: {search.truncated_players} lower-impact player-fixture "
-                "variables were outside the configured search width."
-            )
-
     lines.extend(
         [
             "",
@@ -143,8 +92,8 @@ def render_report(
                 f"  SAFE uses the practical {min_remaining_player_contribution:+d} to "
                 f"{max_remaining_player_contribution:+d} bound for each player's total remaining "
                 "Gameweek contribution (including a Double Gameweek). These are not literal "
-                "theoretical maxima. Scenario ranks are plausibility heuristics, not "
-                "probabilities. UNRESOLVED never means safe."
+                "theoretical maxima. AT RISK only means last place cannot be ruled out "
+                "under that envelope; it is not a probability."
             ),
         ]
     )
