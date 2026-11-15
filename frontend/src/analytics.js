@@ -84,7 +84,7 @@ window.FPLAnalytics = (() => {
   }
   function renderCoverage() {
     const s = state.summary, c = s.coverage;
-    $("analytics-coverage").textContent = `${s.league.manager_count} managers · ${s.league.completed_gameweeks.length} completed GWs · ${c.scores}/${c.expected} manager scores · ${c.ranked_gameweeks} fully covered weeks`;
+    $("analytics-coverage").textContent = `${s.league.manager_count} managers · ${s.league.completed_gameweeks.length} completed GWs · ${c.scores}/${c.expected} manager scores · ${c.ranked_gameweeks} ranked weeks`;
     $("analytics-definitions").querySelector("div").innerHTML = s.definitions.map((d) => `<p>${esc(d)}</p>`).join("") + `<p>Score history is cached for 15 minutes; final squads for 24 hours. Current squads use the live cache. Caches reset when the free backend restarts.</p>` + (s.warnings.length ? `<h4>Unavailable data</h4><ul>${s.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : "");
   }
   async function pollDetails(token, started) {
@@ -160,7 +160,7 @@ window.FPLAnalytics = (() => {
     const extreme = (row) => row ? `${row.score} · ${row.name} · GW${row.gameweek}` : "—";
     $("analytics-content").innerHTML = `
       ${!s.coverage.expected ? '<p class="phase-note">No completed Gameweeks yet. Current ownership is available under Players once squads are public.</p>' : ""}
-      ${s.coverage.scores < s.coverage.expected ? `<p class="phase-note">${s.coverage.expected - s.coverage.scores} manager scores are unavailable. Weekly finishes use only ${s.coverage.ranked_gameweeks} fully covered weeks. Open Gameweeks or Definitions &amp; data coverage for the missing records.</p>` : ""}
+      ${s.coverage.scores < s.coverage.expected ? `<p class="phase-note">${s.coverage.expected - s.coverage.scores} manager scores are unavailable. Each week ranks only the managers with a score that week (${s.coverage.ranked_gameweeks} weeks ranked, ${s.coverage.fully_covered_gameweeks} with every manager). Open Gameweeks or Definitions &amp; data coverage for the missing records.</p>` : ""}
       ${card("Season at a glance", facts([["Average manager GW", num(t.average)], ["Transfer deductions", num(t.hits)], ["Unused bench · verified squads", num(t.unused_bench)], ["Chips recorded", num(t.chips)]]) + `<div class="season-extremes"><p><span>Highest GW</span>${esc(extreme(t.highest))}</p><p><span>Lowest GW</span>${esc(extreme(t.lowest))}</p><p><span>Closest last-place finish</span>${finish(t.closest_finish)}</p><p><span>Largest last-place margin</span>${finish(t.largest_margin)}</p></div>`)}
       ${window.FPLCharts.line("The weekly score line", s.gameweeks, [{ key: "average", name: "League average" }, { key: "bottom", name: "Lowest score" }])}
       ${card("Forfeit leaderboard", table([
@@ -192,8 +192,8 @@ window.FPLAnalytics = (() => {
   function renderGameweeks() {
     $("analytics-content").innerHTML = card("Completed Gameweeks", table([
       { label: "GW", value: "gameweek", html: (w) => `<button type="button" class="table-link" data-analytics-gw="${w.gameweek}">GW ${w.gameweek}</button>` },
-      { label: "Scores", value: "coverage", html: (w) => `${w.coverage}/${state.summary.league.manager_count}` },
-      { label: "Last", value: (w) => w.complete ? w.last_names.join(" & ") : "Incomplete coverage" },
+      { label: "Ranked", value: "ranked_managers", html: (w) => `${w.ranked_managers}/${state.summary.league.manager_count}` },
+      { label: "Last", value: (w) => w.ranked ? w.last_names.join(" & ") : "Too few scores" },
       { label: "Lowest", value: "bottom" }, { label: "Second-lowest", value: "second_last" }, { label: "Margin", value: "margin" },
       { label: "Highest scorer", value: (w) => w.top_names.join(" & ") || null }, { label: "Highest", value: "top" },
       { label: "Available mean", value: "average" }, { label: "Hits", value: "hits" },
@@ -226,7 +226,7 @@ window.FPLAnalytics = (() => {
     const rows = m.history.map((r) => ({ ...r, ...Object.fromEntries(Object.entries(data.trends.find((w) => w.gameweek === r.gameweek) || {}).filter(([k]) => k !== "gameweek")) }));
     const chips = m.chips.map((c) => ({ ...c, chip: c.name, name: m.name }));
     $("analytics-content").innerHTML = `<div class="analytics-controls">${selectManager("analytics-manager", m.entry_id)}</div>
-      ${card(m.name, facts([["Average GW", num(m.average)], ["Median", num(m.median)], ["Best / lowest", `${num(m.best)} / ${num(m.worst)}`], ["Score standard deviation", num(m.standard_deviation), "Population standard deviation of recorded weekly scores; lower is more consistent."], ["Last-place finishes", num(m.times_last)], ["Bottom-three finishes", num(m.bottom_three)], ["Weekly wins", num(m.wins)], ["Average weekly position", num(m.average_rank)]]), `${m.scores_analysed} recorded completed Gameweeks; ${m.ranked_weeks} with full league coverage.`)}
+      ${card(m.name, facts([["Average GW", num(m.average)], ["Median", num(m.median)], ["Best / lowest", `${num(m.best)} / ${num(m.worst)}`], ["Score standard deviation", num(m.standard_deviation), "Population standard deviation of recorded weekly scores; lower is more consistent."], ["Last-place finishes", num(m.times_last)], ["Bottom-three finishes", num(m.bottom_three)], ["Weekly wins", num(m.wins)], ["Average weekly position", num(m.average_rank)]]), `${m.scores_analysed} recorded completed Gameweeks; ${m.ranked_weeks} ranked.`)}
       ${window.FPLCharts.line("Weekly performance", rows, [{ key: "score", name: m.name }, { key: "average", name: "League average" }, { key: "bottom", name: "Lowest score" }])}
       ${window.FPLCharts.line("Cumulative effective points · recorded weeks", m.history, [{ key: "cumulative", name: m.name }])}
       ${disclosure("Cumulative transfer deductions", window.FPLCharts.line("Points deducted over the season", m.history, [{ key: "cumulative_hits", name: "Transfer deductions" }]))}

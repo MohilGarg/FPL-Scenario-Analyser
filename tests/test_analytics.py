@@ -90,6 +90,75 @@ def squad_fixture(chip: str | None = None, *, autosub: bool = False) -> tuple[di
     return picks, live, players
 
 
+def late_joiner_fixture() -> tuple[list[dict], dict[int, dict]]:
+    """Ten completed weeks; two managers joined late (GW9 and GW10), so only 2 weeks have everyone."""
+    members = [{"entry_id": i, "name": f"Manager {i}", "team": f"Team {i}"} for i in range(1, 5)]
+    start = {1: 1, 2: 1, 3: 9, 4: 10}
+    base = {1: 60, 2: 50, 3: 40, 4: 30}
+    histories = {
+        entry: {
+            "current": [
+                {
+                    "event": gw,
+                    "points": base[entry] + gw,
+                    "event_transfers_cost": 0,
+                    "event_transfers": 0,
+                }
+                for gw in range(start[entry], 11)
+            ],
+            "chips": [],
+        }
+        for entry in base
+    }
+    return members, histories
+
+
+class LateJoinerRankingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        members, histories = late_joiner_fixture()
+        self.summary = season_summary(members, histories, list(range(1, 11)))
+        self.weeks = {w["gameweek"]: w for w in self.summary["gameweeks"]}
+
+    def test_every_week_is_ranked_among_managers_with_a_score(self) -> None:
+        self.assertEqual(self.summary["coverage"]["ranked_gameweeks"], 10)
+        self.assertEqual(self.summary["coverage"]["fully_covered_gameweeks"], 1)
+        self.assertEqual(
+            {gw: w["ranked_managers"] for gw, w in self.weeks.items()},
+            {**{gw: 2 for gw in range(1, 9)}, 9: 3, 10: 4},
+        )
+
+    def test_last_place_is_the_lowest_of_those_ranked(self) -> None:
+        self.assertEqual(self.weeks[1]["last_names"], ["Manager 2"])
+        self.assertEqual(self.weeks[9]["last_names"], ["Manager 3"])
+        self.assertEqual(self.weeks[10]["last_names"], ["Manager 4"])
+        self.assertEqual(self.weeks[1]["margin"], 10)
+        self.assertEqual([r["rank"] for r in self.weeks[1]["rows"]], [1, 2])
+
+    def test_late_joiner_is_never_scored_zero_or_last_for_weeks_they_missed(self) -> None:
+        by_name = {m["name"]: m for m in self.summary["managers"]}
+        self.assertEqual(by_name["Manager 4"]["scores_analysed"], 1)
+        self.assertEqual(by_name["Manager 3"]["times_last"], 1)
+        self.assertEqual(by_name["Manager 2"]["times_last"], 8)
+        self.assertEqual(by_name["Manager 4"]["times_last"], 1)
+
+    def test_a_single_scored_manager_has_no_last_place(self) -> None:
+        members, histories = late_joiner_fixture()
+        histories[2]["current"] = []
+        summary = season_summary(members, histories, [1])
+        week = summary["gameweeks"][0]
+        self.assertFalse(week["ranked"])
+        self.assertEqual(week["ranked_managers"], 0)
+        self.assertIsNone(week["bottom"])
+        self.assertEqual(week["last_names"], [])
+
+    def test_ties_among_ranked_managers_all_count_as_last(self) -> None:
+        members, histories = late_joiner_fixture()
+        histories[2]["current"][0]["points"] = histories[1]["current"][0]["points"]
+        week = season_summary(members, histories, [1])["gameweeks"][0]
+        self.assertEqual(week["last_names"], ["Manager 1", "Manager 2"])
+        self.assertEqual(week["margin"], 0)
+
+
 class AnalyticsCalculationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.members, self.histories = season_fixture()
@@ -124,13 +193,17 @@ class AnalyticsCalculationTests(unittest.TestCase):
         self.assertEqual(m["hits"]["four"], 3)
         self.assertEqual(m["hits"]["transfers"], 6)
 
-    def test_missing_history_never_creates_rank_or_false_last(self) -> None:
-        self.histories[1]["current"].pop()
+    def test_missing_score_ranks_only_managers_who_have_one(self) -> None:
+        self.histories[1]["current"].pop()  # Manager 1 has no GW3 score; it is not read as zero
         summary = season_summary(self.members, self.histories, [1, 2, 3])
+        week = summary["gameweeks"][-1]
         self.assertEqual(summary["coverage"]["scores"], 11)
-        self.assertEqual(summary["coverage"]["ranked_gameweeks"], 2)
-        self.assertIsNone(summary["gameweeks"][-1]["bottom"])
-        self.assertTrue(all(r["last"] is None for r in summary["gameweeks"][-1]["rows"]))
+        self.assertEqual(summary["coverage"]["ranked_gameweeks"], 3)
+        self.assertEqual(summary["coverage"]["fully_covered_gameweeks"], 2)
+        self.assertFalse(week["complete"])
+        self.assertEqual(week["ranked_managers"], 3)
+        self.assertEqual(week["last_names"], ["Manager 2"])
+        self.assertNotIn("Manager 1", [r["name"] for r in week["rows"]])
 
     def test_missing_transfer_cost_is_not_assumed_zero(self) -> None:
         del self.histories[1]["current"][0]["event_transfers_cost"]
@@ -337,7 +410,9 @@ class AnalyticsServiceTests(unittest.TestCase):
         response = self.web.get("/api/league/7/analytics/gameweeks?gameweek=3")
         week = response.json()["gameweeks"][0]
         self.assertFalse(week["complete"])
-        self.assertIsNone(week["bottom"])
+        self.assertTrue(week["ranked"])
+        self.assertEqual(week["ranked_managers"], 3)
+        self.assertEqual(week["rows"][0]["rank"], 1)
         self.assertIsNone(week["rows"][0]["detail"])
         response = self.web.get("/api/league/7/analytics/head-to-head?a=1&b=2")
         self.assertEqual(response.json()["common_gameweeks"], 2)

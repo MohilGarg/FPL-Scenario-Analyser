@@ -52,6 +52,7 @@ already-scored bench and vice-captain points to become effective after a pending
   points are not unused. Distinguish total multiplied captain points from additional multiplier points.
   Record every chip use.
 - Unknown data is null with explicit coverage; never drop members with missing squads silently.
+- Each Gameweek ranks only managers who have a score that week (at least two); show how many were ranked.
 - Analytics ranks use competition ranks and include all tied last / bottom-three cutoff scores, separate
   from the live tie setting.
 - Load cheap score history first; enrich squads in bounded, coalesced background jobs with progress and
