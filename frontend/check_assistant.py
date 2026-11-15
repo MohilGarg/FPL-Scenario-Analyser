@@ -263,7 +263,14 @@ def main():
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     origin = f"http://127.0.0.1:{listener.getsockname()[1]}"
-    auth = SessionStore(AuthSettings(origin, password_hash(password), development_http=True))
+    auth = SessionStore(
+        AuthSettings(
+            origin,
+            password_hash(password),
+            development_http=True,
+            session_secret=secrets.token_urlsafe(48),  # runtime-only, like the password
+        )
+    )
     client = BrowserFixtureClient()
     service = AssistantService(client, samples=24, now=lambda: NOW)
     service.ml = RidgeBrowserFixture()
