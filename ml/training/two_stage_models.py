@@ -22,11 +22,16 @@ def probabilities(values: np.ndarray) -> np.ndarray:
     return values
 
 
-def combine_points(probability: np.ndarray, appearing_points: np.ndarray,
-                   nonappearing_points: float) -> np.ndarray:
+def combine_points(
+    probability: np.ndarray, appearing_points: np.ndarray, nonappearing_points: float
+) -> np.ndarray:
     """E[Y|X] = P(A|X) E[Y|A,X] + (1-P(A|X)) E[Y|not A,X]."""
     p = probabilities(probability)
-    if appearing_points.shape != p.shape or not np.isfinite(appearing_points).all() or not np.isfinite(nonappearing_points):
+    if (
+        appearing_points.shape != p.shape
+        or not np.isfinite(appearing_points).all()
+        or not np.isfinite(nonappearing_points)
+    ):
         raise ValueError("Conditional contributions must be aligned and finite")
     return p * appearing_points + (1 - p) * nonappearing_points
 
@@ -42,10 +47,17 @@ class TwoStageModels:
     appearance_prevalence: float
 
 
-def fit_two_stage(x: np.ndarray, y: np.ndarray, minutes: np.ndarray,
-                  config: dict) -> tuple[TwoStageModels, dict]:
-    if (y.ndim != 1 or y.shape != minutes.shape or len(x) != len(y)
-            or not np.isfinite(y).all() or not np.isfinite(minutes).all() or (minutes < 0).any()):
+def fit_two_stage(
+    x: np.ndarray, y: np.ndarray, minutes: np.ndarray, config: dict
+) -> tuple[TwoStageModels, dict]:
+    if (
+        y.ndim != 1
+        or y.shape != minutes.shape
+        or len(x) != len(y)
+        or not np.isfinite(y).all()
+        or not np.isfinite(minutes).all()
+        or (minutes < 0).any()
+    ):
         raise ValueError("Training outcomes/minutes must be aligned, finite and valid")
     appeared = minutes > 0
     if not appeared.any() or appeared.all():
@@ -60,18 +72,32 @@ def fit_two_stage(x: np.ndarray, y: np.ndarray, minutes: np.ndarray,
         reference = Ridge(**config["reference_ridge"]).fit(transformed, y)
         timings["reference_ridge_fit_seconds"] = perf_counter() - started
         started = perf_counter()
-        appearance = LogisticRegression(**config["appearance"], random_state=config["seed"]).fit(transformed, appeared)
+        appearance = LogisticRegression(**config["appearance"], random_state=config["seed"]).fit(
+            transformed, appeared
+        )
         timings["appearance_fit_seconds"] = perf_counter() - started
         started = perf_counter()
         conditional = Ridge(**config["conditional_ridge"]).fit(transformed[appeared], y[appeared])
         timings["conditional_ridge_fit_seconds"] = perf_counter() - started
-    model = TwoStageModels(pre, appearance, conditional, reference, float(y[~appeared].mean()),
-                           float(y[appeared].mean()), float(appeared.mean()))
-    timings.update({"training_rows": len(y), "appearance_training_rows": int(appeared.sum()),
-                    "nonappearance_training_rows": int((~appeared).sum()),
-                    "logistic_iterations": appearance.n_iter_.tolist(),
-                    "nonappearance_nonzero_points_rows": int(np.count_nonzero(y[~appeared])),
-                    "nonappearance_points_sum": float(y[~appeared].sum())})
+    model = TwoStageModels(
+        pre,
+        appearance,
+        conditional,
+        reference,
+        float(y[~appeared].mean()),
+        float(y[appeared].mean()),
+        float(appeared.mean()),
+    )
+    timings.update(
+        {
+            "training_rows": len(y),
+            "appearance_training_rows": int(appeared.sum()),
+            "nonappearance_training_rows": int((~appeared).sum()),
+            "logistic_iterations": appearance.n_iter_.tolist(),
+            "nonappearance_nonzero_points_rows": int(np.count_nonzero(y[~appeared])),
+            "nonappearance_points_sum": float(y[~appeared].sum()),
+        }
+    )
     return model, timings
 
 
@@ -93,11 +119,18 @@ def predict_two_stage(model: TwoStageModels, x: np.ndarray, config: dict) -> tup
     # never a validation-fitted prevalence. Prepared candidates currently have full coverage.
     lagged = probabilities(np.where(np.isnan(lagged), model.appearance_prevalence, lagged))
     predictions = {
-        "ridge": ridge, "two_stage": expected, "appearance_probability": p,
-        "conditional_points": conditional, "lagged_appearance_probability": lagged,
+        "ridge": ridge,
+        "two_stage": expected,
+        "appearance_probability": p,
+        "conditional_points": conditional,
+        "lagged_appearance_probability": lagged,
         # Predeclared diagnostics; no validation fitting or target-conditioned predictions.
-        "lagged_probability_conditional_ridge": combine_points(lagged, conditional, model.nonappearance_mean),
-        "logistic_constant_return": combine_points(p, np.full(len(p), model.appearance_mean), model.nonappearance_mean),
+        "lagged_probability_conditional_ridge": combine_points(
+            lagged, conditional, model.nonappearance_mean
+        ),
+        "logistic_constant_return": combine_points(
+            p, np.full(len(p), model.appearance_mean), model.nonappearance_mean
+        ),
     }
     if any(not np.isfinite(v).all() for v in predictions.values()):
         raise ValueError("Nonfinite predictions")
@@ -108,8 +141,12 @@ def predict_two_stage(model: TwoStageModels, x: np.ndarray, config: dict) -> tup
 def regular_starters(x: np.ndarray, config: dict) -> np.ndarray:
     """Ex-ante subgroup: five observed prior GWs, starts >=80%, mean minutes >=60."""
     rule = config["regular_starters"]
+
     def column(suffix: str) -> np.ndarray:
         return x[:, FEATURE_COLUMNS.index(f"{rule['window']}_{suffix}")]
-    return ((column("count") == rule["count"])
-            & (column("start_rate") >= rule["minimum_start_rate"])
-            & (column("minutes_mean") >= rule["minimum_minutes_mean"]))
+
+    return (
+        (column("count") == rule["count"])
+        & (column("start_rate") >= rule["minimum_start_rate"])
+        & (column("minutes_mean") >= rule["minimum_minutes_mean"])
+    )

@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["httpx>=0.27,<1"]
+lint = ["ruff==0.16.7"]
 
 [project.scripts]
 fpl-forfeit = "fpl_forfeit.cli:main"

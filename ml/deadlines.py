@@ -12,7 +12,7 @@ import gzip
 import io
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -40,9 +40,13 @@ def fetch_deadline_sources(raw_dir: Path, seasons: list[str]) -> None:
             if path.exists():
                 data = path.read_bytes()
             else:
-                url = (f"https://raw.githubusercontent.com/{lock['repository']}/"
-                       f"{lock['revision']}/{captures[season]['path']}/{filename}")
-                with urlopen(Request(url, headers={"User-Agent": "FPL-Phase2a/1"}), timeout=60) as r:
+                url = (
+                    f"https://raw.githubusercontent.com/{lock['repository']}/"
+                    f"{lock['revision']}/{captures[season]['path']}/{filename}"
+                )
+                with urlopen(
+                    Request(url, headers={"User-Agent": "FPL-Phase2a/1"}), timeout=60
+                ) as r:
                     data = r.read(MAX_STORED_BYTES + 1)
             if len(data) > MAX_STORED_BYTES or len(data) != expected["bytes"]:
                 raise ValueError(f"Deadline archive size mismatch: {season}/{filename}")
@@ -57,25 +61,32 @@ def fetch_deadline_sources(raw_dir: Path, seasons: list[str]) -> None:
 
 def extract_deadlines(season: str, manifest: dict, body: bytes, source_url: str) -> list[dict]:
     """Verify archived bytes and distinguish finalized evidence from provisional dates."""
-    files = [f for f in manifest["files"] if f["name"] == "bootstrap-static.json.gz"
-             and f["endpoint"] == "/bootstrap-static/"]
+    files = [
+        f
+        for f in manifest["files"]
+        if f["name"] == "bootstrap-static.json.gz" and f["endpoint"] == "/bootstrap-static/"
+    ]
     if len(files) != 1 or files[0]["bytes"] != len(body) or files[0]["sha256"] != digest(body):
         raise ValueError("Archived API body does not match its provenance manifest")
     captured = timestamp(manifest["captured_at"])
     wayback = manifest["backfill"]["wayback_timestamp"]
-    expected_capture = datetime.strptime(wayback, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+    expected_capture = datetime.strptime(wayback, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
     archive_url = manifest["backfill"]["source"]
-    if (manifest["backfill"]["season"] != season or captured != expected_capture
-            or archive_url != f"https://web.archive.org/web/{wayback}id_/"
-                              "https://fantasy.premierleague.com/api/bootstrap-static/"):
+    if (
+        manifest["backfill"]["season"] != season
+        or captured != expected_capture
+        or archive_url
+        != f"https://web.archive.org/web/{wayback}id_/"
+        "https://fantasy.premierleague.com/api/bootstrap-static/"
+    ):
         raise ValueError("Archive season/crawl timestamp/original endpoint mismatch")
     payload = json.loads(body)
     events = {int(e["id"]): e for e in payload["events"]}
     if len(events) != len(payload["events"]) or set(events) != set(range(1, 39)):
         raise ValueError("Expected exactly 38 distinct official FPL event IDs")
     year = int(season[:4])
-    start = datetime(year, 7, 1, tzinfo=timezone.utc)
-    end = datetime(year + 1, 7, 1, tzinfo=timezone.utc)
+    start = datetime(year, 7, 1, tzinfo=UTC)
+    end = datetime(year + 1, 7, 1, tzinfo=UTC)
     if captured is None or not start < captured < end:
         raise ValueError("Crawl is outside its claimed season")
     rows = []
@@ -88,21 +99,34 @@ def extract_deadlines(season: str, manifest: dict, body: bytes, source_url: str)
             raise ValueError("API deadline ISO/epoch mismatch")
         previous = deadline
         past_final = boolean(event["finished"]) is True and deadline < captured
-        imminent = (boolean(event["is_next"]) is True and boolean(event["finished"]) is False
-                    and captured < deadline and int(manifest["event"]) == gw
-                    and timestamp(manifest["event_deadline"]) == deadline)
+        imminent = (
+            boolean(event["is_next"]) is True
+            and boolean(event["finished"]) is False
+            and captured < deadline
+            and int(manifest["event"]) == gw
+            and timestamp(manifest["event_deadline"]) == deadline
+        )
         verified = past_final or imminent
-        rows.append({
-            "season": season, "gameweek": gw,
-            "deadline_utc": deadline.isoformat() if verified else "",
-            "reported_deadline_utc": deadline.isoformat(),
-            "verification_status": VERIFIED if verified else "unverified_provisional",
-            "evidence": "finished_event_in_archived_api" if past_final else
-                        "is_next_event_in_predeadline_api" if imminent else "provisional",
-            "source_url": source_url, "original_endpoint": "https://fantasy.premierleague.com/api/bootstrap-static/",
-            "archive_url": archive_url, "source_capture_utc": captured.isoformat(),
-            "source_body_sha256": digest(body), "corroborating_source_url": "",
-        })
+        rows.append(
+            {
+                "season": season,
+                "gameweek": gw,
+                "deadline_utc": deadline.isoformat() if verified else "",
+                "reported_deadline_utc": deadline.isoformat(),
+                "verification_status": VERIFIED if verified else "unverified_provisional",
+                "evidence": "finished_event_in_archived_api"
+                if past_final
+                else "is_next_event_in_predeadline_api"
+                if imminent
+                else "provisional",
+                "source_url": source_url,
+                "original_endpoint": "https://fantasy.premierleague.com/api/bootstrap-static/",
+                "archive_url": archive_url,
+                "source_capture_utc": captured.isoformat(),
+                "source_body_sha256": digest(body),
+                "corroborating_source_url": "",
+            }
+        )
     return rows
 
 
@@ -124,8 +148,10 @@ def reconstruct_deadlines(raw_dir: Path, seasons: list[str]) -> list[dict]:
             body = compressed.read(MAX_BODY_BYTES + 1)
         if len(body) > MAX_BODY_BYTES:
             raise ValueError("Uncompressed archived API body exceeds limit")
-        url = (f"https://raw.githubusercontent.com/{lock['repository']}/{lock['revision']}/"
-               f"{capture['path']}/bootstrap-static.json.gz")
+        url = (
+            f"https://raw.githubusercontent.com/{lock['repository']}/{lock['revision']}/"
+            f"{capture['path']}/bootstrap-static.json.gz"
+        )
         rows.extend(extract_deadlines(season, manifest, body, url))
     by_key = {(r["season"], r["gameweek"]): r for r in rows}
     for check in lock["official_cross_checks"]:

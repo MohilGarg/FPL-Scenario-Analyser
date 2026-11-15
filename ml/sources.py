@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -40,8 +40,10 @@ def fetch(raw_dir: Path, seasons: list[str]) -> dict:
             raise ValueError(f"Unsupported season: {season}")
         for filename in lock["files"]:
             key = f"{season}/{filename}"
-            url = (f"https://raw.githubusercontent.com/{lock['repository']}/"
-                   f"{lock['revision']}/data/{key}")
+            url = (
+                f"https://raw.githubusercontent.com/{lock['repository']}/"
+                f"{lock['revision']}/data/{key}"
+            )
             path = raw_dir / key
             if key in entries and path.exists():
                 data = path.read_bytes()
@@ -62,8 +64,12 @@ def fetch(raw_dir: Path, seasons: list[str]) -> dict:
                 entries[key] = {"url": url, "sha256": digest(data), "bytes": len(data)}
                 # Persist after each file so interrupted downloads can resume.
                 raw_dir.mkdir(parents=True, exist_ok=True)
-                manifest = {"repository": lock["repository"], "revision": lock["revision"],
-                            "retrieved_at": datetime.now(timezone.utc).isoformat(), "files": entries}
+                manifest = {
+                    "repository": lock["repository"],
+                    "revision": lock["revision"],
+                    "retrieved_at": datetime.now(UTC).isoformat(),
+                    "files": entries,
+                }
                 (raw_dir / "manifest.json").write_text(
                     json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
                 )

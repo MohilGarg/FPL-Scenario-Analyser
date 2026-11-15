@@ -23,7 +23,14 @@ def check_simulations(page, url: str, output: Path, requests: list[str]) -> None
         timeout=60_000,
     )
     tabs = page.locator(".view-tabs button").evaluate_all("tabs => tabs.map(t => t.dataset.view)")
-    assert tabs == ["overview", "scenarios", "differentials", "simulations", "managers", "analytics"]
+    assert tabs == [
+        "overview",
+        "scenarios",
+        "differentials",
+        "simulations",
+        "managers",
+        "analytics",
+    ]
     count = page.evaluate("appState.data.managers.length")
     assert page.locator(".simulation-probabilities .bar-row").count() == count
     assert page.locator(".simulation-scores .interval-row").count() == count
@@ -35,7 +42,10 @@ def check_simulations(page, url: str, output: Path, requests: list[str]) -> None
     assert page.locator(".simulation-history svg").count() == 0
     assert page.locator(".simulation-checkpoints .chart-dot").count() > 0
     page.locator(".simulation-probabilities .bar-row").first.focus()
-    assert "estimated last-place probability" in page.locator(".simulation-probabilities .chart-readout").inner_text()
+    assert (
+        "estimated last-place probability"
+        in page.locator(".simulation-probabilities .chart-readout").inner_text()
+    )
     page.locator(".simulation-scores .interval-row").first.click()
     assert "10th–90th percentile" in page.locator(".simulation-scores .chart-readout").inner_text()
     page.locator(".simulation-checkpoints .chart-dot").first.focus()
@@ -51,19 +61,34 @@ def check_simulations(page, url: str, output: Path, requests: list[str]) -> None
     page.locator(".simulation-checkpoints .chart-legend button").first.click()
     assert page.locator(".simulation-picker [aria-pressed='true']").count() == 2
     assert page.locator(".simulation-scores .interval-row").count() == 2
-    assert not any("/outlook" in request for request in requests[start:]), "Selecting charts must not request a forecast"
+    assert not any("/outlook" in request for request in requests[start:]), (
+        "Selecting charts must not request a forecast"
+    )
     page.locator("[data-sim-action='top']").click()
     page.locator("#simulation-selected-scores").uncheck()
     for width in (320, 390, 1440):
         page.set_viewport_size({"width": width, "height": 900})
         for theme in ("light", "dark"):
             page.evaluate("theme => { document.documentElement.dataset.theme = theme; }", theme)
-            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (width, theme)
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (
+                width,
+                theme,
+            )
             page.screenshot(path=str(output / f"simulations-{width}-{theme}.png"), full_page=True)
-        for view in ("overview", "scenarios", "differentials", "managers", "analytics", "simulations"):
+        for view in (
+            "overview",
+            "scenarios",
+            "differentials",
+            "managers",
+            "analytics",
+            "simulations",
+        ):
             page.locator(f"#tab-{view}").click()
             assert page.locator(f"#view-{view}").is_visible(), view
-            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (width, view)
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (
+                width,
+                view,
+            )
     # Rendering fixtures only: no invented observations enter the API, saved history or product demos.
     page.evaluate("""() => {
         const results = ForfeitOutlook.simulationData(appState.data);
@@ -83,7 +108,10 @@ def check_simulations(page, url: str, output: Path, requests: list[str]) -> None
     page.locator(".simulation-history .chart-legend button").first.click()
     assert page.locator(".simulation-history .chart-dot").count() == 4
     page.goto(url + "/?demo=late&view=simulations")
-    page.wait_for_function("document.querySelector('.simulation-meta')?.textContent.includes('existing shared draws')", timeout=60_000)
+    page.wait_for_function(
+        "document.querySelector('.simulation-meta')?.textContent.includes('existing shared draws')",
+        timeout=60_000,
+    )
     assert "SAFE in configured envelope" in page.locator(".simulation-probabilities").inner_text()
     page.goto(url + "/?demo=complete&view=simulations")
     page.locator("#view-simulations:not(.hidden)").wait_for()
@@ -94,7 +122,11 @@ def check_simulations(page, url: str, output: Path, requests: list[str]) -> None
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://127.0.0.1:8080")
-    parser.add_argument("--simulations-only", action="store_true", help="Quick demo checks for the Simulations tab, chart interactions, responsive layout and themes")
+    parser.add_argument(
+        "--simulations-only",
+        action="store_true",
+        help="Quick demo checks for the Simulations tab, chart interactions, responsive layout and themes",
+    )
     parser.add_argument(
         "--league", type=int, help="Also check Analytics against this real public league"
     )
@@ -131,7 +163,9 @@ def main() -> None:
             check_simulations(page, args.url, output, requests)
             assert not errors, errors
             browser.close()
-            print(f"Simulations browser checks passed: demo charts, manager selection, tooltips, zero/safe labels, unavailable/one/two-observation history, six views, 320/390/1440px, light/dark. Screenshots: {output}")
+            print(
+                f"Simulations browser checks passed: demo charts, manager selection, tooltips, zero/safe labels, unavailable/one/two-observation history, six views, 320/390/1440px, light/dark. Screenshots: {output}"
+            )
             return
         page.goto(args.url + "/")
         page.locator("#league-form").wait_for()
@@ -177,7 +211,14 @@ def main() -> None:
         assert page.locator("#scenario-detail .scenario-card").count() > 3
         for width in (320, 390, 1440):
             page.set_viewport_size({"width": width, "height": 900})
-            for view in ("overview", "scenarios", "differentials", "simulations", "managers", "analytics"):
+            for view in (
+                "overview",
+                "scenarios",
+                "differentials",
+                "simulations",
+                "managers",
+                "analytics",
+            ):
                 page.locator(f"#tab-{view}").click()
                 if view == "managers":
                     page.locator(".manager-card > summary").first.click()
