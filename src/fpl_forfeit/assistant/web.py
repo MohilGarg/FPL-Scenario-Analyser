@@ -174,9 +174,7 @@ def register_assistant(application: FastAPI, service: AssistantService, auth: Se
                 password = values["password"]
         except (ValueError, UnicodeDecodeError):
             pass
-        token, session = await run_in_threadpool(
-            auth.login, password, request.client.host if request.client else "unknown"
-        )
+        token, session = await run_in_threadpool(auth.login, password, auth.client_address(request))
         response = JSONResponse(
             {"authenticated": True, "csrf": session.csrf, "expires_at": session.expires_at}
         )
