@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import gzip
-import json
-import tempfile
 import unittest
 from copy import deepcopy
 from dataclasses import replace
 from datetime import timedelta
-from pathlib import Path
 from unittest.mock import patch
 
 from fpl_forfeit.api import parse_ml_history
 from fpl_forfeit.assistant.ml_features import FEATURE_COLUMNS, STATS, historical_features
 from fpl_forfeit.assistant.ml_inference import LiveML, RidgeModel, predict_player
-from fpl_forfeit.assistant.prospective import ForecastArchive, immutable
 from fpl_forfeit.forecasting.horizon import forecast_horizon
 from tests.assistant_fixtures import NOW, FixtureClient, catalogue
 
@@ -202,84 +197,6 @@ class LiveRidgeTests(unittest.TestCase):
         service = AssistantService(Client(), samples=4, now=lambda: NOW)
         self.assertNotIn(8, service.forecast().gameweeks)
         self.assertEqual(service.forecast().gameweeks[0], 7)
-
-    def test_records_are_immutable_and_late_or_future_sources_are_rejected(self):
-        with tempfile.TemporaryDirectory() as folder:
-            archive = ForecastArchive(Path(folder))
-            predictions = {1: self.predict()}
-            path = archive.record(
-                self.forecast, self.snapshot, {1: self.history}, predictions, NOW, self.model
-            )
-            original = path.read_bytes()
-            archive.record(self.forecast, self.snapshot, {1: self.history}, {}, NOW, self.model)
-            self.assertEqual(path.read_bytes(), original)
-            saved = json.loads(gzip.decompress(original))
-            self.assertNotIn("squad", saved)
-            deadline = next(g.deadline for g in self.forecast.catalogue.gameweeks if g.id == 7)
-            with self.assertRaises(ValueError):
-                archive.record(self.forecast, self.snapshot, {}, {}, deadline, self.model)
-            bad = deepcopy(self.history)
-            bad["retrieved_at"] = (NOW + timedelta(seconds=1)).isoformat()
-            with self.assertRaises(ValueError):
-                archive.record(self.forecast, self.snapshot, {1: bad}, {}, NOW, self.model)
-
-    def test_canonical_hashes_survive_numeric_key_json_round_trips(self):
-        from fpl_forfeit.assistant.prospective import canonical
-
-        data = {2: {8: 1.5}, 10: {7: -0.5}}
-        self.assertEqual(canonical(data), canonical(json.loads(canonical(data))))
-
-    def test_generation_after_deadline_cannot_be_labelled_as_early_feature_capture(self):
-        with tempfile.TemporaryDirectory() as folder:
-            deadline = next(g.deadline for g in self.forecast.catalogue.gameweeks if g.id == 7)
-            with self.assertRaises(ValueError):
-                ForecastArchive(Path(folder)).record(
-                    self.forecast,
-                    self.snapshot,
-                    {1: self.history},
-                    {1: self.predict()},
-                    deadline,
-                    self.model,
-                    feature_asof=NOW,
-                )
-
-    def test_actuals_only_after_official_final_and_unknown_points_remain_null(self):
-        with tempfile.TemporaryDirectory() as folder:
-            archive = ForecastArchive(Path(folder))
-            immutable(
-                Path(folder) / "test.index.json",
-                json.dumps({"season": "2026-27", "gameweeks": [7]}).encode(),
-            )
-
-            class Client:
-                calls = 0
-
-                def final_event_snapshot(self, gw):
-                    self.calls += 1
-                    return {
-                        "payload": {
-                            "elements": [
-                                {"id": 1, "stats": {"total_points": -1}},
-                                {"id": 2, "stats": {}},
-                            ]
-                        },
-                        "retrieved_at": NOW.isoformat(),
-                    }
-
-            client = Client()
-            bootstrap = {
-                "events": [
-                    {"id": 1, "deadline_time": "2026-08-01T10:00:00Z"},
-                    {"id": 7, "finished": True, "data_checked": False},
-                ]
-            }
-            self.assertEqual(archive.finalize(bootstrap, client), 0)
-            bootstrap["events"][1]["data_checked"] = True
-            self.assertEqual(archive.finalize(bootstrap, client), 1)
-            self.assertEqual(archive.finalize(bootstrap, client), 0)
-            self.assertEqual(client.calls, 1)
-            record = json.loads(gzip.decompress(next(Path(folder).glob("actual*.gz")).read_bytes()))
-            self.assertIsNone(record["actual_points"]["2"])
 
 
 if __name__ == "__main__":

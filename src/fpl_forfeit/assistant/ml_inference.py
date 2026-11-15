@@ -176,7 +176,6 @@ class LiveML:
         self.rows: dict[int, dict] = {}
         self.status = {"state": "idle", "completed": 0, "total": 0}
         self.history_cache: dict[tuple, dict] = {}
-        self.last_archive_error = ""
         self.raw_histories: dict[int, dict] = {}
         self.component_forecast: HorizonForecast | None = None
         self.component_metadata: dict | None = None
@@ -203,7 +202,7 @@ class LiveML:
                     daemon=True,
                     name="assistant-ridge",
                 ).start()
-            return {**self.status, "archive_error": self.last_archive_error}
+            return dict(self.status)
 
     def build(
         self, forecast: HorizonForecast, snapshot: dict, generation: tuple | None = None
@@ -289,27 +288,6 @@ class LiveML:
                         r[forecast.gameweeks[0]]["source"] == "ridge" for r in rows.values()
                     ),
                 }
-            from .prospective import ForecastArchive
-
-            try:
-                archive = ForecastArchive()
-                archive.record(
-                    forecast,
-                    snapshot,
-                    histories,
-                    rows,
-                    generated,
-                    model,
-                    feature_asof=asof,
-                    component=component,
-                    component_metadata=component_metadata,
-                    component_error=component_error,
-                )
-                archive.finalize(snapshot["bootstrap"], self.client)
-                self.last_archive_error = ""
-            except Exception as exc:
-                logger.exception("Private football forecast recording failed")
-                self.last_archive_error = f"recording_unavailable:{type(exc).__name__}"
             if len(self.history_cache) > 2000:
                 self.history_cache.clear()
         except Exception as exc:

@@ -169,12 +169,6 @@ Render. `FPL_RIDGE_MODEL` can point to a reviewed replacement with the identical
 Invalid or missing models leave statistical planning available. The new status route remains
 behind the same server-side authentication as all Assistant data routes.
 
-When private access is configured, a process-local recorder runs every 30 minutes. It writes public-football
-inputs, forecasts and provenance to ignored `snapshots/ml/` and records actual player points after official
-`finished` and `data_checked` flags. It saves no personal squads, entry IDs, passwords or sessions. Set
-`FPL_ML_AUTORECORD=0` to disable it and `FPL_ML_ARCHIVE_DIR` to choose a location. On the free Render plan
-local files disappear on restart, so this is best effort.
-
 Transfer screening ignores autosub/vice effects and can omit the best replacement; exact refinement
 then includes them. Manual multi-transfer plans are evaluated, but automatic multi-transfer search,
 sequential future transfers, saved free-transfer value and risk preferences are not implemented.

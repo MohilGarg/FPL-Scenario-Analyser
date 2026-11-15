@@ -10,7 +10,6 @@ dist/
 build/
 *.egg-info/
 snapshots/*.json
-snapshots/ml/
 !snapshots/.gitkeep
 .browser-artifacts/
 *.sqlite3
@@ -18,3 +17,4 @@ snapshots/ml/
 *.sqlite3-shm
 lineup-mappings.local.json
 assistant-password-hash.local.txt
+snapshots/ml/
